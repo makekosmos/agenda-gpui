@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+# fxc shim — translates the fxc.exe arguments gpui's build.rs uses into a
+# Microsoft dxc invocation (official Linux DXC release), and emits the same
+# C-header output fxc's /Fh produces. Lets gpui's Windows shader pipeline run
+# under Linux cross-compiles with zero changes to gpui's expectations.
+#
+# dxc is NOT vendored. Put it at tools/dxc/bin/dxc (see tools/README.md), or
+# set DXC_PATH, or have dxc on PATH. For byte-identical upstream fxc output,
+# prefer a real SDK fxc.exe via GPUI_FXC_PATH instead of this shim.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -n "${DXC_PATH:-}" ]]; then
+    DXC="$DXC_PATH"
+elif [[ -x "$SCRIPT_DIR/dxc/bin/dxc" ]]; then
+    DXC="$SCRIPT_DIR/dxc/bin/dxc"
+elif [[ -x "$SCRIPT_DIR/dxc/linux_dxc_2026_07_29.x86_x64/bin/dxc" ]]; then
+    DXC="$SCRIPT_DIR/dxc/linux_dxc_2026_07_29.x86_x64/bin/dxc"
+else
+    DXC="$(command -v dxc || true)"
+fi
+[[ -n "$DXC" && -x "$DXC" ]] || { echo "fxc shim: no dxc found (see tools/README.md)" >&2; exit 1; }
+
+target="" entry="" out_h="" var="" shader=""
+for a in "$@"; do
+    case "$a" in
+        /T*)  target="${a#/T}" ;;
+        /E*)  entry="${a#/E}" ;;
+        /Fh*) out_h="${a#/Fh}" ;;
+        /Vn*) var="${a#/Vn}" ;;
+        /Fo*) ;; # object output: we always go through -Fh header mode
+        *)    if [[ -f "$a" ]]; then shader="$a"; fi ;;
+    esac
+done
+[[ -n "$target" && -n "$entry" && -n "$out_h" && -n "$var" && -n "$shader" ]] || {
+    echo "fxc shim: need /T /E /Fh /Vn <shader> (got: $*)" >&2; exit 1;
+}
+
+# Compile to raw DXBC, then format it exactly like fxc /Fh does:
+#   const BYTE <var>[] = { 0x.., ... };
+tmp="$(mktemp --suffix=.cso)"
+trap 'rm -f "$tmp"' EXIT
+"$DXC" -T "$target" -E "$entry" -Fo "$tmp" "$shader" >/dev/null
+
+{
+    printf 'const BYTE %s[] = {\n' "$var"
+    od -An -v -tu1 "$tmp" | awk '{
+        for (i = 1; i <= NF; i++) printf "0x%02x, ", $i
+        print ""
+    }'
+    printf '};\n'
+} > "$out_h"

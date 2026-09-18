@@ -64,6 +64,7 @@ pub enum MenuAction {
     RestoreProject(String),
     ArchiveProject(String),
     DeleteProject(String),
+    RenameProject(String),
     SetStatus(String, Status),
     SetPriority(String, u8),
     SetProject(String, Option<String>),
@@ -171,6 +172,7 @@ pub struct Agenda {
 
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) delete_blocked: bool,
+    pub(crate) rename_project: Option<String>,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
     pub(crate) inputs: HashMap<String, Entity<InputState>>,
@@ -262,6 +264,11 @@ impl Agenda {
             recur_day_of_month: None,
             theme_sel: 0,
             delete_blocked: false,
+            rename_project: if std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("rename") {
+                Some("dev-proj-release".to_string())
+            } else {
+                None
+            },
             scrolls: HashMap::new(),
             inputs: HashMap::new(),
             input_task: None,
@@ -276,7 +283,11 @@ impl Agenda {
             cal_mode: CalMode::Week,
             cal_anchor: today_key(),
             stat_metric: 0,
-            stat_day: None,
+            stat_day: if std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("stat-day") {
+                Some(today_key())
+            } else {
+                None
+            },
             root_focus: cx.focus_handle(),
             quick_focus: cx.focus_handle(),
             focused_once: false,
@@ -477,6 +488,9 @@ impl Render for Agenda {
         if self.quick_open {
             overlays.push(self.render_quick_search(window, cx).into_any_element());
         }
+        if self.rename_project.is_some() {
+            overlays.push(self.render_rename_modal(window, cx).into_any_element());
+        }
 
         root.children(overlays)
     }
@@ -491,6 +505,8 @@ impl Agenda {
             if self.quick_open {
                 self.quick_query.clear();
                 self.quick_sel = 0;
+                // Fresh InputState so the previous query text does not persist.
+                self.inputs.remove("qs");
             } else {
                 self.qs_focused = false;
                 self.root_focus.focus(window);
@@ -510,6 +526,9 @@ impl Agenda {
                 self.qe_sig = None;
                 self.qe_date = None;
                 self.qe_date_touched = false;
+                // Fresh form: drop the cached title/notes InputStates.
+                self.inputs.remove("qe-title");
+                self.inputs.remove("qe-notes");
                 self.qe_project = match &self.route {
                     Route::Project(id) => Some(id.clone()),
                     _ => None,
@@ -545,6 +564,7 @@ impl Agenda {
             self.more_open = false;
             self.menu = None;
             self.dropdown = None;
+            self.rename_project = None;
             if self.quick_entry_open {
                 self.quick_entry_open = false;
                 self.qe_focused = false;
@@ -573,6 +593,9 @@ impl Agenda {
             }
             ("qe-title", InputEvent::PressEnter { .. }) => {
                 self.quick_entry_save(cx);
+            }
+            ("proj-rename", InputEvent::PressEnter { .. }) => {
+                self.commit_project_rename(cx);
             }
             ("qe-title", InputEvent::Change) => {
                 // @упоминание проекта в заголовке (parseProjectMention parity)
@@ -630,6 +653,23 @@ impl Agenda {
             Route::Task(id) => Some(id.clone()),
             _ => None,
         }
+    }
+
+    /// Vue: commitProjectRename — trims; a blank title is ignored but the
+    /// modal still closes.
+    pub(crate) fn commit_project_rename(&mut self, cx: &mut Context<Self>) {
+        let Some(pid) = self.rename_project.clone() else { return };
+        let Some(state) = self.inputs.get("proj-rename") else {
+            self.rename_project = None;
+            return;
+        };
+        let title = state.read(cx).value().trim().to_string();
+        if !title.is_empty() {
+            if let Some(p) = self.projects.iter_mut().find(|p| p.id == pid) {
+                p.title = title;
+            }
+        }
+        self.rename_project = None;
     }
 
     /// Quick entry save: title/notes from inputs, date/project/billable/sig from state.
@@ -805,6 +845,11 @@ impl Agenda {
             MenuAction::DeleteProject(_id) => {
                 // Vue: удаление проектов заблокировано (ARK resolvability).
                 self.delete_blocked = true;
+            }
+            MenuAction::RenameProject(id) => {
+                // Fresh InputState; render prefills it with the current title.
+                self.inputs.remove("proj-rename");
+                self.rename_project = Some(id);
             }
             MenuAction::SetStatus(id, status) => self.set_todo_status(&id, status),
             MenuAction::SetPriority(id, p) => self.update_todo(&id, |t| t.priority = p),

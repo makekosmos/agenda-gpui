@@ -1396,11 +1396,17 @@ impl Agenda {
                             this.menu = Some(CtxMenu {
                                 x: pos.x.into(),
                                 y: pos.y.into(),
+                                // Vue TaskPage more-menu: В Сегодня / В Потом / Удалить
                                 items: vec![
                                     (
-                                        "Вернуть в работу".into(),
+                                        "В Сегодня".into(),
                                         false,
-                                        MenuAction::CompleteTodo(id2.clone()),
+                                        MenuAction::MoveToToday(id2.clone()),
+                                    ),
+                                    (
+                                        "В Потом".into(),
+                                        false,
+                                        MenuAction::DeferTodo(id2.clone()),
                                     ),
                                     ("Удалить".into(), true, MenuAction::TrashTodo(id2)),
                                 ],
@@ -1418,7 +1424,10 @@ impl Agenda {
             Status::Done => "Готово",
             Status::Canceled => "Отменено",
         };
-        let priority_label = ["Без приоритета", "Низкий", "Средний", "Высокий"][t.priority as usize];
+        let priority_label = ["Без приоритета", "Низкий", "Средний", "Высокий"]
+            .get(t.priority as usize)
+            .copied()
+            .unwrap_or("Без приоритета");
 
         let mut props = div().flex().flex_wrap().items_center().gap_1();
         props = props.child(
@@ -1457,6 +1466,9 @@ impl Agenda {
                         let weak = cx.weak_entity();
                         let id2 = id.to_string();
                         move |_: &ClickEvent, _, cx| {
+                            // Don't let the click reach the parent chip's
+                            // dropdown-open handler.
+                            cx.stop_propagation();
                             let _ = weak.update(cx, |this, _| {
                                 this.run_menu_action(MenuAction::SetDate(id2.clone(), None));
                             });
@@ -2107,12 +2119,17 @@ impl Agenda {
                             .text_color(c(FG))
                             .child(e.title),
                     );
-                let loc = e.location.unwrap_or("PseudoCalendar");
+                // Vue: `location ? location + " · " : ""` + "PseudoCalendar" —
+                // location-less events render just the source name.
+                let loc_line = format!(
+                    "{}PseudoCalendar",
+                    e.location.map(|l| format!("{l} · ")).unwrap_or_default()
+                );
                 card = card.child(
                     div()
                         .text_size(px(12.))
                         .text_color(c(MUTED_FG))
-                        .child(format!("{} · PseudoCalendar", loc)),
+                        .child(loc_line),
                 );
                 col = col.child(card);
             }
@@ -2218,20 +2235,28 @@ impl Agenda {
         }
 
         // values: last 84 days ending today (12 weeks × 7)
+        // Vue calculateCompletionDay: done, non-trashed todos by completed_at.
         let today = Local::now().date_naive();
         let start = today - Duration::days(83);
         let mut vals = [0f64; 84];
+        let mut counts = [0usize; 84];
+        let mut partial = [false; 84];
         let mut max_v = 0f64;
         for t in &self.todos {
+            if task_status(t) != Status::Done || t.is_trashed {
+                continue;
+            }
             if let Some(d) = date_only(&t.completed_at).and_then(|k| parse_key(&k)) {
                 let idx = (d - start).num_days();
                 if (0..84).contains(&idx) {
-                    let v = match self.stat_metric {
-                        1 => t.significance.unwrap_or(0) as f64,
-                        2 => t.fuel_cost.unwrap_or(0) as f64,
-                        _ => 1.0,
+                    let (v, missing) = match self.stat_metric {
+                        1 => (t.significance.unwrap_or(0) as f64, t.significance.is_none()),
+                        2 => (t.fuel_cost.unwrap_or(0) as f64, t.fuel_cost.is_none()),
+                        _ => (1.0, false),
                     };
                     vals[idx as usize] += v;
+                    counts[idx as usize] += 1;
+                    partial[idx as usize] |= missing;
                     if vals[idx as usize] > max_v {
                         max_v = vals[idx as usize];
                     }
@@ -2245,34 +2270,54 @@ impl Agenda {
         // inner (832px). w_full collapses inside the scroll container, so size explicitly.
         let grid_w = (window.viewport_size().width - px(240.0 + 64.0)).min(px(832.));
         let mut grid = div().flex().gap_1().w(grid_w).mt_4();
+        let grid_weak = cx.weak_entity();
         for col_i in 0..12usize {
             let mut week = div().flex_1().min_w_0().flex().flex_col().gap_1();
             for row in 0..7usize {
-                let v = vals[col_i * 7 + row];
-                let cell_bg = if v <= 0.0 {
+                let i = col_i * 7 + row;
+                let v = vals[i];
+                let count = counts[i];
+                let day_key = (start + Duration::days(i as i64))
+                    .format("%Y-%m-%d")
+                    .to_string();
+                let selected = self.stat_day.as_deref() == Some(day_key.as_str());
+                let cell_bg = if count == 0 {
                     c(0xe5e5e5)
                 } else {
                     let t = (v / max_v.max(1.0)).min(1.0);
                     lerp(0xbdbdbd, 0x262626, (0.35 + 0.65 * t) as f32)
                 };
+                // Vue cellValue: "" when no tasks that day; value + "*" when some
+                // tasks lack an estimate for the active metric.
+                let label = if count == 0 {
+                    String::new()
+                } else {
+                    format!("{}{}", v as i64, if partial[i] { "*" } else { "" })
+                };
                 week = week.child(
                     div()
+                        .id(SharedString::from(format!("stat-cell-{day_key}")))
                         .w_full()
                         .h_8()
                         .rounded_md()
                         .border_1()
-                        .border_color(c(BORDER))
+                        .border_color(if selected { c(ACCENT) } else { c(BORDER) })
                         .bg(cell_bg)
                         .flex()
                         .items_center()
                         .justify_center()
                         .text_size(px(10.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(if v > 0.0 { c(0xf5f5f5) } else { rgba(0, 0.0) })
-                        .child(if v > 0.0 {
-                            format!("{}", v as i64)
-                        } else {
-                            String::new()
+                        .text_color(if count > 0 { c(0xf5f5f5) } else { rgba(0, 0.0) })
+                        .child(label)
+                        .on_click({
+                            let weak = grid_weak.clone();
+                            move |_: &ClickEvent, _, cx| {
+                                let day_key = day_key.clone();
+                                let _ = weak.update(cx, |this, _| {
+                                    this.stat_day = Some(day_key);
+                                });
+                            }
                         }),
                 );
             }
@@ -2305,6 +2350,135 @@ impl Agenda {
             }))
             .child("Больше");
 
+        // Vue: selected-day detail panel (header + completed task rows +
+        // per-task "Открыть"). stat_day is only valid inside the 84-day range.
+        let detail = self
+            .stat_day
+            .as_ref()
+            .and_then(|k| parse_key(k).map(|d| (k.clone(), d)))
+            .filter(|(_, d)| *d >= start && *d <= today)
+            .map(|(key, d)| {
+                let idx = (d - start).num_days() as usize;
+                let value = match self.stat_metric {
+                    1 => format!("{}", vals[idx] as i64),
+                    2 => format!("{}%", vals[idx] as i64),
+                    _ => format!("{}", counts[idx]),
+                };
+                let value = if self.stat_metric != 0 && partial[idx] {
+                    format!("{value}, неполные данные")
+                } else {
+                    value
+                };
+                let day_tasks: Vec<Todo> = self
+                    .todos
+                    .iter()
+                    .filter(|t| {
+                        task_status(t) == Status::Done
+                            && !t.is_trashed
+                            && date_only(&t.completed_at).as_deref() == Some(key.as_str())
+                    })
+                    .cloned()
+                    .collect();
+                let weak = cx.weak_entity();
+                let mut rows = div().mt_3().flex().flex_col().gap_2();
+                for t in &day_tasks {
+                    let tid = t.id.clone();
+                    let sig = t
+                        .significance
+                        .map(|s| format!("{s}"))
+                        .unwrap_or_else(|| "Не оценено".into());
+                    let fuel = t
+                        .fuel_cost
+                        .map(|f| format!("{f}%"))
+                        .unwrap_or_else(|| "Нет оценки".into());
+                    rows = rows.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap_3()
+                            .rounded_lg()
+                            .bg(fg_mix(0.05))
+                            .px_3()
+                            .py_2()
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(
+                                        div()
+                                            .text_size(px(14.))
+                                            .font_weight(gpui::FontWeight::MEDIUM)
+                                            .text_color(c(FG))
+                                            .overflow_hidden()
+                                            .whitespace_nowrap()
+                                            .child(t.title.clone()),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(px(12.))
+                                            .text_color(c(MUTED_FG))
+                                            .child(format!(
+                                                "Значимость: {sig} · Мыслетопливо: {fuel}"
+                                            )),
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("stat-open-{tid}")))
+                                    .h_7()
+                                    .px_2()
+                                    .flex_none()
+                                    .flex()
+                                    .items_center()
+                                    .rounded_md()
+                                    .text_size(px(12.))
+                                    .text_color(c(FG))
+                                    .child("Открыть")
+                                    .on_click({
+                                        let weak = weak.clone();
+                                        move |_: &ClickEvent, _, cx| {
+                                            let tid = tid.clone();
+                                            let _ = weak.update(cx, |this, _| {
+                                                this.navigate(Route::Task(tid));
+                                            });
+                                        }
+                                    }),
+                            ),
+                    );
+                }
+                let mut panel = div()
+                    .mt_2()
+                    .rounded_xl()
+                    .border_1()
+                    .border_color(c(BORDER))
+                    .p_4()
+                    .child(
+                        div()
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(c(FG))
+                            .child(format!(
+                                "{} · {} — {}",
+                                d.format("%d.%m.%Y"),
+                                metric_labels[self.stat_metric as usize],
+                                value
+                            )),
+                    );
+                panel = if day_tasks.is_empty() {
+                    panel.child(
+                        div()
+                            .mt_3()
+                            .text_size(px(13.))
+                            .text_color(c(MUTED_FG))
+                            .child("В этот день нет завершённых задач"),
+                    )
+                } else {
+                    panel.child(rows)
+                };
+                panel
+            });
+
         div()
             .flex_1()
             .min_h_0()
@@ -2323,7 +2497,8 @@ impl Agenda {
                     .child(tabs)
                     .child(grid)
                     .child(desc)
-                    .child(legend),
+                    .child(legend)
+                    .when_some(detail, |el, d| el.child(d)),
             )
             .into_any_element()
     }
@@ -2836,6 +3011,9 @@ impl Agenda {
                     .on_click({
                         let weak = weak.clone();
                         move |_: &ClickEvent, _, cx| {
+                            // Don't let the click reach the parent chip's
+                            // dropdown-open handler.
+                            cx.stop_propagation();
                             let _ = weak.update(cx, |this, _| {
                                 this.qe_date = None;
                                 this.qe_date_touched = true;
@@ -3090,6 +3268,137 @@ impl Agenda {
             )
             .child(div().mt(px(136.)).child(deferred(panel)))
             .child(deferred(sig_card))
+            .into_any_element()
+    }
+
+    /// RenameProjectModal parity: light imago Modal, title "Переименовать
+    /// проект", prefilled input, Отмена/Сохранить footer; Enter commits.
+    pub(crate) fn render_rename_modal(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let pid = self.rename_project.clone().unwrap_or_default();
+        let current_title = self
+            .projects
+            .iter()
+            .find(|p| p.id == pid.as_str())
+            .map(|p| p.title.clone())
+            .unwrap_or_default();
+        let state = self.input_state(window, cx, "proj-rename", "Название проекта", false);
+        if state.read(cx).value().is_empty() && !current_title.is_empty() {
+            let t = current_title.clone();
+            state.update(cx, |s, cx| s.set_value(t, window, cx));
+        }
+        state.update(cx, |s, cx| s.focus(window, cx));
+
+        let weak = cx.weak_entity();
+        let card = div()
+            .w(px(420.))
+            .flex()
+            .flex_col()
+            .rounded(px(10.))
+            .overflow_hidden()
+            .bg(c(BG))
+            .border_1()
+            .border_color(c(BORDER))
+            .shadow(vec![gpui::BoxShadow {
+                color: rgba(0x000000, 0.18),
+                offset: gpui::point(px(0.), px(16.)),
+                blur_radius: px(48.),
+                spread_radius: px(0.),
+            }])
+            .child(
+                div()
+                    .px_4()
+                    .pt_3p5()
+                    .pb_2()
+                    .text_size(px(15.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(c(FG))
+                    .child("Переименовать проект"),
+            )
+            .child(
+                div().px_3().pb_3().child(
+                    Input::new(&state)
+                        .w_full()
+                        .h(px(36.))
+                        .text_size(px(13.))
+                        .text_color(c(FG)),
+                ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .px_3()
+                    .py_2p5()
+                    .border_t_1()
+                    .border_color(c(BORDER))
+                    .child(
+                        div()
+                            .id("rename-cancel")
+                            .h_8()
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .rounded_md()
+                            .text_size(px(13.))
+                            .text_color(c(FG))
+                            .bg(fg_mix(0.06))
+                            .child("Отмена")
+                            .on_click({
+                                let weak = weak.clone();
+                                move |_: &ClickEvent, _, cx| {
+                                    let _ = weak.update(cx, |this, _| {
+                                        this.rename_project = None;
+                                    });
+                                }
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id("rename-save")
+                            .h_8()
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .rounded_md()
+                            .text_size(px(13.))
+                            .text_color(c(0xffffff))
+                            .bg(c(ACCENT))
+                            .child("Сохранить")
+                            .on_click({
+                                let weak = weak.clone();
+                                move |_: &ClickEvent, _, cx| {
+                                    let _ = weak.update(cx, |this, cx| {
+                                        this.commit_project_rename(cx);
+                                    });
+                                }
+                            }),
+                    ),
+            );
+
+        div()
+            .absolute()
+            .inset_0()
+            .bg(rgba(0x000000, 0.30))
+            .flex()
+            .justify_center()
+            .items_center()
+            .child(
+                div()
+                    .id("rename-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
+                        let _ = weak.update(cx, |this, _| {
+                            this.rename_project = None;
+                        });
+                    }),
+            )
+            .child(deferred(card))
             .into_any_element()
     }
 }
