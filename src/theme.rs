@@ -1,5 +1,5 @@
 // Exact color/dimension tokens extracted from Vue CSS (global.css + imago theme).
-use gpui::{Hsla, rgb};
+use gpui::{rgb, Hsla};
 
 pub const BG: u32 = 0xffffff;
 pub const FG: u32 = 0x0a0a0a;

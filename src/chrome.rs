@@ -3,8 +3,8 @@
 use std::time::Instant;
 
 use gpui::{
-    ClickEvent, Context, MouseButton, MouseDownEvent, Pixels, SharedString, Window, deferred, div,
-    prelude::*, px,
+    deferred, div, prelude::*, px, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels,
+    SharedString, Window,
 };
 
 use crate::app::{Agenda, MenuAction, Route};
@@ -176,7 +176,11 @@ impl Agenda {
     fn sb_hover(&mut self, hovered: bool, id: &str) {
         if hovered {
             self.sb_hover_id = Some(SharedString::from(id.to_string()));
-        } else if self.sb_hover_id.as_ref().map_or(false, |s| s.as_str() == id) {
+        } else if self
+            .sb_hover_id
+            .as_ref()
+            .map_or(false, |s| s.as_str() == id)
+        {
             self.sb_hover_id = None;
         }
     }
@@ -219,23 +223,62 @@ impl Agenda {
 
         let mut navs: Vec<gpui::Stateful<gpui::Div>> = vec![];
         if settings {
-            navs.push(self.nav_btn(window, cx, "back", "icons/arrow-left.svg", "Назад", false, self.back_route.clone()));
+            navs.push(self.nav_btn(
+                window,
+                cx,
+                "back",
+                "icons/arrow-left.svg",
+                "Назад",
+                false,
+                self.back_route.clone(),
+            ));
             rects.push(("nav-back".into(), SbRect { y, h: 32. }));
             y += 33.;
-            navs.push(self.nav_btn(window, cx, "general", "icons/settings.svg", "Общие", self.route == Route::Settings, Route::Settings));
+            navs.push(self.nav_btn(
+                window,
+                cx,
+                "general",
+                "icons/settings.svg",
+                "Общие",
+                self.route == Route::Settings,
+                Route::Settings,
+            ));
             rects.push(("nav-general".into(), SbRect { y, h: 32. }));
             y += 33.;
-            navs.push(self.nav_btn(window, cx, "fuel", "icons/star.svg", "Мыслетопливо", self.route == Route::SettingsFuel, Route::SettingsFuel));
+            navs.push(self.nav_btn(
+                window,
+                cx,
+                "fuel",
+                "icons/star.svg",
+                "Мыслетопливо",
+                self.route == Route::SettingsFuel,
+                Route::SettingsFuel,
+            ));
             rects.push(("nav-fuel".into(), SbRect { y, h: 32. }));
         } else {
             let items: [(&str, &'static str, &str, Route); 7] = [
                 ("inbox", "icons/inbox.svg", "Входящие", Route::Inbox),
                 ("today", "icons/calendar-01.svg", "Сегодня", Route::Today),
                 ("plans", "icons/calendar-02.svg", "Планы", Route::Plans),
-                ("calendar", "icons/calendar-02.svg", "Календарь", Route::Calendar),
+                (
+                    "calendar",
+                    "icons/calendar-02.svg",
+                    "Календарь",
+                    Route::Calendar,
+                ),
                 ("someday", "icons/clock-01.svg", "Потом", Route::Someday),
-                ("statistics", "icons/analytics-01.svg", "Статистика", Route::Statistics),
-                ("recurring", "icons/repeat.svg", "Повторяющиеся", Route::Recurring),
+                (
+                    "statistics",
+                    "icons/analytics-01.svg",
+                    "Статистика",
+                    Route::Statistics,
+                ),
+                (
+                    "recurring",
+                    "icons/repeat.svg",
+                    "Повторяющиеся",
+                    Route::Recurring,
+                ),
             ];
             for (id, ic, label, route) in items {
                 let active = self.route == route;
@@ -290,12 +333,25 @@ impl Agenda {
                         .child("Проекты"),
                 )
                 .child(
+                    // Vue: Sidebar "+" opens ProjectCreateDialog (doesn't toggle the group).
                     div()
+                        .id("sb-projects-plus")
                         .w(px(32.))
                         .h_full()
                         .grid()
-                        .items_center().justify_center()
-                        .child(icon("icons/plus.svg", 16., rgba(FG, 0.6))),
+                        .items_center()
+                        .justify_center()
+                        .child(icon("icons/plus.svg", 16., rgba(FG, 0.6)))
+                        .hover(|s| s.bg(fg_mix(0.10)))
+                        .on_click({
+                            let weak = weak.clone();
+                            move |_: &ClickEvent, _, cx| {
+                                cx.stop_propagation();
+                                let _ = weak.update(cx, |this, _| {
+                                    this.open_project_create();
+                                });
+                            }
+                        }),
                 )
                 .on_hover({
                     let weak = weak.clone();
@@ -313,7 +369,13 @@ impl Agenda {
                         });
                     }
                 });
-            rects.push(("nav-projects-head".into(), SbRect { y: header_y, h: 32. }));
+            rects.push((
+                "nav-projects-head".into(),
+                SbRect {
+                    y: header_y,
+                    h: 32.,
+                },
+            ));
             y += 32.;
 
             let mut links: Vec<gpui::Stateful<gpui::Div>> = vec![];
@@ -323,11 +385,16 @@ impl Agenda {
                     let pid = pr.id.to_string();
                     let active = matches!(&self.route, Route::Project(r) if *r == pid);
                     let id = format!("proj-{}", pr.id);
+                    // Vue: label = `${icon} ${title}` when an icon is set.
+                    let label = match &pr.icon {
+                        Some(ic) => format!("{ic} {}", pr.title),
+                        None => pr.title.clone(),
+                    };
                     links.push(self.project_link(
                         window,
                         cx,
                         &id,
-                        &pr.title,
+                        &label,
                         active,
                         i == count - 1,
                         &pid,
@@ -342,14 +409,7 @@ impl Agenda {
                 .bg(fg_mix(0.03))
                 .rounded_b_lg()
                 .children(links);
-            projects_el = Some(
-                div()
-                    .mt_4()
-                    .flex()
-                    .flex_col()
-                    .child(header)
-                    .child(list),
-            );
+            projects_el = Some(div().mt_4().flex().flex_col().child(header).child(list));
         }
 
         // Footer (.sidebar__part-20): "Другое" flex-1.
@@ -401,7 +461,13 @@ impl Agenda {
         if let Some(footer_el) = &footer {
             let _ = footer_el;
             let fy: f32 = sidebar_h.into();
-            rects.push(("nav-more".into(), SbRect { y: fy - 32. - 12., h: 32. }));
+            rects.push((
+                "nav-more".into(),
+                SbRect {
+                    y: fy - 32. - 12.,
+                    h: 32.,
+                },
+            ));
         }
         if let Some(id) = self.sb_hover_id.clone() {
             if let Some((_, r)) = rects.iter().find(|(rid, _)| *rid == id) {
@@ -537,7 +603,8 @@ impl Agenda {
                     .w_7()
                     .h_7()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .rounded_md()
                     .bg(rgba(FG, 0.08 * t))
                     .child(icon("icons/sidebar-left.svg", 18., rgba(FG, 0.6 + 0.4 * t)))
@@ -568,8 +635,18 @@ impl Agenda {
         let items: [(&str, &'static str, &str, Route); 4] = [
             ("logbook", "icons/book-open.svg", "Архив", Route::Logbook),
             ("trash", "icons/delete.svg", "Корзина", Route::Trash),
-            ("settings", "icons/settings.svg", "Настройки", Route::Settings),
-            ("about", "icons/help-circle.svg", "О приложении", Route::About),
+            (
+                "settings",
+                "icons/settings.svg",
+                "Настройки",
+                Route::Settings,
+            ),
+            (
+                "about",
+                "icons/help-circle.svg",
+                "О приложении",
+                Route::About,
+            ),
         ];
         let mut rows: Vec<gpui::Stateful<gpui::Div>> = vec![];
         for (id, ic, label, route) in items {
@@ -618,6 +695,7 @@ impl Agenda {
             .left_2()
             .bottom(px(44.))
             .w(px(SIDEBAR_W - 16.))
+            .occlude()
             .flex()
             .flex_col()
             .rounded_t_lg()
@@ -638,14 +716,12 @@ impl Agenda {
         div()
             .absolute()
             .inset_0()
-            .child(
-                div()
-                    .id("more-backdrop")
-                    .size_full()
-                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| this.more_open = false);
-                    }),
-            )
+            .child(div().id("more-backdrop").size_full().on_mouse_down(
+                MouseButton::Left,
+                move |_: &MouseDownEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| this.more_open = false);
+                },
+            ))
             .child(deferred(menu))
             .into_any_element()
     }
@@ -703,6 +779,7 @@ impl Agenda {
             .left(x)
             .top(y)
             .min_w(px(160.))
+            .occlude()
             .p_1()
             .flex()
             .flex_col()

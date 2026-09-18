@@ -8,12 +8,12 @@ mod theme;
 mod widgets;
 
 use gpui::{
-    App, AppContext, Application, Bounds, Context, SharedString, Window, WindowBounds,
-    WindowOptions, px, size,
+    px, size, App, AppContext, Application, Bounds, Context, SharedString, Window, WindowBounds,
+    WindowOptions,
 };
 
 use app::Agenda;
-use assets::{Assets, font_bytes};
+use assets::{font_bytes, Assets};
 
 fn main() {
     Application::new().with_assets(Assets).run(|cx: &mut App| {

@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use gpui::{
-    AnyElement, Context, Entity, FocusHandle, KeyDownEvent, ScrollHandle, SharedString,
-    Subscription, Window, div, prelude::*,
+    div, prelude::*, AnyElement, Context, Entity, FocusHandle, KeyDownEvent, ScrollHandle,
+    SharedString, Subscription, Window,
 };
 use gpui_component::input::InputState;
 
@@ -46,7 +46,11 @@ pub struct BoardOpts {
 
 impl Default for BoardOpts {
     fn default() -> Self {
-        Self { view: BoardView::List, sort: SortKey::Default, group: GroupKey::None }
+        Self {
+            view: BoardView::List,
+            sort: SortKey::Default,
+            group: GroupKey::None,
+        }
     }
 }
 
@@ -157,6 +161,7 @@ pub struct Agenda {
     pub(crate) quick_entry_open: bool,
     pub(crate) qe_billable: bool,
     pub(crate) qe_project: Option<String>,
+    pub(crate) qe_project_touched: bool,
     pub(crate) qe_menu_open: bool,
     pub(crate) qe_date: Option<String>,
     pub(crate) qe_date_touched: bool,
@@ -173,6 +178,10 @@ pub struct Agenda {
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) delete_blocked: bool,
     pub(crate) rename_project: Option<String>,
+    pub(crate) create_project: bool,
+    pub(crate) create_color: Option<&'static str>,
+    pub(crate) create_billable: bool,
+    pub(crate) create_focused: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
     pub(crate) inputs: HashMap<String, Entity<InputState>>,
@@ -251,6 +260,7 @@ impl Agenda {
             quick_entry_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quickentry"),
             qe_billable: true,
             qe_project: None,
+            qe_project_touched: false,
             qe_menu_open: false,
             qe_date: None,
             qe_date_touched: false,
@@ -269,14 +279,25 @@ impl Agenda {
             } else {
                 None
             },
+            create_project: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("create"),
+            create_color: None,
+            create_billable: false,
+            create_focused: false,
             scrolls: HashMap::new(),
             inputs: HashMap::new(),
             input_task: None,
             _subs: vec![],
             boards: HashMap::new(),
-            options_for: std::env::var("AGENDA_OVERLAY").ok().as_deref().and_then(|o| {
-                if o == "options" { Some("agenda.today.view".to_string()) } else { None }
-            }),
+            options_for: std::env::var("AGENDA_OVERLAY")
+                .ok()
+                .as_deref()
+                .and_then(|o| {
+                    if o == "options" {
+                        Some("agenda.today.view".to_string())
+                    } else {
+                        None
+                    }
+                }),
             quick_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quicksearch"),
             quick_query: String::new(),
             quick_sel: 0,
@@ -303,11 +324,14 @@ impl Agenda {
     // ------------------------------------------------------------------
 
     pub(crate) fn set_hover(&mut self, id: &str, hovered: bool) {
-        let entry = self.hovers.entry(SharedString::from(id.to_string())).or_insert(HoverAnim {
-            value: 0.0,
-            target: false,
-            stamp: Instant::now(),
-        });
+        let entry = self
+            .hovers
+            .entry(SharedString::from(id.to_string()))
+            .or_insert(HoverAnim {
+                value: 0.0,
+                target: false,
+                stamp: Instant::now(),
+            });
         if entry.target != hovered {
             entry.target = hovered;
             entry.stamp = Instant::now();
@@ -320,11 +344,14 @@ impl Agenda {
         let value;
         {
             let now = Instant::now();
-            let e = self.hovers.entry(SharedString::from(id.to_string())).or_insert(HoverAnim {
-                value: 0.0,
-                target: false,
-                stamp: now,
-            });
+            let e = self
+                .hovers
+                .entry(SharedString::from(id.to_string()))
+                .or_insert(HoverAnim {
+                    value: 0.0,
+                    target: false,
+                    stamp: now,
+                });
             let dt = now.duration_since(e.stamp).as_secs_f32() * 1000.0;
             e.stamp = now;
             let step = dt / HOVER_MS;
@@ -400,11 +427,17 @@ impl Agenda {
             Route::Settings | Route::SettingsFuel => ("Настройки".into(), "icons/settings.svg"),
             Route::About => ("О приложении".into(), "icons/help-circle.svg"),
             Route::Project(id) => (
-                self.project(id).map(|p| p.title.clone()).unwrap_or_else(|| "Проект".into()).into(),
+                self.project(id)
+                    .map(|p| p.title.clone())
+                    .unwrap_or_else(|| "Проект".into())
+                    .into(),
                 "icons/folder-open.svg",
             ),
             Route::Task(id) => (
-                self.todo(id).map(|t| t.title.clone()).unwrap_or_else(|| "Задача".into()).into(),
+                self.todo(id)
+                    .map(|t| t.title.clone())
+                    .unwrap_or_else(|| "Задача".into())
+                    .into(),
                 "icons/task-01.svg",
             ),
         }
@@ -491,13 +524,26 @@ impl Render for Agenda {
         if self.rename_project.is_some() {
             overlays.push(self.render_rename_modal(window, cx).into_any_element());
         }
+        if self.create_project {
+            overlays.push(self.render_create_modal(window, cx).into_any_element());
+        }
+        // Property dropdown renders last: it is reachable from inside the
+        // quick-entry / quick-search overlays and must paint above them.
+        if let Some(drop) = self.dropdown.clone() {
+            overlays.push(self.render_dropdown(&drop, window, cx).into_any_element());
+        }
 
         root.children(overlays)
     }
 }
 
 impl Agenda {
-    pub(crate) fn on_key(&mut self, ev: &KeyDownEvent, window: &mut Window, _cx: &mut Context<Self>) {
+    pub(crate) fn on_key(
+        &mut self,
+        ev: &KeyDownEvent,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let k = &ev.keystroke;
         let ctrl = k.modifiers.control || k.modifiers.platform;
         if ctrl && k.key == "k" {
@@ -519,23 +565,17 @@ impl Agenda {
             return;
         }
         if ctrl && k.key == "n" && !k.modifiers.shift && !k.modifiers.alt {
-            self.quick_entry_open = !self.quick_entry_open;
-            self.qe_menu_open = false;
             if self.quick_entry_open {
-                self.qe_billable = false;
-                self.qe_sig = None;
-                self.qe_date = None;
-                self.qe_date_touched = false;
-                // Fresh form: drop the cached title/notes InputStates.
-                self.inputs.remove("qe-title");
-                self.inputs.remove("qe-notes");
-                self.qe_project = match &self.route {
-                    Route::Project(id) => Some(id.clone()),
-                    _ => None,
-                };
-            } else {
+                self.quick_entry_open = false;
                 self.qe_focused = false;
+            } else {
+                self.open_quick_entry();
             }
+            return;
+        }
+        // Vue: Ctrl/Cmd+Enter inside the create dialog's notes field saves.
+        if self.create_project && ctrl && k.key == "enter" {
+            self.commit_project_create(cx);
             return;
         }
         if self.quick_open {
@@ -565,6 +605,7 @@ impl Agenda {
             self.menu = None;
             self.dropdown = None;
             self.rename_project = None;
+            self.close_project_create();
             if self.quick_entry_open {
                 self.quick_entry_open = false;
                 self.qe_focused = false;
@@ -576,7 +617,12 @@ impl Agenda {
 
     /// InputState events (gpui-component): Enter saves, Blur persists fields,
     /// Change keeps derived state in sync (selection reset on new query).
-    pub(crate) fn on_input_event(&mut self, key: &str, ev: &gpui_component::input::InputEvent, cx: &mut Context<Self>) {
+    pub(crate) fn on_input_event(
+        &mut self,
+        key: &str,
+        ev: &gpui_component::input::InputEvent,
+        cx: &mut Context<Self>,
+    ) {
         use gpui_component::input::InputEvent;
         match (key, ev) {
             ("qs", InputEvent::PressEnter { .. }) => {
@@ -596,6 +642,9 @@ impl Agenda {
             }
             ("proj-rename", InputEvent::PressEnter { .. }) => {
                 self.commit_project_rename(cx);
+            }
+            ("proj-create-title", InputEvent::PressEnter { .. }) => {
+                self.commit_project_create(cx);
             }
             ("qe-title", InputEvent::Change) => {
                 // @упоминание проекта в заголовке (parseProjectMention parity)
@@ -628,8 +677,12 @@ impl Agenda {
     }
 
     fn save_task_title(&mut self, cx: &mut Context<Self>) {
-        let Some(tid) = self.current_task_id() else { return };
-        let Some(state) = self.inputs.get("task-title") else { return };
+        let Some(tid) = self.current_task_id() else {
+            return;
+        };
+        let Some(state) = self.inputs.get("task-title") else {
+            return;
+        };
         let title = state.read(cx).value().trim().to_string();
         if title.is_empty() {
             return;
@@ -640,8 +693,12 @@ impl Agenda {
     }
 
     fn save_task_notes(&mut self, cx: &mut Context<Self>) {
-        let Some(tid) = self.current_task_id() else { return };
-        let Some(state) = self.inputs.get("task-notes") else { return };
+        let Some(tid) = self.current_task_id() else {
+            return;
+        };
+        let Some(state) = self.inputs.get("task-notes") else {
+            return;
+        };
         let notes = state.read(cx).value().trim().to_string();
         if let Some(t) = self.todos.iter_mut().find(|t| t.id == tid) {
             t.notes = if notes.is_empty() { None } else { Some(notes) };
@@ -658,7 +715,9 @@ impl Agenda {
     /// Vue: commitProjectRename — trims; a blank title is ignored but the
     /// modal still closes.
     pub(crate) fn commit_project_rename(&mut self, cx: &mut Context<Self>) {
-        let Some(pid) = self.rename_project.clone() else { return };
+        let Some(pid) = self.rename_project.clone() else {
+            return;
+        };
         let Some(state) = self.inputs.get("proj-rename") else {
             self.rename_project = None;
             return;
@@ -670,6 +729,97 @@ impl Agenda {
             }
         }
         self.rename_project = None;
+    }
+
+    /// Vue: Sidebar "+" → ProjectCreateDialog open (form resets each open).
+    pub(crate) fn open_project_create(&mut self) {
+        self.create_project = true;
+        self.create_color = None;
+        self.create_billable = false;
+        self.create_focused = false;
+        self.inputs.remove("proj-create-title");
+        self.inputs.remove("proj-create-icon");
+        self.inputs.remove("proj-create-notes");
+        self.inputs.remove("proj-create-price");
+    }
+
+    /// Vue: handleClose — closes and resets the form.
+    pub(crate) fn close_project_create(&mut self) {
+        self.create_project = false;
+        self.create_color = None;
+        self.create_billable = false;
+        self.create_focused = false;
+    }
+
+    fn input_value(&self, key: &str, cx: &Context<Self>) -> String {
+        self.inputs
+            .get(key)
+            .map(|s| s.read(cx).value().to_string())
+            .unwrap_or_default()
+    }
+
+    /// Vue: handleProjectCreate — a created project becomes the current route.
+    pub(crate) fn commit_project_create(&mut self, cx: &mut Context<Self>) {
+        if !self.create_project {
+            return;
+        }
+        let title = self.input_value("proj-create-title", cx).trim().to_string();
+        if title.is_empty() {
+            return;
+        }
+        let notes = self.input_value("proj-create-notes", cx).trim().to_string();
+        let icon = self.input_value("proj-create-icon", cx).trim().to_string();
+        let price: Option<f64> = self
+            .input_value("proj-create-price", cx)
+            .trim()
+            .parse()
+            .ok();
+        self.close_project_create();
+        let mut n = self.projects.len();
+        let mut id = format!("proj-{n}");
+        while self.projects.iter().any(|p| p.id == id) {
+            n += 1;
+            id = format!("proj-{n}");
+        }
+        let sort_order = self
+            .projects
+            .iter()
+            .map(|p| p.sort_order)
+            .max()
+            .unwrap_or(-1)
+            + 1;
+        self.projects.push(Project {
+            id: id.clone(),
+            title,
+            status: 0,
+            deadline: None,
+            sort_order,
+            area_id: None,
+            notes: if notes.is_empty() { None } else { Some(notes) },
+            color_tag: self.create_color,
+            icon: if icon.is_empty() { None } else { Some(icon) },
+            billable: self.create_billable,
+            price: if self.create_billable { price } else { None },
+        });
+        self.navigate(Route::Project(id));
+    }
+
+    /// Open quick entry with a fresh form and route-contextual defaults.
+    pub(crate) fn open_quick_entry(&mut self) {
+        self.quick_entry_open = true;
+        self.qe_menu_open = false;
+        self.qe_billable = false;
+        self.qe_sig = None;
+        self.qe_date = None;
+        self.qe_date_touched = false;
+        self.qe_project_touched = false;
+        self.qe_project = match &self.route {
+            Route::Project(id) => Some(id.clone()),
+            _ => None,
+        };
+        // Fresh form: drop the cached title/notes InputStates.
+        self.inputs.remove("qe-title");
+        self.inputs.remove("qe-notes");
     }
 
     /// Quick entry save: title/notes from inputs, date/project/billable/sig from state.
@@ -688,25 +838,49 @@ impl Agenda {
         if title.is_empty() {
             return;
         }
-        let default_date = if self.route == Route::Today { Some(today_key()) } else { None };
-        let uses_contextual = !self.qe_date_touched && default_date.is_some() && self.qe_date == default_date;
-        let captured = parse_quick_entry_capture(&title, if uses_contextual { None } else { self.qe_date.clone() });
-        let scheduled = if uses_contextual && captured.1.is_none() { default_date } else { captured.1 };
+        let default_date = if self.route == Route::Today {
+            Some(today_key())
+        } else {
+            None
+        };
+        let uses_contextual =
+            !self.qe_date_touched && default_date.is_some() && self.qe_date == default_date;
+        let captured = parse_quick_entry_capture(
+            &title,
+            if uses_contextual {
+                None
+            } else {
+                self.qe_date.clone()
+            },
+        );
+        let scheduled = if uses_contextual && captured.1.is_none() {
+            default_date
+        } else {
+            captured.1
+        };
         let (clean_title, parsed_pid) = if self.qe_project.is_some() {
             (captured.0, None)
         } else {
             parse_project_mention(&captured.0, &self.projects)
         };
         let project = self.qe_project.clone().or(parsed_pid);
-        let status = if scheduled.is_some() || project.is_some() { Status::Todo } else { Status::Inbox };
-        let pid: Option<&'static str> = match project.as_deref() {
-            Some("dev-proj-release") => Some("dev-proj-release"),
-            Some("dev-proj-home") => Some("dev-proj-home"),
-            Some("dev-proj-someday") => Some("dev-proj-someday"),
-            _ => None,
+        let status = if scheduled.is_some() || project.is_some() {
+            Status::Todo
+        } else {
+            Status::Inbox
         };
+        let pid: Option<String> = project.as_deref().and_then(|p| {
+            self.projects
+                .iter()
+                .find(|pr| pr.id == p)
+                .map(|pr| pr.id.clone())
+        });
         let mut t = new_todo(format!("qe-{}", self.todos.len()), &clean_title);
-        t.notes = if notes.trim().is_empty() { None } else { Some(notes.trim().to_string()) };
+        t.notes = if notes.trim().is_empty() {
+            None
+        } else {
+            Some(notes.trim().to_string())
+        };
         t.scheduled_date = scheduled;
         t.project_id = pid;
         t.status = status;
@@ -736,9 +910,12 @@ impl Agenda {
                 .multi_line(multi_line)
         });
         let k = key.to_string();
-        self._subs.push(cx.subscribe(&st, move |this, _s, ev: &gpui_component::input::InputEvent, cx| {
-            this.on_input_event(&k, ev, cx);
-        }));
+        self._subs.push(cx.subscribe(
+            &st,
+            move |this, _s, ev: &gpui_component::input::InputEvent, cx| {
+                this.on_input_event(&k, ev, cx);
+            },
+        ));
         self.inputs.insert(key.to_string(), st.clone());
         st
     }
@@ -772,7 +949,9 @@ impl Agenda {
 
     pub(crate) fn complete_todo(&mut self, id: &str) {
         let n = self.todos.len();
-        let Some(t) = self.todos.iter_mut().find(|t| t.id == id) else { return };
+        let Some(t) = self.todos.iter_mut().find(|t| t.id == id) else {
+            return;
+        };
         if t.is_completed {
             return;
         }
@@ -787,7 +966,7 @@ impl Agenda {
             next.recurrence = Some(rule);
             next.sort_order = n as i32;
             next.created_at = today_key();
-            next.project_id = t.project_id;
+            next.project_id = t.project_id.clone();
             next.area_id = t.area_id;
             next.tag_ids = t.tag_ids.clone();
             next.priority = t.priority;
@@ -811,7 +990,7 @@ impl Agenda {
         });
     }
 
-    pub(crate) fn move_to_project(&mut self, id: &str, pid: Option<&'static str>) {
+    pub(crate) fn move_to_project(&mut self, id: &str, pid: Option<String>) {
         self.update_todo(id, |t| {
             t.project_id = pid;
             if task_status(t) == Status::Inbox {
@@ -854,8 +1033,11 @@ impl Agenda {
             MenuAction::SetStatus(id, status) => self.set_todo_status(&id, status),
             MenuAction::SetPriority(id, p) => self.update_todo(&id, |t| t.priority = p),
             MenuAction::SetProject(id, pid) => {
-                let p: Option<&'static str> = pid.as_deref().and_then(|p| {
-                    self.projects.iter().find(|pr| pr.id == p).map(|pr| pr.id)
+                let p: Option<String> = pid.as_deref().and_then(|p| {
+                    self.projects
+                        .iter()
+                        .find(|pr| pr.id == p)
+                        .map(|pr| pr.id.clone())
                 });
                 self.move_to_project(&id, p);
             }
@@ -879,7 +1061,9 @@ impl Agenda {
             MenuAction::MoveToToday(id) => self.move_to_today(&id),
             MenuAction::DeferTodo(id) => self.set_todo_status(&id, Status::Deferred),
             MenuAction::CompleteTodo(id) => {
-                let done = self.todo(&id).map_or(false, |t| task_status(t) == Status::Done);
+                let done = self
+                    .todo(&id)
+                    .map_or(false, |t| task_status(t) == Status::Done);
                 if done {
                     self.set_todo_status(&id, Status::Todo);
                 } else {
@@ -889,7 +1073,10 @@ impl Agenda {
             MenuAction::RemoveTag(id, tag) => self.update_todo(&id, |t| {
                 t.tag_ids.retain(|x| *x != tag.as_str());
             }),
-            MenuAction::QeSetProject(p) => self.qe_project = p,
+            MenuAction::QeSetProject(p) => {
+                self.qe_project = p;
+                self.qe_project_touched = true;
+            }
             MenuAction::QeSetDate(d) => {
                 self.qe_date = d;
                 self.qe_date_touched = true;

@@ -1,6 +1,6 @@
 // Shared icon/ring/bars/button widgets matching the Vue components pixel-for-pixel.
-use gpui::{Hsla, PathBuilder, Styled, canvas, div, point, px, svg};
 use gpui::prelude::*;
+use gpui::{canvas, div, point, px, svg, Hsla, PathBuilder, Styled};
 
 use crate::model::Status;
 use crate::theme::*;
@@ -30,7 +30,8 @@ pub fn status_ring(status: Status) -> impl IntoElement {
             .border_color(border)
             .flex_none()
             .grid()
-            .items_center().justify_center()
+            .items_center()
+            .justify_center()
     };
     match status {
         Status::Done => ring(c(ACCENT))
@@ -124,7 +125,13 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
                 let mut pb = PathBuilder::fill();
                 pb.move_to(point(x0 + px(r), y0));
                 pb.line_to(point(x0 + px(w - r), y0));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0 + px(w), y0 + px(r)));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0 + px(w), y0 + px(r)),
+                );
                 pb.line_to(point(x0 + px(w), y0 + px(*h - r)));
                 pb.arc_to(
                     point(px(r), px(r)),
@@ -134,12 +141,27 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
                     point(x0 + px(w - r), y0 + px(*h)),
                 );
                 pb.line_to(point(x0 + px(r), y0 + px(*h)));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0, y0 + px(*h - r)));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0, y0 + px(*h - r)),
+                );
                 pb.line_to(point(x0, y0 + px(r)));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0 + px(r), y0));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0 + px(r), y0),
+                );
                 pb.close();
                 let filled = (i as u8) < priority;
-                window.paint_path(pb.build().unwrap(), rgba(MUTED_FG, if filled { 1.0 } else { 0.25 }));
+                window.paint_path(
+                    pb.build().unwrap(),
+                    rgba(MUTED_FG, if filled { 1.0 } else { 0.25 }),
+                );
             }
         },
     )
@@ -153,5 +175,9 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
 // ---------------------------------------------------------------------------
 
 pub fn text13(content: impl Into<gpui::SharedString>, color: Hsla) -> impl IntoElement {
-    div().text_size(px(13.)).line_height(px(15.)).text_color(color).child(content.into())
+    div()
+        .text_size(px(13.))
+        .line_height(px(15.))
+        .text_color(color)
+        .child(content.into())
 }

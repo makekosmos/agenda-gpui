@@ -1,8 +1,8 @@
 // Page renderers + shared task widgets (TaskRow/TaskBoard parity),
 // quick search / quick entry / property dropdown overlays.
 use gpui::{
-    AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent, SharedString, Window, deferred,
-    div, prelude::*, px,
+    deferred, div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
+    SharedString, Window,
 };
 use gpui_component::input::Input;
 
@@ -32,12 +32,22 @@ impl Agenda {
     // Page dispatch
     // ==========================================================================
 
-    pub(crate) fn render_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_page(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let route = self.route.clone();
         let content: AnyElement = match route {
-            Route::Inbox => self.board_page(SmartList::Inbox, "agenda.inbox.view", true, window, cx),
-            Route::Today => self.board_page(SmartList::Today, "agenda.today.view", true, window, cx),
-            Route::Plans => self.board_page(SmartList::Plans, "agenda.plans.view", false, window, cx),
+            Route::Inbox => {
+                self.board_page(SmartList::Inbox, "agenda.inbox.view", true, window, cx)
+            }
+            Route::Today => {
+                self.board_page(SmartList::Today, "agenda.today.view", true, window, cx)
+            }
+            Route::Plans => {
+                self.board_page(SmartList::Plans, "agenda.plans.view", false, window, cx)
+            }
             Route::Someday => {
                 self.board_page(SmartList::Someday, "agenda.someday.view", false, window, cx)
             }
@@ -72,9 +82,6 @@ impl Agenda {
         // Display-options popover is anchored top-right of the content area.
         if self.options_for.is_some() {
             page = page.child(self.render_options_popover(window, cx).into_any_element());
-        }
-        if let Some(drop) = self.dropdown.clone() {
-            page = page.child(self.render_dropdown(&drop, window, cx).into_any_element());
         }
         page.into_any_element()
     }
@@ -121,12 +128,16 @@ impl Agenda {
                     .h_5()
                     .flex_none()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .child(status_ring(status))
                     .on_click({
                         let weak = cx.weak_entity();
                         let id2 = id.clone();
                         move |_: &ClickEvent, _, cx| {
+                            // Keep the click off the row's navigate handler
+                            // (Vue TaskRow: @click.stop / data-stop-toggle).
+                            cx.stop_propagation();
                             let _ = weak.update(cx, |this, _| {
                                 this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
                             });
@@ -139,7 +150,8 @@ impl Agenda {
                     .h_4()
                     .flex_none()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .child(priority_bars(t.priority)),
             )
             .child(
@@ -209,7 +221,7 @@ impl Agenda {
                 );
             }
         }
-        if let Some(pid) = t.project_id {
+        if let Some(pid) = &t.project_id {
             if let Some(p) = self.project(pid) {
                 meta = meta.child(
                     div()
@@ -261,7 +273,11 @@ impl Agenda {
                         y: pos.y.into(),
                         items: if trashed {
                             vec![
-                                ("Восстановить".into(), false, MenuAction::RestoreTodo(tid.clone())),
+                                (
+                                    "Восстановить".into(),
+                                    false,
+                                    MenuAction::RestoreTodo(tid.clone()),
+                                ),
                                 ("Удалить".into(), true, MenuAction::Noop),
                             ]
                         } else {
@@ -306,6 +322,7 @@ impl Agenda {
             .on_click({
                 let weak = cx.weak_entity();
                 move |_: &ClickEvent, _, cx| {
+                    cx.stop_propagation();
                     let _ = weak.update(cx, |this, _| {
                         this.run_menu_action(action.clone());
                     });
@@ -351,6 +368,7 @@ impl Agenda {
             .on_click(move |ev: &ClickEvent, _, cx| {
                 let pos = ev.position();
                 let tid = tid.clone();
+                cx.stop_propagation();
                 let _ = weak.update(cx, |this, _| {
                     this.dropdown = Some(DropState {
                         kind: DropKind::Status,
@@ -393,8 +411,11 @@ impl Agenda {
                     let mut g: Vec<(Option<String>, Vec<Todo>)> = vec![];
                     let mut no_proj: Vec<Todo> = vec![];
                     for p in &self.projects {
-                        let bucket: Vec<Todo> =
-                            items.iter().filter(|t| t.project_id == Some(p.id)).cloned().collect();
+                        let bucket: Vec<Todo> = items
+                            .iter()
+                            .filter(|t| t.project_id.as_deref() == Some(p.id.as_str()))
+                            .cloned()
+                            .collect();
                         if !bucket.is_empty() {
                             g.push((Some(p.title.clone()), bucket));
                         }
@@ -412,6 +433,7 @@ impl Agenda {
                         .iter()
                         .filter(|t| {
                             t.project_id
+                                .as_deref()
                                 .map_or(false, |pid| !self.projects.iter().any(|p| p.id == pid))
                         })
                         .cloned()
@@ -430,7 +452,8 @@ impl Agenda {
                         }
                     }
                     keys.sort_by(|a, b| {
-                        a.clone().unwrap_or_else(|| "9999".into())
+                        a.clone()
+                            .unwrap_or_else(|| "9999".into())
                             .cmp(&b.clone().unwrap_or_else(|| "9999".into()))
                     });
                     keys.into_iter()
@@ -633,7 +656,11 @@ impl Agenda {
     }
 
     /// .task-options popover (top-right, below the options button).
-    fn render_options_popover(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_options_popover(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let Some(key) = self.options_for.clone() else {
             return div().into_any_element();
         };
@@ -651,12 +678,12 @@ impl Agenda {
         };
         let key2 = key.clone();
         let item = move |app: &mut Self,
-                        window: &mut Window,
-                        cx: &mut Context<Self>,
-                        i: usize,
-                        label: &str,
-                        checked: bool,
-                        act: OptAct| {
+                         window: &mut Window,
+                         cx: &mut Context<Self>,
+                         i: usize,
+                         label: &str,
+                         checked: bool,
+                         act: OptAct| {
             let hid = format!("opt-item-{i}-{label}");
             let t = app.hover_t(window, &hid);
             let weak = cx.weak_entity();
@@ -676,7 +703,9 @@ impl Agenda {
                 .text_color(c(FG))
                 .bg(fg_mix(0.06 * t))
                 .child(label.to_string())
-                .when(checked, |el| el.child(icon("icons/check.svg", 14., c(MUTED_FG))))
+                .when(checked, |el| {
+                    el.child(icon("icons/check.svg", 14., c(MUTED_FG)))
+                })
                 .on_hover({
                     let weak = weak.clone();
                     move |hovered, _, cx| {
@@ -703,6 +732,7 @@ impl Agenda {
             .right_7()
             .top(px(44.))
             .min_w(px(200.))
+            .occlude()
             .p_1()
             .flex()
             .flex_col()
@@ -720,7 +750,15 @@ impl Agenda {
         let mut idx = 0usize;
         let mut sec = div().flex().flex_col().child(section("Вид"));
         for (v, l) in [(BoardView::List, "Список"), (BoardView::Kanban, "Доска")] {
-            sec = sec.child(item(self, window, cx, idx, l, opts.view == v, OptAct::View(v)));
+            sec = sec.child(item(
+                self,
+                window,
+                cx,
+                idx,
+                l,
+                opts.view == v,
+                OptAct::View(v),
+            ));
             idx += 1;
         }
         panel = panel.child(sec);
@@ -738,7 +776,15 @@ impl Agenda {
             (SortKey::Priority, "По приоритету"),
             (SortKey::Title, "По названию"),
         ] {
-            sec = sec.child(item(self, window, cx, idx, l, opts.sort == v, OptAct::Sort(v)));
+            sec = sec.child(item(
+                self,
+                window,
+                cx,
+                idx,
+                l,
+                opts.sort == v,
+                OptAct::Sort(v),
+            ));
             idx += 1;
         }
         panel = panel.child(sec);
@@ -756,7 +802,15 @@ impl Agenda {
                 (GroupKey::Project, "По проекту"),
                 (GroupKey::Date, "По дате"),
             ] {
-                sec = sec.child(item(self, window, cx, idx, l, opts.group == v, OptAct::Group(v)));
+                sec = sec.child(item(
+                    self,
+                    window,
+                    cx,
+                    idx,
+                    l,
+                    opts.group == v,
+                    OptAct::Group(v),
+                ));
                 idx += 1;
             }
             panel = panel.child(sec);
@@ -784,7 +838,7 @@ impl Agenda {
     // Property dropdown (task-prop chips) — white panel at click point.
     // ==========================================================================
 
-    fn render_dropdown(
+    pub(crate) fn render_dropdown(
         &mut self,
         drop: &DropState,
         window: &mut Window,
@@ -819,7 +873,9 @@ impl Agenda {
                 .text_color(c(FG))
                 .bg(fg_mix(0.06 * t))
                 .child(label.to_string())
-                .when(checked, |el| el.child(icon("icons/check.svg", 14., c(MUTED_FG))))
+                .when(checked, |el| {
+                    el.child(icon("icons/check.svg", 14., c(MUTED_FG)))
+                })
                 .on_hover({
                     let weak = weak.clone();
                     move |hovered, _, cx| {
@@ -883,7 +939,7 @@ impl Agenda {
                 }
             }
             DropKind::Project => {
-                let cur = todo.as_ref().and_then(|t| t.project_id);
+                let cur = todo.as_ref().and_then(|t| t.project_id.clone());
                 rows.push(item(
                     self,
                     window,
@@ -903,7 +959,7 @@ impl Agenda {
                         cx,
                         i + 1,
                         &p.title,
-                        cur == Some(p.id),
+                        cur.as_deref() == Some(p.id.as_str()),
                         MenuAction::SetProject(tid.clone(), Some(p.id.to_string())),
                     ));
                 }
@@ -1007,14 +1063,15 @@ impl Agenda {
                         cx,
                         i + 1,
                         &p.title,
-                        self.qe_project.as_deref() == Some(p.id),
+                        self.qe_project.as_deref() == Some(p.id.as_str()),
                         MenuAction::QeSetProject(Some(p.id.to_string())),
                     ));
                 }
             }
             DropKind::RecurFreq => {
-                for (i, (v, l)) in
-                    [(0u8, "День"), (1, "Неделя"), (2, "Месяц"), (3, "Год")].iter().enumerate()
+                for (i, (v, l)) in [(0u8, "День"), (1, "Неделя"), (2, "Месяц"), (3, "Год")]
+                    .iter()
+                    .enumerate()
                 {
                     rows.push(item(
                         self,
@@ -1028,8 +1085,9 @@ impl Agenda {
                 }
             }
             DropKind::RecurType => {
-                for (i, (v, l)) in
-                    [(0u8, "по расписанию"), (1u8, "после выполнения")].iter().enumerate()
+                for (i, (v, l)) in [(0u8, "по расписанию"), (1u8, "после выполнения")]
+                    .iter()
+                    .enumerate()
                 {
                     rows.push(item(
                         self,
@@ -1053,6 +1111,7 @@ impl Agenda {
             .min_w(px(160.))
             .max_h(px(320.))
             .id("dropdown-panel")
+            .occlude()
             .overflow_y_scroll()
             .p_1()
             .flex()
@@ -1126,9 +1185,7 @@ impl Agenda {
             .on_click({
                 let weak = cx.weak_entity();
                 move |_: &ClickEvent, _, cx| {
-                    let _ = weak.update(cx, |this, _| {
-                        this.quick_entry_open = true;
-                    });
+                    let _ = weak.update(cx, |this, _| this.open_quick_entry());
                 }
             });
         // dev DesignVarsPanel stub: 32px black circle w/ asterisk.
@@ -1141,7 +1198,8 @@ impl Agenda {
             .rounded_full()
             .bg(c(0x000000))
             .grid()
-            .items_center().justify_center()
+            .items_center()
+            .justify_center()
             .text_color(c(0xffffff))
             .text_size(px(15.))
             .shadow(vec![gpui::BoxShadow {
@@ -1151,7 +1209,13 @@ impl Agenda {
                 spread_radius: px(0.),
             }])
             .child("✳");
-        div().size_full().absolute().inset_0().child(dev).child(fab).into_any_element()
+        div()
+            .size_full()
+            .absolute()
+            .inset_0()
+            .child(dev)
+            .child(fab)
+            .into_any_element()
     }
 
     // ==========================================================================
@@ -1283,18 +1347,30 @@ impl Agenda {
         for t in &items {
             list = list.child(self.task_row(t, false, window, cx));
         }
-        div().flex_1().min_h_0().flex().flex_col().child(list).into_any_element()
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list)
+            .into_any_element()
     }
 
-    fn project_page(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let pid: Option<&'static str> =
-            self.projects.iter().find(|p| p.id == id).map(|p| p.id);
+    fn project_page(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pid: Option<String> = self
+            .projects
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.id.clone());
         let items: Vec<Todo> = self
             .todos
             .iter()
-            .filter(|t| {
-                t.project_id == pid && !t.is_trashed && !is_archived(t, &today_key())
-            })
+            .filter(|t| t.project_id == pid && !t.is_trashed && !is_archived(t, &today_key()))
             .cloned()
             .collect();
         let storage = format!("agenda.project.{id}.view");
@@ -1346,8 +1422,7 @@ impl Agenda {
             let tv = t.title.clone();
             title_state.update(cx, |s, cx| s.set_value(tv, window, cx));
         }
-        let notes_state =
-            self.input_state(window, cx, "task-notes", "Добавить описание...", true);
+        let notes_state = self.input_state(window, cx, "task-notes", "Добавить описание...", true);
         if notes_state.read(cx).value().is_empty() {
             if let Some(n) = &t.notes {
                 let nv = n.clone();
@@ -1379,10 +1454,15 @@ impl Agenda {
                     .w_7()
                     .h_7()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .rounded_md()
                     .bg(fg_mix(0.06 * t2))
-                    .child(icon("icons/more-h.svg", 16., mix(MUTED_FG, 0.6 + 0.4 * t2, BG)))
+                    .child(icon(
+                        "icons/more-h.svg",
+                        16.,
+                        mix(MUTED_FG, 0.6 + 0.4 * t2, BG),
+                    ))
                     .on_hover({
                         let weak = weak.clone();
                         move |hovered, _, cx| {
@@ -1403,11 +1483,7 @@ impl Agenda {
                                         false,
                                         MenuAction::MoveToToday(id2.clone()),
                                     ),
-                                    (
-                                        "В Потом".into(),
-                                        false,
-                                        MenuAction::DeferTodo(id2.clone()),
-                                    ),
+                                    ("В Потом".into(), false, MenuAction::DeferTodo(id2.clone())),
                                     ("Удалить".into(), true, MenuAction::TrashTodo(id2)),
                                 ],
                             });
@@ -1435,8 +1511,15 @@ impl Agenda {
                 .child(status_ring(status)),
         );
         props = props.child(
-            self.prop_chip("tp-prio", DropKind::Priority, id, priority_label, window, cx)
-                .child(priority_bars(t.priority)),
+            self.prop_chip(
+                "tp-prio",
+                DropKind::Priority,
+                id,
+                priority_label,
+                window,
+                cx,
+            )
+            .child(priority_bars(t.priority)),
         );
 
         // date chip
@@ -1459,7 +1542,8 @@ impl Agenda {
                     .w_3p5()
                     .h_3p5()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .rounded_full()
                     .child(icon("icons/status-x.svg", 9., c(MUTED_FG)))
                     .on_click({
@@ -1481,6 +1565,7 @@ impl Agenda {
         // project chip
         let project_label = t
             .project_id
+            .as_deref()
             .and_then(|pid| self.projects.iter().find(|p| p.id == pid))
             .map(|p| p.title.clone())
             .unwrap_or_else(|| "Без проекта".to_string());
@@ -1513,7 +1598,8 @@ impl Agenda {
                                 .w_3p5()
                                 .h_3p5()
                                 .grid()
-                                .items_center().justify_center()
+                                .items_center()
+                                .justify_center()
                                 .rounded_full()
                                 .child(icon("icons/status-x.svg", 9., c(MUTED_FG)))
                                 .on_click({
@@ -1741,7 +1827,11 @@ impl Agenda {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let freq_label = ["День", "Неделя", "Месяц", "Год"][self.recur_freq as usize];
-        let type_label = if self.recur_type == 1 { "после выполнения" } else { "по расписанию" };
+        let type_label = if self.recur_type == 1 {
+            "после выполнения"
+        } else {
+            "по расписанию"
+        };
         let day_names = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
         let tid = t.id.to_string();
 
@@ -1787,8 +1877,22 @@ impl Agenda {
         };
 
         let mut row = div().flex().items_center().gap_2().flex_wrap();
-        row = row.child(chip_btn(self, window, cx, "rc-freq", freq_label.to_string(), DropKind::RecurFreq));
-        row = row.child(chip_btn(self, window, cx, "rc-type", type_label.to_string(), DropKind::RecurType));
+        row = row.child(chip_btn(
+            self,
+            window,
+            cx,
+            "rc-freq",
+            freq_label.to_string(),
+            DropKind::RecurFreq,
+        ));
+        row = row.child(chip_btn(
+            self,
+            window,
+            cx,
+            "rc-type",
+            type_label.to_string(),
+            DropKind::RecurType,
+        ));
         if self.recur_freq == 1 {
             for (i, name) in day_names.iter().enumerate() {
                 let d = (i + 1) as u8;
@@ -1803,11 +1907,16 @@ impl Agenda {
                         .h_7()
                         .w_8()
                         .grid()
-                        .items_center().justify_center()
+                        .items_center()
+                        .justify_center()
                         .rounded_md()
                         .text_size(px(12.))
                         .text_color(if sel { c(ACCENT_FG) } else { c(FG) })
-                        .bg(if sel { c(ACCENT) } else { fg_mix(0.04 + 0.03 * ht) })
+                        .bg(if sel {
+                            c(ACCENT)
+                        } else {
+                            fg_mix(0.04 + 0.03 * ht)
+                        })
                         .child(*name)
                         .on_hover(move |hovered, _, cx| {
                             let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -1922,8 +2031,8 @@ impl Agenda {
                 (vec![k.clone()], fmt_day_month_year(&k))
             }
             CalMode::Week => {
-                let monday = anchor
-                    - Duration::days(anchor.weekday().num_days_from_monday() as i64);
+                let monday =
+                    anchor - Duration::days(anchor.weekday().num_days_from_monday() as i64);
                 let days: Vec<String> =
                     (0..7).map(|i| key_of(monday + Duration::days(i))).collect();
                 (days.clone(), fmt_week_period(&days[0], &days[6]))
@@ -1932,7 +2041,11 @@ impl Agenda {
         let today = today_key();
 
         // header controls
-        let seg = |app: &mut Self, window: &mut Window, cx: &mut Context<Self>, mode: CalMode, label: &str| {
+        let seg = |app: &mut Self,
+                   window: &mut Window,
+                   cx: &mut Context<Self>,
+                   mode: CalMode,
+                   label: &str| {
             let hid = format!("cal-seg-{label}");
             let t = app.hover_t(window, &hid);
             let active = app.cal_mode == mode;
@@ -1947,7 +2060,11 @@ impl Agenda {
                 .rounded_md()
                 .text_size(px(12.))
                 .text_color(if active { c(FG) } else { c(MUTED_FG) })
-                .bg(if active { fg_mix(0.10) } else { fg_mix(0.05 * t) })
+                .bg(if active {
+                    fg_mix(0.10)
+                } else {
+                    fg_mix(0.05 * t)
+                })
                 .child(label.to_string())
                 .on_hover({
                     let weak = weak.clone();
@@ -1992,7 +2109,11 @@ impl Agenda {
                         } else {
                             let a = parse_key(&this.cal_anchor)
                                 .unwrap_or_else(|| Local::now().date_naive());
-                            let step = if this.cal_mode == CalMode::Week { delta * 7 } else { delta };
+                            let step = if this.cal_mode == CalMode::Week {
+                                delta * 7
+                            } else {
+                                delta
+                            };
                             this.cal_anchor = key_of(a + Duration::days(step));
                         }
                     });
@@ -2052,7 +2173,16 @@ impl Agenda {
                 .todos
                 .iter()
                 .filter(|t| {
-                    !t.is_trashed && task_date(t).0.as_deref() == Some(d.as_str())
+                    // calendarTasks parity: skip trashed, canceled, archived,
+                    // and done tasks not completed today.
+                    let s = task_status(t);
+                    if t.is_trashed || s == Status::Canceled || is_archived(t, &today) {
+                        return false;
+                    }
+                    if s == Status::Done && !completed_on(t, &today) {
+                        return false;
+                    }
+                    task_date(t).0.as_deref() == Some(d.as_str())
                 })
                 .cloned()
                 .collect();
@@ -2068,7 +2198,10 @@ impl Agenda {
                 .child(fmt_cal_day_label(d));
             if is_today {
                 head = head.child(
-                    div().text_size(px(11.)).text_color(c(ACCENT)).child("Сегодня"),
+                    div()
+                        .text_size(px(11.))
+                        .text_color(c(ACCENT))
+                        .child("Сегодня"),
                 );
             }
             let mut col = div()
@@ -2220,7 +2353,11 @@ impl Agenda {
                     .text_size(px(13.))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(if active { c(ACCENT_FG) } else { c(FG) })
-                    .bg(if active { c(ACCENT) } else { fg_mix(0.05 + 0.03 * t) })
+                    .bg(if active {
+                        c(ACCENT)
+                    } else {
+                        fg_mix(0.05 + 0.03 * t)
+                    })
                     .child(*l)
                     .on_hover(move |hovered, _, cx| {
                         let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -2268,7 +2405,9 @@ impl Agenda {
         // Emit column-major (week = 7 consecutive days) so ordering matches Vue.
         // Available content width = viewport - sidebar - px_8 padding, capped at max-w-4xl
         // inner (832px). w_full collapses inside the scroll container, so size explicitly.
-        let grid_w = (window.viewport_size().width - px(240.0 + 64.0)).min(px(832.));
+        // Sidebar width tracks the collapse animation (SIDEBAR_W * eased progress).
+        let sb_w = crate::chrome::SIDEBAR_W * ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
+        let grid_w = (window.viewport_size().width - px(sb_w + 64.0)).min(px(832.));
         let mut grid = div().flex().gap_1().w(grid_w).mt_4();
         let grid_weak = cx.weak_entity();
         for col_i in 0..12usize {
@@ -2415,14 +2554,9 @@ impl Agenda {
                                             .whitespace_nowrap()
                                             .child(t.title.clone()),
                                     )
-                                    .child(
-                                        div()
-                                            .text_size(px(12.))
-                                            .text_color(c(MUTED_FG))
-                                            .child(format!(
-                                                "Значимость: {sig} · Мыслетопливо: {fuel}"
-                                            )),
-                                    ),
+                                    .child(div().text_size(px(12.)).text_color(c(MUTED_FG)).child(
+                                        format!("Значимость: {sig} · Мыслетопливо: {fuel}"),
+                                    )),
                             )
                             .child(
                                 div()
@@ -2583,7 +2717,12 @@ impl Agenda {
         list.into_any_element()
     }
 
-    fn settings_page(&mut self, fuel: bool, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_page(
+        &mut self,
+        fuel: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let mut col = div()
             .id("settings")
             .flex_1()
@@ -2621,7 +2760,8 @@ impl Agenda {
                     .child("Тема"),
             );
             let mut row = div().flex().gap_2();
-            for (i, l) in ["Светлая", "Тёмная", "Системная"].iter().enumerate() {
+            for (i, l) in ["Светлая", "Тёмная", "Системная"].iter().enumerate()
+            {
                 let active = self.theme_sel == i as u8;
                 let hid = format!("theme-{i}");
                 let t = self.hover_t(window, &hid);
@@ -2637,7 +2777,11 @@ impl Agenda {
                         .rounded_md()
                         .text_size(px(13.))
                         .text_color(if active { c(ACCENT_FG) } else { c(FG) })
-                        .bg(if active { c(ACCENT) } else { fg_mix(0.05 + 0.03 * t) })
+                        .bg(if active {
+                            c(ACCENT)
+                        } else {
+                            fg_mix(0.05 + 0.03 * t)
+                        })
                         .child(*l)
                         .on_hover(move |hovered, _, cx| {
                             let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -2865,6 +3009,7 @@ impl Agenda {
 
         let panel = div()
             .w(px(640.))
+            .occlude()
             .flex()
             .flex_col()
             .rounded(px(10.))
@@ -2920,18 +3065,15 @@ impl Agenda {
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()
-            .child(
-                div()
-                    .id("qs-backdrop")
-                    .absolute()
-                    .inset_0()
-                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
-                            this.quick_open = false;
-                            this.qs_focused = false;
-                        });
-                    }),
-            )
+            .child(div().id("qs-backdrop").absolute().inset_0().on_mouse_down(
+                MouseButton::Left,
+                move |_: &MouseDownEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| {
+                        this.quick_open = false;
+                        this.qs_focused = false;
+                    });
+                },
+            ))
             .child(div().mt(px(128.)).child(deferred(panel)))
             .into_any_element()
     }
@@ -2945,8 +3087,8 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        // contextual defaults
-        if self.qe_project.is_none() {
+        // contextual defaults — only until the user explicitly changes them.
+        if !self.qe_project_touched && self.qe_project.is_none() {
             if let Route::Project(pid) = &self.route {
                 self.qe_project = Some(pid.clone());
             }
@@ -2997,7 +3139,15 @@ impl Agenda {
             .when(!has_date, |el| {
                 el.bg(panel_mix(0.10)).text_color(c(PANEL_MUTED))
             })
-            .child(icon("icons/calendar-02.svg", 13., if has_date { c(QE_CHIP_FG) } else { c(PANEL_MUTED) }))
+            .child(icon(
+                "icons/calendar-02.svg",
+                13.,
+                if has_date {
+                    c(QE_CHIP_FG)
+                } else {
+                    c(PANEL_MUTED)
+                },
+            ))
             .child(date_label);
         if has_date {
             date_chip = date_chip.child(
@@ -3006,7 +3156,8 @@ impl Agenda {
                     .w_3p5()
                     .h_3p5()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .child(icon("icons/status-x.svg", 9., c(QE_CHIP_FG)))
                     .on_click({
                         let weak = weak.clone();
@@ -3058,8 +3209,20 @@ impl Agenda {
                 .when(!self.qe_billable, |el| {
                     el.bg(panel_mix(0.10)).text_color(c(PANEL_MUTED))
                 })
-                .child(icon("icons/dollar.svg", 13., if self.qe_billable { c(0x171717) } else { c(PANEL_MUTED) }))
-                .child(if self.qe_billable { "Оплачиваемая" } else { "Без оплаты" })
+                .child(icon(
+                    "icons/dollar.svg",
+                    13.,
+                    if self.qe_billable {
+                        c(0x171717)
+                    } else {
+                        c(PANEL_MUTED)
+                    },
+                ))
+                .child(if self.qe_billable {
+                    "Оплачиваемая"
+                } else {
+                    "Без оплаты"
+                })
                 .on_click({
                     let weak = weak.clone();
                     move |_: &ClickEvent, _, cx| {
@@ -3109,6 +3272,7 @@ impl Agenda {
 
         let panel = div()
             .w(px(640.))
+            .occlude()
             .flex()
             .flex_col()
             .rounded(px(10.))
@@ -3143,7 +3307,8 @@ impl Agenda {
                             .w_7()
                             .h_7()
                             .grid()
-                            .items_center().justify_center()
+                            .items_center()
+                            .justify_center()
                             .rounded_md()
                             .child(icon("icons/status-x.svg", 14., c(PANEL_MUTED)))
                             .on_click({
@@ -3181,6 +3346,7 @@ impl Agenda {
             .absolute()
             .right_6()
             .bottom_6()
+            .occlude()
             .px_4()
             .py_3()
             .rounded_lg()
@@ -3242,11 +3408,7 @@ impl Agenda {
                         }
                     }),
             )
-            .child(
-                div()
-                    .text_color(c(MUTED_FG))
-                    .child(sig_label),
-            );
+            .child(div().text_color(c(MUTED_FG)).child(sig_label));
 
         div()
             .absolute()
@@ -3254,18 +3416,15 @@ impl Agenda {
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()
-            .child(
-                div()
-                    .id("qe-backdrop")
-                    .absolute()
-                    .inset_0()
-                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
-                            this.quick_entry_open = false;
-                            this.qe_focused = false;
-                        });
-                    }),
-            )
+            .child(div().id("qe-backdrop").absolute().inset_0().on_mouse_down(
+                MouseButton::Left,
+                move |_: &MouseDownEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| {
+                        this.quick_entry_open = false;
+                        this.qe_focused = false;
+                    });
+                },
+            ))
             .child(div().mt(px(136.)).child(deferred(panel)))
             .child(deferred(sig_card))
             .into_any_element()
@@ -3295,6 +3454,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let card = div()
             .w(px(420.))
+            .occlude()
             .flex()
             .flex_col()
             .rounded(px(10.))
@@ -3395,6 +3555,374 @@ impl Agenda {
                     .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
                         let _ = weak.update(cx, |this, _| {
                             this.rename_project = None;
+                        });
+                    }),
+            )
+            .child(deferred(card))
+            .into_any_element()
+    }
+
+    /// Vue: ProjectCreateDialog — icon, title (duplicate hint), notes, color
+    /// grid, billable toggle + price; Enter in title / Ctrl+Enter commits.
+    pub(crate) fn render_create_modal(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
+        let icon_state = self.input_state(window, cx, "proj-create-icon", "Например, 🚀", false);
+        let title_state = self.input_state(
+            window,
+            cx,
+            "proj-create-title",
+            "Например, Новый продукт",
+            false,
+        );
+        let notes_state = self.input_state(
+            window,
+            cx,
+            "proj-create-notes",
+            "Коротко опиши смысл проекта или следующий шаг",
+            true,
+        );
+        let price_state = self.input_state(window, cx, "proj-create-price", "0.00", false);
+        if !self.create_focused {
+            self.create_focused = true;
+            title_state.update(cx, |s, cx| s.focus(window, cx));
+        }
+
+        let title = title_state.read(cx).value().trim().to_string();
+        let can_save = !title.is_empty();
+        let title_lc = title.to_lowercase();
+        let duplicate = !title_lc.is_empty()
+            && self
+                .projects
+                .iter()
+                .any(|p| p.title.trim().to_lowercase() == title_lc);
+
+        let weak = cx.weak_entity();
+        let label = |text: &'static str| {
+            div()
+                .text_size(px(11.))
+                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .text_color(c(MUTED_FG))
+                .child(text)
+        };
+        let hint =
+            |text: &'static str| div().text_size(px(11.)).text_color(c(MUTED_FG)).child(text);
+        let section = |label_el: gpui::Div, field: gpui::Div, hint_el: Option<gpui::Div>| {
+            let mut s = div().flex().flex_col().gap_2().child(label_el).child(field);
+            if let Some(h) = hint_el {
+                s = s.child(h);
+            }
+            s
+        };
+
+        let field = |state: &gpui::Entity<gpui_component::input::InputState>| {
+            div().child(
+                Input::new(state)
+                    .w_full()
+                    .h(px(36.))
+                    .text_size(px(13.))
+                    .text_color(c(FG)),
+            )
+        };
+
+        // Цвет grid — same options/order as Vue COLOR_OPTIONS + "Без цвета".
+        let colors: [(Option<&'static str>, &str, gpui::Hsla); 8] = [
+            (None, "Без цвета", c(MUTED_FG)),
+            (Some("red"), "Красный", c(DESTRUCTIVE)),
+            (Some("orange"), "Оранжевый", mix(WARN, 0.78, DESTRUCTIVE)),
+            (Some("yellow"), "Жёлтый", c(WARN)),
+            (Some("green"), "Зелёный", c(SUCCESS)),
+            (Some("blue"), "Синий", c(ACCENT)),
+            (Some("purple"), "Фиолетовый", mix(ACCENT, 0.70, DESTRUCTIVE)),
+            (Some("pink"), "Розовый", mix(DESTRUCTIVE, 0.65, ACCENT)),
+        ];
+        let mut color_grid = div().grid().grid_cols(2).gap_2();
+        for (cid, cname, col) in colors {
+            let selected = self.create_color == cid;
+            let opt = div()
+                .id(SharedString::from(format!(
+                    "pc-color-{}",
+                    cid.unwrap_or("none")
+                )))
+                .h(px(38.))
+                .px_3()
+                .flex()
+                .items_center()
+                .gap_2()
+                .rounded_md()
+                .border_1()
+                .text_size(px(13.))
+                .when(selected, |el| {
+                    el.border_color(col)
+                        .text_color(col)
+                        .bg(gpui::Hsla { a: 0.12, ..col })
+                })
+                .when(!selected, |el| {
+                    el.border_color(c(BORDER))
+                        .text_color(c(MUTED_FG))
+                        .bg(fg_mix(0.04))
+                })
+                .child(div().size(px(10.)).rounded_full().flex_none().bg(col))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .overflow_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .child(cname),
+                )
+                .when(selected, |el| el.child(icon("icons/check.svg", 14., col)))
+                .on_click({
+                    let weak = weak.clone();
+                    move |_: &ClickEvent, _, cx| {
+                        let _ = weak.update(cx, |this, _| {
+                            this.create_color = cid;
+                        });
+                    }
+                });
+            color_grid = color_grid.child(opt);
+        }
+
+        let billable = self.create_billable;
+        let card = div()
+            .w(px(448.))
+            .occlude()
+            .flex()
+            .flex_col()
+            .rounded(px(10.))
+            .overflow_hidden()
+            .bg(c(BG))
+            .border_1()
+            .border_color(c(BORDER))
+            .shadow(vec![gpui::BoxShadow {
+                color: rgba(0x000000, 0.18),
+                offset: gpui::point(px(0.), px(16.)),
+                blur_radius: px(48.),
+                spread_radius: px(0.),
+            }])
+            // header: folder icon tile + title/subtitle + close button
+            .child(
+                div()
+                    .px_4()
+                    .pt_3p5()
+                    .pb_2()
+                    .flex()
+                    .items_start()
+                    .gap_2()
+                    .child(
+                        div()
+                            .size(px(32.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(8.))
+                            .bg(rgba(ACCENT, 0.12))
+                            .child(icon("icons/folder.svg", 18., c(ACCENT))),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .flex_col()
+                            .child(
+                                div()
+                                    .text_size(px(15.))
+                                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                                    .text_color(c(FG))
+                                    .child("Новый проект"),
+                            )
+                            .child(
+                                div()
+                                    .pt(px(4.))
+                                    .text_size(px(13.))
+                                    .text_color(c(MUTED_FG))
+                                    .child("Создай проект и сразу перейди внутрь него."),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .id("create-close")
+                            .size(px(32.))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded_full()
+                            .hover(|s| s.bg(fg_mix(0.08)))
+                            .child(icon("icons/status-x.svg", 16., c(MUTED_FG)))
+                            .on_click({
+                                let weak = weak.clone();
+                                move |_: &ClickEvent, _, cx| {
+                                    let _ = weak.update(cx, |this, _| {
+                                        this.close_project_create();
+                                    });
+                                }
+                            }),
+                    ),
+            )
+            .child(
+                div()
+                    .px_4()
+                    .pb_3()
+                    .flex()
+                    .flex_col()
+                    .gap_3()
+                    .child(section(label("ИКОНКА"), field(&icon_state), None))
+                    .child(section(
+                        label("НАЗВАНИЕ"),
+                        field(&title_state),
+                        Some(if duplicate {
+                            hint("Проект с таким названием уже есть. Создание всё равно доступно.")
+                        } else {
+                            hint("`Enter` создаёт проект сразу.")
+                        }),
+                    ))
+                    .child(section(
+                        label("ОПИСАНИЕ"),
+                        div().child(
+                            Input::new(&notes_state)
+                                .w_full()
+                                .h(px(96.))
+                                .text_size(px(13.))
+                                .text_color(c(FG)),
+                        ),
+                        Some(hint("`Ctrl/Cmd + Enter` создаёт проект из поля описания.")),
+                    ))
+                    .child(section(label("ЦВЕТ"), color_grid, None))
+                    .child(section(
+                        label("ОПЛАТА"),
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .id("pc-bill")
+                                    .h_7()
+                                    .px_3()
+                                    .flex()
+                                    .items_center()
+                                    .gap_1p5()
+                                    .rounded_full()
+                                    .text_size(px(12.))
+                                    .when(billable, |el| el.bg(c(0xf5f5f5)).text_color(c(0x171717)))
+                                    .when(!billable, |el| {
+                                        el.bg(fg_mix(0.10)).text_color(c(MUTED_FG))
+                                    })
+                                    .child(if billable {
+                                        "Оплачиваемый"
+                                    } else {
+                                        "Без оплаты"
+                                    })
+                                    .on_click({
+                                        let weak = weak.clone();
+                                        move |_: &ClickEvent, _, cx| {
+                                            let _ = weak.update(cx, |this, _| {
+                                                this.create_billable = !this.create_billable;
+                                            });
+                                        }
+                                    }),
+                            )
+                            .when(billable, |el| {
+                                el.child(
+                                    div()
+                                        .text_size(px(13.))
+                                        .text_color(c(MUTED_FG))
+                                        .child("Бюджет"),
+                                )
+                                .child(
+                                    div().w(px(120.)).child(
+                                        Input::new(&price_state)
+                                            .w_full()
+                                            .h(px(32.))
+                                            .text_size(px(13.))
+                                            .text_color(c(FG)),
+                                    ),
+                                )
+                            }),
+                        Some(hint(
+                            "Если включено, задачи внутри проекта по умолчанию оплачиваемые.",
+                        )),
+                    )),
+            )
+            // footer
+            .child(
+                div()
+                    .flex()
+                    .justify_end()
+                    .gap_2()
+                    .px_3()
+                    .py_2p5()
+                    .border_t_1()
+                    .border_color(c(BORDER))
+                    .child(
+                        div()
+                            .id("create-cancel")
+                            .h_8()
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .rounded_md()
+                            .text_size(px(13.))
+                            .text_color(c(FG))
+                            .bg(fg_mix(0.06))
+                            .child("Отмена")
+                            .on_click({
+                                let weak = weak.clone();
+                                move |_: &ClickEvent, _, cx| {
+                                    let _ = weak.update(cx, |this, _| {
+                                        this.close_project_create();
+                                    });
+                                }
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id("create-save")
+                            .h_8()
+                            .px_3()
+                            .flex()
+                            .items_center()
+                            .rounded_md()
+                            .text_size(px(13.))
+                            .text_color(c(0xffffff))
+                            .bg(if can_save {
+                                c(ACCENT)
+                            } else {
+                                rgba(ACCENT, 0.45)
+                            })
+                            .child("Создать проект")
+                            .on_click({
+                                let weak = weak.clone();
+                                move |_: &ClickEvent, _, cx| {
+                                    let _ = weak.update(cx, |this, cx| {
+                                        this.commit_project_create(cx);
+                                    });
+                                }
+                            }),
+                    ),
+            );
+
+        div()
+            .absolute()
+            .inset_0()
+            .bg(rgba(0x000000, 0.30))
+            .flex()
+            .justify_center()
+            .items_center()
+            .child(
+                div()
+                    .id("create-backdrop")
+                    .absolute()
+                    .inset_0()
+                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
+                        let _ = weak.update(cx, |this, _| {
+                            this.close_project_create();
                         });
                     }),
             )
