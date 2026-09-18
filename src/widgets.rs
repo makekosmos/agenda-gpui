@@ -170,14 +170,3 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
     .flex_none()
 }
 
-// ---------------------------------------------------------------------------
-// Small text helpers
-// ---------------------------------------------------------------------------
-
-pub fn text13(content: impl Into<gpui::SharedString>, color: Hsla) -> impl IntoElement {
-    div()
-        .text_size(px(13.))
-        .line_height(px(15.))
-        .text_color(color)
-        .child(content.into())
-}

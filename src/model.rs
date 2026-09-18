@@ -59,6 +59,7 @@ pub struct Todo {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // full seed schema; only a subset is rendered today
 pub struct Project {
     pub id: String,
     pub title: String,
@@ -74,6 +75,7 @@ pub struct Project {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // seed parity; no page renders areas yet
 pub struct Area {
     pub id: &'static str,
     pub title: String,
@@ -88,6 +90,7 @@ pub struct Tag {
 }
 
 #[derive(Clone, Debug)]
+#[allow(dead_code)] // seed parity; headings are not rendered yet
 pub struct Heading {
     pub id: &'static str,
     pub title: String,
@@ -97,6 +100,7 @@ pub struct Heading {
 
 #[derive(Clone, Debug)]
 pub struct CalEvent {
+    #[allow(dead_code)]
     pub id: &'static str,
     pub title: &'static str,
     pub starts_at: String,
@@ -436,14 +440,6 @@ pub fn fmt_week_period(first: &str, last: &str) -> String {
         format!("{} — {} {}", first_text, last_text, f.year())
     } else {
         format!("{} — {}", first_text, last_text)
-    }
-}
-
-/// "dd.mm.yyyy" for statistics day labels
-pub fn fmt_dot_date(key: &str) -> String {
-    match parse_key(key) {
-        Some(d) => format!("{:02}.{:02}.{}", d.day(), d.month(), d.year()),
-        None => key.to_string(),
     }
 }
 

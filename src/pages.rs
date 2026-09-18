@@ -2,7 +2,7 @@
 // quick search / quick entry / property dropdown overlays.
 use gpui::{
     deferred, div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
-    SharedString, Window,
+    MouseMoveEvent, SharedString, Window,
 };
 use gpui_component::input::Input;
 
@@ -16,7 +16,6 @@ use crate::widgets::*;
 const PANEL: u32 = 0x121212; // dark overlay panels (quick search / quick entry)
 const PANEL_FG: u32 = 0xe5e5e5;
 const PANEL_MUTED: u32 = 0x8a8a8a;
-const PANEL_BORDER: u32 = 0x2a2a2a;
 const QE_CHIP_BG: u32 = 0x22346b; // quick-entry selected date chip
 const QE_CHIP_FG: u32 = 0x86a5ff;
 
@@ -131,17 +130,20 @@ impl Agenda {
                     .items_center()
                     .justify_center()
                     .child(status_ring(status))
-                    .on_click({
-                        let weak = cx.weak_entity();
-                        let id2 = id.clone();
-                        move |_: &ClickEvent, _, cx| {
-                            // Keep the click off the row's navigate handler
-                            // (Vue TaskRow: @click.stop / data-stop-toggle).
-                            cx.stop_propagation();
-                            let _ = weak.update(cx, |this, _| {
-                                this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
-                            });
-                        }
+                    // Vue TaskRow: :disabled="!editable || todo.isTrashed".
+                    .when(editable && !t.is_trashed, |el| {
+                        el.on_click({
+                            let weak = cx.weak_entity();
+                            let id2 = id.clone();
+                            move |_: &ClickEvent, _, cx| {
+                                // Keep the click off the row's navigate handler
+                                // (Vue TaskRow: @click.stop / data-stop-toggle).
+                                cx.stop_propagation();
+                                let _ = weak.update(cx, |this, _| {
+                                    this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
+                                });
+                            }
+                        })
                     }),
             )
             .child(
@@ -172,7 +174,17 @@ impl Agenda {
             .items_center()
             .gap_0p5()
             .opacity(t_h);
-        if editable && !t.is_trashed {
+        if !editable {
+            // Vue TrashPage row slot: ghost "Восстановить" button.
+            actions = actions.child(self.row_action(
+                &format!("ra-restore-{}", t.id),
+                "Восстановить",
+                MenuAction::RestoreTodo(id.clone()),
+                t_h,
+                window,
+                cx,
+            ));
+        } else if !t.is_trashed {
             if overdue {
                 actions = actions.child(self.row_action(
                     &format!("ra-today-{}", t.id),
@@ -254,38 +266,32 @@ impl Agenda {
                 });
             }
         })
-        .on_click({
-            let weak = weak.clone();
-            let id = t.id.to_string();
-            move |_: &ClickEvent, _, cx| {
-                let _ = weak.update(cx, |this, _| this.navigate(Route::Task(id.clone())));
-            }
+        // Vue TrashPage does not bind @open — non-editable rows don't navigate.
+        .when(editable, |row| {
+            row.on_click({
+                let weak = weak.clone();
+                let id = t.id.to_string();
+                move |_: &ClickEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| this.navigate(Route::Task(id.clone())));
+                }
+            })
         })
-        .on_mouse_down(MouseButton::Right, {
-            let tid = t.id.to_string();
-            let trashed = t.is_trashed;
-            move |ev: &MouseDownEvent, _, cx| {
-                let pos = ev.position;
-                let tid = tid.clone();
-                let _ = weak.update(cx, |this, _| {
-                    this.menu = Some(CtxMenu {
-                        x: pos.x.into(),
-                        y: pos.y.into(),
-                        items: if trashed {
-                            vec![
-                                (
-                                    "Восстановить".into(),
-                                    false,
-                                    MenuAction::RestoreTodo(tid.clone()),
-                                ),
-                                ("Удалить".into(), true, MenuAction::Noop),
-                            ]
-                        } else {
-                            vec![("Удалить".into(), true, MenuAction::TrashTodo(tid.clone()))]
-                        },
+        // Vue TaskRow.onContextMenu: early-returns when !editable.
+        .when(editable, |row| {
+            row.on_mouse_down(MouseButton::Right, {
+                let tid = t.id.to_string();
+                move |ev: &MouseDownEvent, _, cx| {
+                    let pos = ev.position;
+                    let tid = tid.clone();
+                    let _ = weak.update(cx, |this, _| {
+                        this.menu = Some(CtxMenu {
+                            x: pos.x.into(),
+                            y: pos.y.into(),
+                            items: vec![("Удалить".into(), true, MenuAction::TrashTodo(tid.clone()))],
+                        });
                     });
-                });
-            }
+                }
+            })
         })
     }
 
@@ -502,7 +508,14 @@ impl Agenda {
                 }
             }
             if !any {
-                list_el = list_el.child(empty_state());
+                let title = match list {
+                    SmartList::Inbox => "Нет входящих задач",
+                    SmartList::Today => "На сегодня задач нет",
+                    SmartList::Plans => "Планов нет",
+                    SmartList::Someday => "Пока нет отложенных задач",
+                    _ => "Ничего не найдено",
+                };
+                list_el = list_el.child(empty_state(title));
             }
             body = body.child(list_el);
         }
@@ -517,7 +530,7 @@ impl Agenda {
     ) -> impl IntoElement {
         let t = self.hover_t(window, "opt-btn");
         let weak = cx.weak_entity();
-        let key = SharedString::from(format!("opt-key-{storage}"));
+        let storage = storage.to_string();
         div()
             .flex_none()
             .flex()
@@ -545,7 +558,7 @@ impl Agenda {
                                 this.options_for = if this.options_for.is_some() {
                                     None
                                 } else {
-                                    Some(key.to_string())
+                                    Some(storage.clone())
                                 };
                             });
                         }
@@ -965,16 +978,20 @@ impl Agenda {
                 }
             }
             DropKind::Tags => {
+                // Vue tagOptions excludes already-applied tags.
                 let cur: Vec<&'static str> =
                     todo.as_ref().map(|t| t.tag_ids.clone()).unwrap_or_default();
                 for (i, tag) in self.tags.clone().iter().enumerate() {
+                    if cur.contains(&tag.id) {
+                        continue;
+                    }
                     rows.push(item(
                         self,
                         window,
                         cx,
                         i,
                         &tag.title,
-                        cur.contains(&tag.id),
+                        false,
                         MenuAction::AddTag(tid.clone(), tag.id.to_string()),
                     ));
                 }
@@ -1239,7 +1256,7 @@ impl Agenda {
             .overflow_y_scroll()
             .track_scroll(&self.scroll("logbook"));
         if items.is_empty() && archived.is_empty() {
-            list = list.child(empty_state());
+            list = list.child(empty_state("Архив пуст"));
         }
         if !items.is_empty() {
             list = list.child(
@@ -1342,7 +1359,7 @@ impl Agenda {
             .overflow_y_scroll()
             .track_scroll(&self.scroll("trash"));
         if items.is_empty() {
-            list = list.child(empty_state());
+            list = list.child(empty_state("Корзина пуста"));
         }
         for t in &items {
             list = list.child(self.task_row(t, false, window, cx));
@@ -1367,10 +1384,20 @@ impl Agenda {
             .iter()
             .find(|p| p.id == id)
             .map(|p| p.id.clone());
+        let Some(pid) = pid else {
+            return div()
+                .flex_1()
+                .child(empty_state("Проект не найден"))
+                .into_any_element();
+        };
         let items: Vec<Todo> = self
             .todos
             .iter()
-            .filter(|t| t.project_id == pid && !t.is_trashed && !is_archived(t, &today_key()))
+            .filter(|t| {
+                t.project_id.as_deref() == Some(pid.as_str())
+                    && !t.is_trashed
+                    && !is_archived(t, &today_key())
+            })
             .cloned()
             .collect();
         let storage = format!("agenda.project.{id}.view");
@@ -1385,7 +1412,7 @@ impl Agenda {
             .overflow_y_scroll()
             .track_scroll(&self.scroll("project"));
         if items.is_empty() {
-            list = list.child(empty_state());
+            list = list.child(empty_state("Нет задач в проекте"));
         }
         for t in &items {
             list = list.child(self.task_row(t, true, window, cx));
@@ -1414,7 +1441,10 @@ impl Agenda {
         }
         let todo = self.todos.iter().find(|t| t.id == id).cloned();
         let Some(t) = todo else {
-            return div().flex_1().child(empty_state()).into_any_element();
+            return div()
+                .flex_1()
+                .child(empty_state("Задача не найдена"))
+                .into_any_element();
         };
 
         let title_state = self.input_state(window, cx, "task-title", "Название задачи", false);
@@ -1619,10 +1649,18 @@ impl Agenda {
                 );
             }
         }
-        props = props.child(
-            self.prop_chip("tp-tags", DropKind::Tags, id, "Метки", window, cx)
-                .child(icon("icons/tag.svg", 14., c(MUTED_FG))),
-        );
+        // Vue: <Dropdown v-if="tagOptions.length"> — chip hidden once every
+        // tag is applied.
+        if self
+            .tags
+            .iter()
+            .any(|tag| !t.tag_ids.contains(&tag.id))
+        {
+            props = props.child(
+                self.prop_chip("tp-tags", DropKind::Tags, id, "Метки", window, cx)
+                    .child(icon("icons/tag.svg", 14., c(MUTED_FG))),
+            );
+        }
 
         // recurrence chip
         let recur_label = if t.recurrence.is_some() {
@@ -2660,7 +2698,7 @@ impl Agenda {
             .overflow_y_scroll()
             .track_scroll(&self.scroll("recurring"));
         if items.is_empty() {
-            list = list.child(empty_state());
+            list = list.child(empty_state("Нет повторяющихся задач"));
         }
         for t in &items {
             let hid = format!("rec-{}", t.id);
@@ -3341,7 +3379,74 @@ impl Agenda {
             .qe_sig
             .map(|s| format!("{}/10", s))
             .unwrap_or_else(|| "Не оценено".to_string());
-        let fill = self.qe_sig.unwrap_or(5) as f32 / 10.0;
+        // Vue: <input type="range" min="1" max="10" :value="significance ?? 5">
+        // — thumb position = (v-1)/(max-min), unset shows mid-value 5.
+        let track_w = 120.0_f32;
+        let fill = (self.qe_sig.unwrap_or(5).saturating_sub(1)) as f32 / 9.0;
+        let mut slider = div()
+            .id("qe-sig-slider")
+            .relative()
+            .w(px(track_w))
+            .h(px(20.))
+            .flex()
+            .items_center()
+            .child(
+                div()
+                    .w_full()
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(c(0xd4d4d4)),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .left_0()
+                    .top(px(8.))
+                    .w(px(fill * (track_w - 16.) + 8.))
+                    .h(px(4.))
+                    .rounded_full()
+                    .bg(c(ACCENT)),
+            )
+            .child(
+                div()
+                    .absolute()
+                    .top(px(2.))
+                    .left(px(fill * (track_w - 16.)))
+                    .w(px(16.))
+                    .h(px(16.))
+                    .rounded_full()
+                    .bg(c(ACCENT)),
+            );
+        // Per-value hit zones: boundaries at midpoints between the range
+        // input's step positions, so click/drag maps to the same value a
+        // native <input type="range"> would produce at that x — no window
+        // geometry assumptions.
+        let step = track_w / 9.0;
+        for v in 1..=10u8 {
+            let left = if v == 1 { 0.0 } else { (v as f32 - 1.5) * step };
+            let right = if v == 10 { track_w } else { (v as f32 - 0.5) * step };
+            let weak2 = weak.clone();
+            slider = slider.child(
+                div()
+                    .id(SharedString::from(format!("qe-sig-{v}")))
+                    .absolute()
+                    .left(px(left))
+                    .top_0()
+                    .w(px(right - left))
+                    .h_full()
+                    .on_mouse_down(MouseButton::Left, {
+                        let weak = weak2.clone();
+                        move |_: &MouseDownEvent, _, cx| {
+                            let _ = weak.update(cx, |this, _| this.qe_sig = Some(v));
+                        }
+                    })
+                    .on_mouse_move(move |ev: &MouseMoveEvent, _, cx| {
+                        if ev.dragging() {
+                            let _ = weak2.update(cx, |this, _| this.qe_sig = Some(v));
+                        }
+                    }),
+            );
+        }
         let sig_card = div()
             .absolute()
             .right_6()
@@ -3365,49 +3470,7 @@ impl Agenda {
             .text_size(px(12.))
             .text_color(c(FG))
             .child("Значимость")
-            .child(
-                div()
-                    .id("qe-sig-slider")
-                    .w(px(120.))
-                    .h(px(20.))
-                    .flex()
-                    .items_center()
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(4.))
-                            .rounded_full()
-                            .bg(c(0xd4d4d4))
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(gpui::DefiniteLength::Fraction(fill))
-                                    .rounded_full()
-                                    .bg(c(ACCENT)),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .ml(px(-8. - 104. * (1.0 - fill)))
-                            .w(px(16.))
-                            .h(px(16.))
-                            .rounded_full()
-                            .bg(c(ACCENT)),
-                    )
-                    .on_click({
-                        let weak = weak.clone();
-                        move |ev: &ClickEvent, _, cx| {
-                            let x: f32 = ev.position().x.into();
-                            let _ = weak.update(cx, |this, _| {
-                                // slider is 120px wide; anchor from window right edge
-                                let v = ((x - (1440. - 24. - 16. - 96. - 120.)) / 120. * 10.)
-                                    .round()
-                                    .clamp(1., 10.) as u8;
-                                this.qe_sig = Some(v);
-                            });
-                        }
-                    }),
-            )
+            .child(slider)
             .child(div().text_color(c(MUTED_FG)).child(sig_label));
 
         div()
@@ -3942,7 +4005,7 @@ enum OptAct {
     Group(GroupKey),
 }
 
-fn empty_state() -> gpui::Div {
+fn empty_state(title: &str) -> gpui::Div {
     div()
         .flex_1()
         .min_h(px(160.))
@@ -3956,7 +4019,7 @@ fn empty_state() -> gpui::Div {
                 .text_size(px(14.))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(c(MUTED_FG))
-                .child("Ничего не найдено"),
+                .child(title.to_string()),
         )
         .child(
             div()

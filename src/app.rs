@@ -64,7 +64,6 @@ pub(crate) struct HoverAnim {
 #[derive(Clone)]
 pub enum MenuAction {
     TrashTodo(String),
-    OpenTask(String),
     RestoreProject(String),
     ArchiveProject(String),
     DeleteProject(String),
@@ -85,7 +84,6 @@ pub enum MenuAction {
     QeSetDate(Option<String>),
     RecurSetFreq(u8),
     RecurSetType(u8),
-    Noop,
 }
 
 #[derive(Clone)]
@@ -139,8 +137,11 @@ pub(crate) enum CalMode {
 pub struct Agenda {
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
+    // Loaded for seed parity with the Vue store; no page renders them yet.
+    #[allow(dead_code)]
     pub(crate) areas: Vec<Area>,
     pub(crate) tags: Vec<Tag>,
+    #[allow(dead_code)]
     pub(crate) headings: Vec<Heading>,
     pub(crate) events: Vec<CalEvent>,
 
@@ -173,7 +174,6 @@ pub struct Agenda {
     pub(crate) recur_interval: u32,
     pub(crate) recur_type: u8,
     pub(crate) recur_days: Vec<u8>,
-    pub(crate) recur_day_of_month: Option<u8>,
 
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) delete_blocked: bool,
@@ -202,7 +202,6 @@ pub struct Agenda {
     pub(crate) stat_day: Option<String>,
 
     pub(crate) root_focus: FocusHandle,
-    pub(crate) quick_focus: FocusHandle,
     pub(crate) focused_once: bool,
     pub(crate) qs_focused: bool,
     pub(crate) qe_focused: bool,
@@ -271,7 +270,6 @@ impl Agenda {
             recur_interval: 1,
             recur_type: 0,
             recur_days: vec![],
-            recur_day_of_month: None,
             theme_sel: 0,
             delete_blocked: false,
             rename_project: if std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("rename") {
@@ -310,7 +308,6 @@ impl Agenda {
                 None
             },
             root_focus: cx.focus_handle(),
-            quick_focus: cx.focus_handle(),
             focused_once: false,
             qs_focused: false,
             qe_focused: false,
@@ -443,25 +440,6 @@ impl Agenda {
         }
     }
 
-    // ------------------------------------------------------------------
-    // Small helpers
-    // ------------------------------------------------------------------
-
-    pub(crate) fn hoverable(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        id: &str,
-        build: impl FnOnce(f32) -> gpui::Stateful<gpui::Div>,
-    ) -> gpui::Stateful<gpui::Div> {
-        let t = self.hover_t(window, id);
-        let weak = cx.weak_entity();
-        let key = SharedString::from(id.to_string());
-        build(t).on_hover(move |hovered, _, cx| {
-            let key = key.clone();
-            let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
-        })
-    }
 }
 
 // ===========================================================================
@@ -1007,7 +985,6 @@ impl Agenda {
                     t.is_trashed = true;
                 }
             }
-            MenuAction::OpenTask(id) => self.navigate(Route::Task(id)),
             MenuAction::RestoreProject(id) => {
                 if let Some(p) = self.projects.iter_mut().find(|p| p.id == id) {
                     p.status = 0;
@@ -1083,7 +1060,6 @@ impl Agenda {
             }
             MenuAction::RecurSetFreq(v) => self.recur_freq = v,
             MenuAction::RecurSetType(v) => self.recur_type = v,
-            MenuAction::Noop => {}
         }
     }
 
