@@ -1,0 +1,11 @@
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+ar = "x86_64-w64-mingw32-ar"
+rustflags = [
+  "-C", "link-arg=-static-libgcc",
+  "-C", "link-arg=-static-libstdc++",
+  # Prefer static winpthread; fall back to dynamic if the archive is missing.
+  "-C", "link-arg=-Wl,-Bstatic",
+  "-C", "link-arg=-lpthread",
+  "-C", "link-arg=-Wl,-Bdynamic",
+]

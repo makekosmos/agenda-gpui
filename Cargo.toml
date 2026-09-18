@@ -1,0 +1,32 @@
+[package]
+name = "agenda-gpui"
+version = "0.1.0"
+edition = "2021"
+description = "GPUI clone of the Agenda task UI (experimental, KOS-124)"
+
+[dependencies]
+gpui = { path = "vendor/gpui-0.2.2-patched", version = "0.2.2" }
+gpui-component = "0.5.1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+[profile.release]
+# debug-assertions MUST stay false: with it on, gpui takes the debug runtime
+# shader path (D3DCompileFromFile at startup from env!("CARGO_MANIFEST_DIR"),
+# which would be a Linux cargo-registry path baked into the exe) and cannot
+# render on a real Windows PC. With it off, gpui embeds precompiled shader
+# bytes from $OUT_DIR/shaders_bytes.rs. The vendored gpui build.rs generates
+# that file on any host via GPUI_FXC_PATH=tools/fxc (a dxc-backed shim);
+# see tools/build-windows.sh.
+debug = false
+debug-assertions = false
+
+# Ensure gpui's build.rs (not just the lib) sees debug_assertions=false so it
+# runs fxc and emits shaders_bytes.rs. Cargo's default release build-override
+# can leave assertions on for build scripts.
+[profile.release.build-override]
+debug-assertions = false
+opt-level = 0
+
+[patch.crates-io]
+gpui = { path = "vendor/gpui-0.2.2-patched" }
+
