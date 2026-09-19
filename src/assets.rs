@@ -39,6 +39,7 @@ impl AssetSource for Assets {
         "icons/more-circle.svg",
         "icons/more-h.svg",
         "icons/plus.svg",
+        "icons/preference-vertical.svg",
         "icons/repeat.svg",
         "icons/search.svg",
         "icons/settings.svg",
@@ -49,6 +50,9 @@ impl AssetSource for Assets {
         "icons/status-x.svg",
         "icons/tag.svg",
         "icons/task-01.svg",
+        "icons/window-max.svg",
+        "icons/window-min.svg",
+        "icons/window-restore.svg",
     );
 }
 

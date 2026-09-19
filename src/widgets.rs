@@ -1,6 +1,6 @@
 // Shared icon/ring/bars/button widgets matching the Vue components pixel-for-pixel.
-use gpui::{Hsla, PathBuilder, Styled, canvas, div, point, px, svg};
 use gpui::prelude::*;
+use gpui::{canvas, div, point, px, svg, Hsla, PathBuilder, Styled};
 
 use crate::model::Status;
 use crate::theme::*;
@@ -30,15 +30,16 @@ pub fn status_ring(status: Status) -> impl IntoElement {
             .border_color(border)
             .flex_none()
             .grid()
-            .items_center().justify_center()
+            .items_center()
+            .justify_center()
     };
     match status {
-        Status::Done => ring(c(ACCENT))
-            .bg(c(ACCENT))
-            .child(icon("icons/status-check.svg", 9., c(ACCENT_FG)))
+        Status::Done => ring(c(ACCENT()))
+            .bg(c(ACCENT()))
+            .child(icon("icons/status-check.svg", 9., c(ACCENT_FG())))
             .into_any_element(),
-        Status::Canceled => ring(c(MUTED_FG))
-            .child(icon("icons/status-x.svg", 9., c(MUTED_FG)))
+        Status::Canceled => ring(c(MUTED_FG()))
+            .child(icon("icons/status-x.svg", 9., c(MUTED_FG())))
             .into_any_element(),
         Status::Started => canvas(
             |_, _, _| (),
@@ -55,7 +56,7 @@ pub fn status_ring(status: Status) -> impl IntoElement {
                 }
                 pb.close();
                 let path = pb.build().unwrap();
-                window.paint_path(path, c(WARN));
+                window.paint_path(path, c(WARN()));
                 // ring border
                 let n2 = 40;
                 let ro: f32 = 6.25;
@@ -69,7 +70,7 @@ pub fn status_ring(status: Status) -> impl IntoElement {
                     seg.line_to(point(cx + px(ri * a1.cos()), cy + px(ri * a1.sin())));
                     seg.line_to(point(cx + px(ri * a0.cos()), cy + px(ri * a0.sin())));
                     seg.close();
-                    window.paint_path(seg.build().unwrap(), c(WARN));
+                    window.paint_path(seg.build().unwrap(), c(WARN()));
                 }
             },
         )
@@ -94,7 +95,7 @@ pub fn status_ring(status: Status) -> impl IntoElement {
                     seg.line_to(point(cx + px(ri * a1.cos()), cy + px(ri * a1.sin())));
                     seg.line_to(point(cx + px(ri * a0.cos()), cy + px(ri * a0.sin())));
                     seg.close();
-                    window.paint_path(seg.build().unwrap(), rgba(MUTED_FG, 0.6));
+                    window.paint_path(seg.build().unwrap(), rgba(MUTED_FG(), 0.6));
                 }
             },
         )
@@ -102,7 +103,7 @@ pub fn status_ring(status: Status) -> impl IntoElement {
         .h(px(14.))
         .flex_none()
         .into_any_element(),
-        _ => ring(c(MUTED_FG)).into_any_element(),
+        _ => ring(c(MUTED_FG())).into_any_element(),
     }
 }
 
@@ -124,7 +125,13 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
                 let mut pb = PathBuilder::fill();
                 pb.move_to(point(x0 + px(r), y0));
                 pb.line_to(point(x0 + px(w - r), y0));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0 + px(w), y0 + px(r)));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0 + px(w), y0 + px(r)),
+                );
                 pb.line_to(point(x0 + px(w), y0 + px(*h - r)));
                 pb.arc_to(
                     point(px(r), px(r)),
@@ -134,24 +141,31 @@ pub fn priority_bars(priority: u8) -> impl IntoElement {
                     point(x0 + px(w - r), y0 + px(*h)),
                 );
                 pb.line_to(point(x0 + px(r), y0 + px(*h)));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0, y0 + px(*h - r)));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0, y0 + px(*h - r)),
+                );
                 pb.line_to(point(x0, y0 + px(r)));
-                pb.arc_to(point(px(r), px(r)), px(0.), false, true, point(x0 + px(r), y0));
+                pb.arc_to(
+                    point(px(r), px(r)),
+                    px(0.),
+                    false,
+                    true,
+                    point(x0 + px(r), y0),
+                );
                 pb.close();
                 let filled = (i as u8) < priority;
-                window.paint_path(pb.build().unwrap(), rgba(MUTED_FG, if filled { 1.0 } else { 0.25 }));
+                window.paint_path(
+                    pb.build().unwrap(),
+                    rgba(MUTED_FG(), if filled { 1.0 } else { 0.25 }),
+                );
             }
         },
     )
     .w(px(16.))
     .h(px(16.))
     .flex_none()
-}
-
-// ---------------------------------------------------------------------------
-// Small text helpers
-// ---------------------------------------------------------------------------
-
-pub fn text13(content: impl Into<gpui::SharedString>, color: Hsla) -> impl IntoElement {
-    div().text_size(px(13.)).line_height(px(15.)).text_color(color).child(content.into())
 }

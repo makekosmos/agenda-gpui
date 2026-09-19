@@ -4,19 +4,19 @@ mod assets;
 mod chrome;
 mod model;
 mod pages;
+mod palettes;
 mod theme;
 mod widgets;
 
 use gpui::{
-    App, AppContext, Application, Bounds, Context, SharedString, Window, WindowBounds,
-    WindowOptions, px, size,
+    px, size, App, AppContext, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions,
 };
 
 use app::Agenda;
-use assets::{Assets, font_bytes};
+use assets::{font_bytes, Assets};
 
 fn main() {
-    Application::new().with_assets(Assets).run(|cx: &mut App| {
+    gpui::application().with_assets(Assets).run(|cx: &mut App| {
         gpui_component::init(cx);
         cx.text_system()
             .add_fonts(font_bytes())
@@ -29,12 +29,13 @@ fn main() {
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some(SharedString::from("Agenda")),
                     appears_transparent: true,
-                    ..Default::default()
+                    // macOS traffic-light buttons sit inside the sidebar top strip.
+                    traffic_light_position: Some(gpui::point(px(12.), px(14.))),
                 }),
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(|cx| Agenda::new(cx));
+                let view = cx.new(Agenda::new);
                 // gpui-component widgets (Input, menus) require a ui::Root window layer.
                 cx.new(|cx| gpui_component::Root::new(view, window, cx))
             },

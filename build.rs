@@ -19,6 +19,15 @@ fn main() {
     println!("cargo:rerun-if-changed={}", manifest.display());
     println!("cargo:rerun-if-changed={}", rc.display());
 
+    // MSVC host/target: rc.exe via embed-resource (locates the Windows SDK
+    // itself). GNU (cross or native mingw): windres → COFF .o → rustc link-arg.
+    if target.ends_with("-msvc") {
+        embed_resource::compile(&rc, embed_resource::NONE)
+            .manifest_required()
+            .unwrap();
+        return;
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
     let obj = out_dir.join("app_manifest.o");
 

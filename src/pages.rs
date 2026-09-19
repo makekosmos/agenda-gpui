@@ -1,27 +1,21 @@
 // Page renderers + shared task widgets (TaskRow/TaskBoard parity),
 // quick search / quick entry / property dropdown overlays.
 use gpui::{
-    AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent, SharedString, Window, deferred,
-    div, prelude::*, px,
+    deferred, div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
+    SharedString, Window,
 };
-use gpui_component::input::Input;
+use gpui_component::input::{Input, Textarea};
 
 use chrono::{Datelike, Duration, Local};
 
 use crate::app::{Agenda, BoardView, CalMode, CtxMenu, DropKind, DropState, MenuAction, Route};
+use crate::chrome::CAPTION_W;
 use crate::model::*;
 use crate::theme::*;
 use crate::widgets::*;
 
-const PANEL: u32 = 0x121212; // dark overlay panels (quick search / quick entry)
-const PANEL_FG: u32 = 0xe5e5e5;
-const PANEL_MUTED: u32 = 0x8a8a8a;
-const PANEL_BORDER: u32 = 0x2a2a2a;
-const QE_CHIP_BG: u32 = 0x22346b; // quick-entry selected date chip
-const QE_CHIP_FG: u32 = 0x86a5ff;
-
 fn panel_mix(a: f32) -> HslaAlias {
-    mix(0xffffff, a, PANEL)
+    mix(0xffffff, a, POPOVER())
 }
 
 // Alias so we can write Hsla without importing gpui::Hsla in every signature.
@@ -32,12 +26,22 @@ impl Agenda {
     // Page dispatch
     // ==========================================================================
 
-    pub(crate) fn render_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    pub(crate) fn render_page(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let route = self.route.clone();
         let content: AnyElement = match route {
-            Route::Inbox => self.board_page(SmartList::Inbox, "agenda.inbox.view", true, window, cx),
-            Route::Today => self.board_page(SmartList::Today, "agenda.today.view", true, window, cx),
-            Route::Plans => self.board_page(SmartList::Plans, "agenda.plans.view", false, window, cx),
+            Route::Inbox => {
+                self.board_page(SmartList::Inbox, "agenda.inbox.view", true, window, cx)
+            }
+            Route::Today => {
+                self.board_page(SmartList::Today, "agenda.today.view", true, window, cx)
+            }
+            Route::Plans => {
+                self.board_page(SmartList::Plans, "agenda.plans.view", false, window, cx)
+            }
             Route::Someday => {
                 self.board_page(SmartList::Someday, "agenda.someday.view", false, window, cx)
             }
@@ -62,14 +66,15 @@ impl Agenda {
             .overflow_hidden()
             .child(content);
 
-        // Primary FAB (+ dev vars stub) on list pages.
+        // Primary FAB on list pages.
         if matches!(
             route,
             Route::Inbox | Route::Today | Route::Plans | Route::Someday | Route::Project(_)
         ) {
             page = page.child(self.render_fab(window, cx));
         }
-        // Display-options popover is anchored top-right of the content area.
+        // Display-options popover is anchored under the titlebar options
+        // button (top-right, left of the native caption controls).
         if self.options_for.is_some() {
             page = page.child(self.render_options_popover(window, cx).into_any_element());
         }
@@ -97,7 +102,7 @@ impl Agenda {
         let t_h = self.hover_t(window, &hid);
         let today = today_key();
         let (date_val, _) = task_date(t);
-        let overdue = date_val.as_deref().map_or(false, |d| d < today.as_str()) && !done;
+        let overdue = date_val.as_deref().is_some_and(|d| d < today.as_str()) && !done;
 
         let mut row = div()
             .id(SharedString::from(format!("tr-{}", t.id)))
@@ -111,7 +116,7 @@ impl Agenda {
             .border_color(border_mix(0.55))
             .text_size(px(13.))
             .line_height(px(15.))
-            .text_color(c(FG))
+            .text_color(c(FG()))
             .bg(fg_mix(0.04 * t_h))
             // status button (20px grid)
             .child(
@@ -121,7 +126,8 @@ impl Agenda {
                     .h_5()
                     .flex_none()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .child(status_ring(status))
                     .on_click({
                         let weak = cx.weak_entity();
@@ -139,7 +145,8 @@ impl Agenda {
                     .h_4()
                     .flex_none()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .child(priority_bars(t.priority)),
             )
             .child(
@@ -149,7 +156,7 @@ impl Agenda {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_color(if done { c(MUTED_FG) } else { c(FG) })
+                    .text_color(if done { c(MUTED_FG()) } else { c(FG()) })
                     .child(t.title.clone()),
             );
 
@@ -184,7 +191,7 @@ impl Agenda {
             .items_center()
             .gap_2()
             .text_size(px(12.))
-            .text_color(c(MUTED_FG));
+            .text_color(c(MUTED_FG()));
         let total = t.checklist.len();
         if total > 0 {
             let d = t.checklist.iter().filter(|i| i.is_completed).count();
@@ -203,7 +210,7 @@ impl Agenda {
                         .rounded_full()
                         .bg(fg_mix(0.06))
                         .text_size(px(11.))
-                        .text_color(c(FG))
+                        .text_color(c(FG()))
                         .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(c(dot)))
                         .child(tag.title.clone()),
                 );
@@ -224,7 +231,11 @@ impl Agenda {
         if let Some(d) = &date_val {
             meta = meta.child(
                 div()
-                    .text_color(if overdue { c(DESTRUCTIVE) } else { c(MUTED_FG) })
+                    .text_color(if overdue {
+                        c(DESTRUCTIVE())
+                    } else {
+                        c(MUTED_FG())
+                    })
                     .child(fmt_day_month(d)),
             );
         }
@@ -261,7 +272,11 @@ impl Agenda {
                         y: pos.y.into(),
                         items: if trashed {
                             vec![
-                                ("Восстановить".into(), false, MenuAction::RestoreTodo(tid.clone())),
+                                (
+                                    "Восстановить".into(),
+                                    false,
+                                    MenuAction::RestoreTodo(tid.clone()),
+                                ),
                                 ("Удалить".into(), true, MenuAction::Noop),
                             ]
                         } else {
@@ -293,7 +308,7 @@ impl Agenda {
             .items_center()
             .rounded(px(5.))
             .text_size(px(12.))
-            .text_color(mix(FG, 0.45 + 0.55 * t, BG))
+            .text_color(mix(FG(), 0.45 + 0.55 * t, BG()))
             .bg(fg_mix(0.07 * t))
             .opacity(row_t.max(0.001))
             .child(label.to_string())
@@ -338,9 +353,9 @@ impl Agenda {
             .flex()
             .items_center()
             .rounded(px(5.))
-            .bg(c(SECONDARY))
+            .bg(c(SECONDARY()))
             .text_size(px(12.))
-            .text_color(mix(FG, 0.7 + 0.3 * ht, BG))
+            .text_color(mix(FG(), 0.7 + 0.3 * ht, BG()))
             .child(label)
             .on_hover({
                 let weak = weak.clone();
@@ -380,7 +395,6 @@ impl Agenda {
         let items = sorted(&items, opts.sort);
 
         let mut body = div().flex_1().min_h_0().flex().flex_col().overflow_hidden();
-        body = body.child(self.options_row(storage, window, cx));
 
         let scroll = self.scroll(storage);
         if opts.view == BoardView::Kanban {
@@ -393,8 +407,11 @@ impl Agenda {
                     let mut g: Vec<(Option<String>, Vec<Todo>)> = vec![];
                     let mut no_proj: Vec<Todo> = vec![];
                     for p in &self.projects {
-                        let bucket: Vec<Todo> =
-                            items.iter().filter(|t| t.project_id == Some(p.id)).cloned().collect();
+                        let bucket: Vec<Todo> = items
+                            .iter()
+                            .filter(|t| t.project_id == Some(p.id))
+                            .cloned()
+                            .collect();
                         if !bucket.is_empty() {
                             g.push((Some(p.title.clone()), bucket));
                         }
@@ -412,7 +429,7 @@ impl Agenda {
                         .iter()
                         .filter(|t| {
                             t.project_id
-                                .map_or(false, |pid| !self.projects.iter().any(|p| p.id == pid))
+                                .is_some_and(|pid| !self.projects.iter().any(|p| p.id == pid))
                         })
                         .cloned()
                         .collect();
@@ -430,7 +447,8 @@ impl Agenda {
                         }
                     }
                     keys.sort_by(|a, b| {
-                        a.clone().unwrap_or_else(|| "9999".into())
+                        a.clone()
+                            .unwrap_or_else(|| "9999".into())
                             .cmp(&b.clone().unwrap_or_else(|| "9999".into()))
                     });
                     keys.into_iter()
@@ -470,7 +488,7 @@ impl Agenda {
                             .px_7()
                             .text_size(px(12.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(c(MUTED_FG))
+                            .text_color(c(MUTED_FG()))
                             .child(format!("{} · {}", l, gitems.len())),
                     );
                 }
@@ -484,50 +502,6 @@ impl Agenda {
             body = body.child(list_el);
         }
         body.into_any_element()
-    }
-
-    fn options_row(
-        &mut self,
-        storage: &str,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> impl IntoElement {
-        let t = self.hover_t(window, "opt-btn");
-        let weak = cx.weak_entity();
-        let key = SharedString::from(format!("opt-key-{storage}"));
-        div()
-            .flex_none()
-            .flex()
-            .justify_end()
-            .px_7()
-            .pb_2()
-            .pt_1()
-            .child(
-                div()
-                    .id("opt-btn")
-                    .h_7()
-                    .px_2()
-                    .flex()
-                    .items_center()
-                    .rounded_md()
-                    .bg(fg_mix(0.06 * t))
-                    .child(icon("icons/sliders.svg", 14., c(MUTED_FG)))
-                    .on_hover(move |hovered, _, cx| {
-                        let _ = weak.update(cx, |this, _| this.set_hover("opt-btn", *hovered));
-                    })
-                    .on_click({
-                        let weak = cx.weak_entity();
-                        move |_: &ClickEvent, _, cx| {
-                            let _ = weak.update(cx, |this, _| {
-                                this.options_for = if this.options_for.is_some() {
-                                    None
-                                } else {
-                                    Some(key.to_string())
-                                };
-                            });
-                        }
-                    }),
-            )
     }
 
     fn kanban(
@@ -565,8 +539,8 @@ impl Agenda {
             let mut col = div()
                 .rounded_lg()
                 .border_1()
-                .border_color(c(BORDER))
-                .bg(rgba(SECONDARY, 0.3))
+                .border_color(c(BORDER()))
+                .bg(rgba(SECONDARY(), 0.3))
                 .p_2()
                 .flex()
                 .flex_col()
@@ -576,7 +550,7 @@ impl Agenda {
                         .px_2()
                         .text_size(px(12.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(c(MUTED_FG))
+                        .text_color(c(MUTED_FG()))
                         .child(format!("{} · {}", label, col_items.len())),
                 );
             let mut cards = div().flex().flex_col().gap_2();
@@ -590,8 +564,8 @@ impl Agenda {
                     .id(SharedString::from(format!("el-{hid}")))
                     .rounded_md()
                     .border_1()
-                    .border_color(lerp(BORDER, ACCENT, ht))
-                    .bg(c(BG))
+                    .border_color(lerp(BORDER(), ACCENT(), ht))
+                    .bg(c(CARD()))
                     .p_3()
                     .text_left()
                     .text_size(px(13.))
@@ -605,7 +579,7 @@ impl Agenda {
                         div()
                             .mt_1()
                             .text_size(px(12.))
-                            .text_color(c(MUTED_FG))
+                            .text_color(c(MUTED_FG()))
                             .overflow_hidden()
                             .whitespace_nowrap()
                             .text_ellipsis()
@@ -633,7 +607,11 @@ impl Agenda {
     }
 
     /// .task-options popover (top-right, below the options button).
-    fn render_options_popover(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_options_popover(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> impl IntoElement {
         let Some(key) = self.options_for.clone() else {
             return div().into_any_element();
         };
@@ -646,17 +624,17 @@ impl Agenda {
                 .px_2()
                 .text_size(px(11.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(c(MUTED_FG))
+                .text_color(c(MUTED_FG()))
                 .child(title.to_string())
         };
         let key2 = key.clone();
         let item = move |app: &mut Self,
-                        window: &mut Window,
-                        cx: &mut Context<Self>,
-                        i: usize,
-                        label: &str,
-                        checked: bool,
-                        act: OptAct| {
+                         window: &mut Window,
+                         cx: &mut Context<Self>,
+                         i: usize,
+                         label: &str,
+                         checked: bool,
+                         act: OptAct| {
             let hid = format!("opt-item-{i}-{label}");
             let t = app.hover_t(window, &hid);
             let weak = cx.weak_entity();
@@ -673,10 +651,12 @@ impl Agenda {
                 .gap_2()
                 .rounded(px(5.))
                 .text_size(px(13.))
-                .text_color(c(FG))
+                .text_color(c(FG()))
                 .bg(fg_mix(0.06 * t))
                 .child(label.to_string())
-                .when(checked, |el| el.child(icon("icons/check.svg", 14., c(MUTED_FG))))
+                .when(checked, |el| {
+                    el.child(icon("icons/check.svg", 14., c(MUTED_FG())))
+                })
                 .on_hover({
                     let weak = weak.clone();
                     move |hovered, _, cx| {
@@ -698,29 +678,46 @@ impl Agenda {
                 })
         };
 
+        // Right edge of the options button in the titlebar: on Windows it
+        // sits left of the 3 native caption buttons + pr_2 gap; on macOS the
+        // buttons are on the left side, so only the gap applies.
+        #[cfg(not(target_os = "macos"))]
+        let pop_right = CAPTION_W * 3.0 + 8.0;
+        #[cfg(target_os = "macos")]
+        let pop_right = 8.0;
+
         let mut panel = div()
             .absolute()
-            .right_7()
-            .top(px(44.))
+            .right(px(pop_right))
+            .top(px(4.))
             .min_w(px(200.))
             .p_1()
             .flex()
             .flex_col()
             .rounded_lg()
             .border_1()
-            .border_color(c(BORDER))
-            .bg(c(BG))
+            .border_color(c(BORDER()))
+            .bg(c(POPOVER()))
             .shadow(vec![gpui::BoxShadow {
                 color: rgba(0x000000, 0.12),
                 offset: gpui::point(px(0.), px(8.)),
                 blur_radius: px(24.),
                 spread_radius: px(0.),
+                inset: false,
             }]);
 
         let mut idx = 0usize;
         let mut sec = div().flex().flex_col().child(section("Вид"));
         for (v, l) in [(BoardView::List, "Список"), (BoardView::Kanban, "Доска")] {
-            sec = sec.child(item(self, window, cx, idx, l, opts.view == v, OptAct::View(v)));
+            sec = sec.child(item(
+                self,
+                window,
+                cx,
+                idx,
+                l,
+                opts.view == v,
+                OptAct::View(v),
+            ));
             idx += 1;
         }
         panel = panel.child(sec);
@@ -738,7 +735,15 @@ impl Agenda {
             (SortKey::Priority, "По приоритету"),
             (SortKey::Title, "По названию"),
         ] {
-            sec = sec.child(item(self, window, cx, idx, l, opts.sort == v, OptAct::Sort(v)));
+            sec = sec.child(item(
+                self,
+                window,
+                cx,
+                idx,
+                l,
+                opts.sort == v,
+                OptAct::Sort(v),
+            ));
             idx += 1;
         }
         panel = panel.child(sec);
@@ -756,7 +761,15 @@ impl Agenda {
                 (GroupKey::Project, "По проекту"),
                 (GroupKey::Date, "По дате"),
             ] {
-                sec = sec.child(item(self, window, cx, idx, l, opts.group == v, OptAct::Group(v)));
+                sec = sec.child(item(
+                    self,
+                    window,
+                    cx,
+                    idx,
+                    l,
+                    opts.group == v,
+                    OptAct::Group(v),
+                ));
                 idx += 1;
             }
             panel = panel.child(sec);
@@ -816,10 +829,12 @@ impl Agenda {
                 .gap_2()
                 .rounded(px(5.))
                 .text_size(px(13.))
-                .text_color(c(FG))
+                .text_color(c(FG()))
                 .bg(fg_mix(0.06 * t))
                 .child(label.to_string())
-                .when(checked, |el| el.child(icon("icons/check.svg", 14., c(MUTED_FG))))
+                .when(checked, |el| {
+                    el.child(icon("icons/check.svg", 14., c(MUTED_FG())))
+                })
                 .on_hover({
                     let weak = weak.clone();
                     move |hovered, _, cx| {
@@ -837,7 +852,7 @@ impl Agenda {
         let todo = self.todos.iter().find(|t| t.id == tid).cloned();
         match drop.kind {
             DropKind::Status => {
-                let cur = todo.as_ref().map(|t| task_status(t));
+                let cur = todo.as_ref().map(task_status);
                 for (i, (s, l)) in [
                     (Status::Inbox, "Входящие"),
                     (Status::Todo, "Сделать"),
@@ -1013,8 +1028,9 @@ impl Agenda {
                 }
             }
             DropKind::RecurFreq => {
-                for (i, (v, l)) in
-                    [(0u8, "День"), (1, "Неделя"), (2, "Месяц"), (3, "Год")].iter().enumerate()
+                for (i, (v, l)) in [(0u8, "День"), (1, "Неделя"), (2, "Месяц"), (3, "Год")]
+                    .iter()
+                    .enumerate()
                 {
                     rows.push(item(
                         self,
@@ -1028,8 +1044,9 @@ impl Agenda {
                 }
             }
             DropKind::RecurType => {
-                for (i, (v, l)) in
-                    [(0u8, "по расписанию"), (1u8, "после выполнения")].iter().enumerate()
+                for (i, (v, l)) in [(0u8, "по расписанию"), (1u8, "после выполнения")]
+                    .iter()
+                    .enumerate()
                 {
                     rows.push(item(
                         self,
@@ -1059,13 +1076,14 @@ impl Agenda {
             .flex_col()
             .rounded_lg()
             .border_1()
-            .border_color(c(BORDER))
-            .bg(c(BG))
+            .border_color(c(BORDER()))
+            .bg(c(POPOVER()))
             .shadow(vec![gpui::BoxShadow {
                 color: rgba(0x000000, 0.12),
                 offset: gpui::point(px(0.), px(8.)),
                 blur_radius: px(24.),
                 spread_radius: px(0.),
+                inset: false,
             }])
             .children(rows);
 
@@ -1091,7 +1109,7 @@ impl Agenda {
     }
 
     // ==========================================================================
-    // FAB (.btn-primary md = h40 px16) + dev-vars stub circle.
+    // FAB (.btn-primary md = h40 px16).
     // ==========================================================================
 
     fn render_fab(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -1108,8 +1126,8 @@ impl Agenda {
             .items_center()
             .gap_2()
             .rounded_lg()
-            .bg(lerp(ACCENT, 0x1e4fd8, t * 0.5))
-            .text_color(c(ACCENT_FG))
+            .bg(lerp(ACCENT(), ACCENT_DIM(), t * 0.5))
+            .text_color(c(ACCENT_FG()))
             .text_size(px(14.))
             .font_weight(gpui::FontWeight::MEDIUM)
             .shadow(vec![gpui::BoxShadow {
@@ -1117,8 +1135,9 @@ impl Agenda {
                 offset: gpui::point(px(0.), px(4.)),
                 blur_radius: px(12.),
                 spread_radius: px(0.),
+                inset: false,
             }])
-            .child(icon("icons/plus.svg", 16., c(ACCENT_FG)))
+            .child(icon("icons/plus.svg", 16., c(ACCENT_FG())))
             .child("Новая задача")
             .on_hover(move |hovered, _, cx| {
                 let _ = weak.update(cx, |this, _| this.set_hover("fab", *hovered));
@@ -1131,27 +1150,12 @@ impl Agenda {
                     });
                 }
             });
-        // dev DesignVarsPanel stub: 32px black circle w/ asterisk.
-        let dev = div()
+        div()
+            .size_full()
             .absolute()
-            .right_7()
-            .bottom(px(84.))
-            .w_8()
-            .h_8()
-            .rounded_full()
-            .bg(c(0x000000))
-            .grid()
-            .items_center().justify_center()
-            .text_color(c(0xffffff))
-            .text_size(px(15.))
-            .shadow(vec![gpui::BoxShadow {
-                color: rgba(0x000000, 0.2),
-                offset: gpui::point(px(0.), px(4.)),
-                blur_radius: px(10.),
-                spread_radius: px(0.),
-            }])
-            .child("✳");
-        div().size_full().absolute().inset_0().child(dev).child(fab).into_any_element()
+            .inset_0()
+            .child(fab)
+            .into_any_element()
     }
 
     // ==========================================================================
@@ -1185,7 +1189,7 @@ impl Agenda {
                     .px_7()
                     .text_size(px(12.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child(format!("Задачи · {}", items.len())),
             );
             for t in &items {
@@ -1200,7 +1204,7 @@ impl Agenda {
                     .px_7()
                     .text_size(px(12.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child(format!("Проекты · {}", archived.len())),
             );
             for p in &archived {
@@ -1223,8 +1227,8 @@ impl Agenda {
                         .border_color(border_mix(0.55))
                         .text_size(px(13.))
                         .bg(fg_mix(0.04 * t))
-                        .child(icon("icons/folder.svg", 16., c(MUTED_FG)))
-                        .child(div().flex_1().text_color(c(FG)).child(p.title.clone()))
+                        .child(icon("icons/folder.svg", 16., c(MUTED_FG())))
+                        .child(div().flex_1().text_color(c(FG())).child(p.title.clone()))
                         .on_hover(move |hovered, _, cx| {
                             let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
                         })
@@ -1262,7 +1266,6 @@ impl Agenda {
             .min_h_0()
             .flex()
             .flex_col()
-            .child(self.options_row("agenda.logbook.view", window, cx))
             .child(list)
             .into_any_element()
     }
@@ -1283,18 +1286,26 @@ impl Agenda {
         for t in &items {
             list = list.child(self.task_row(t, false, window, cx));
         }
-        div().flex_1().min_h_0().flex().flex_col().child(list).into_any_element()
+        div()
+            .flex_1()
+            .min_h_0()
+            .flex()
+            .flex_col()
+            .child(list)
+            .into_any_element()
     }
 
-    fn project_page(&mut self, id: &str, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let pid: Option<&'static str> =
-            self.projects.iter().find(|p| p.id == id).map(|p| p.id);
+    fn project_page(
+        &mut self,
+        id: &str,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let pid: Option<&'static str> = self.projects.iter().find(|p| p.id == id).map(|p| p.id);
         let items: Vec<Todo> = self
             .todos
             .iter()
-            .filter(|t| {
-                t.project_id == pid && !t.is_trashed && !is_archived(t, &today_key())
-            })
+            .filter(|t| t.project_id == pid && !t.is_trashed && !is_archived(t, &today_key()))
             .cloned()
             .collect();
         let storage = format!("agenda.project.{id}.view");
@@ -1319,7 +1330,6 @@ impl Agenda {
             .min_h_0()
             .flex()
             .flex_col()
-            .child(self.options_row(&storage, window, cx))
             .child(list)
             .into_any_element()
     }
@@ -1332,22 +1342,20 @@ impl Agenda {
         // Reset per-task inputs when navigating between tasks.
         if self.input_task.as_deref() != Some(id) {
             self.input_task = Some(id.to_string());
-            for k in ["task-title", "task-notes"] {
-                self.inputs.remove(k);
-            }
+            self.inputs.remove("task-title");
+            self.notes_input = None;
         }
         let todo = self.todos.iter().find(|t| t.id == id).cloned();
         let Some(t) = todo else {
             return div().flex_1().child(empty_state()).into_any_element();
         };
 
-        let title_state = self.input_state(window, cx, "task-title", "Название задачи", false);
+        let title_state = self.input_state(window, cx, "task-title", "Название задачи");
         if title_state.read(cx).value().is_empty() && !t.title.is_empty() {
             let tv = t.title.clone();
             title_state.update(cx, |s, cx| s.set_value(tv, window, cx));
         }
-        let notes_state =
-            self.input_state(window, cx, "task-notes", "Добавить описание...", true);
+        let notes_state = self.notes_state(window, cx, "Добавить описание...");
         if notes_state.read(cx).value().is_empty() {
             if let Some(n) = &t.notes {
                 let nv = n.clone();
@@ -1358,7 +1366,7 @@ impl Agenda {
         let status = task_status(&t);
         let (date_val, _) = task_date(&t);
         let today = today_key();
-        let overdue = date_val.as_deref().map_or(false, |d| d < today.as_str())
+        let overdue = date_val.as_deref().is_some_and(|d| d < today.as_str())
             && status != Status::Done
             && status != Status::Canceled;
 
@@ -1379,10 +1387,15 @@ impl Agenda {
                     .w_7()
                     .h_7()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .rounded_md()
                     .bg(fg_mix(0.06 * t2))
-                    .child(icon("icons/more-h.svg", 16., mix(MUTED_FG, 0.6 + 0.4 * t2, BG)))
+                    .child(icon(
+                        "icons/more-h.svg",
+                        16.,
+                        mix(MUTED_FG(), 0.6 + 0.4 * t2, BG()),
+                    ))
                     .on_hover({
                         let weak = weak.clone();
                         move |hovered, _, cx| {
@@ -1418,7 +1431,8 @@ impl Agenda {
             Status::Done => "Готово",
             Status::Canceled => "Отменено",
         };
-        let priority_label = ["Без приоритета", "Низкий", "Средний", "Высокий"][t.priority as usize];
+        let priority_label =
+            ["Без приоритета", "Низкий", "Средний", "Высокий"][t.priority as usize];
 
         let mut props = div().flex().flex_wrap().items_center().gap_1();
         props = props.child(
@@ -1426,8 +1440,15 @@ impl Agenda {
                 .child(status_ring(status)),
         );
         props = props.child(
-            self.prop_chip("tp-prio", DropKind::Priority, id, priority_label, window, cx)
-                .child(priority_bars(t.priority)),
+            self.prop_chip(
+                "tp-prio",
+                DropKind::Priority,
+                id,
+                priority_label,
+                window,
+                cx,
+            )
+            .child(priority_bars(t.priority)),
         );
 
         // date chip
@@ -1437,10 +1458,10 @@ impl Agenda {
             .unwrap_or_else(|| "Срок".to_string());
         let mut date_chip = self
             .prop_chip("tp-date", DropKind::Date, id, "", window, cx)
-            .child(icon("icons/calendar-02.svg", 14., c(MUTED_FG)))
+            .child(icon("icons/calendar-02.svg", 14., c(MUTED_FG())))
             .child(
                 div()
-                    .text_color(if overdue { c(DESTRUCTIVE) } else { c(FG) })
+                    .text_color(if overdue { c(DESTRUCTIVE()) } else { c(FG()) })
                     .child(date_label),
             );
         if date_val.is_some() {
@@ -1450,9 +1471,10 @@ impl Agenda {
                     .w_3p5()
                     .h_3p5()
                     .grid()
-                    .items_center().justify_center()
+                    .items_center()
+                    .justify_center()
                     .rounded_full()
-                    .child(icon("icons/status-x.svg", 9., c(MUTED_FG)))
+                    .child(icon("icons/status-x.svg", 9., c(MUTED_FG())))
                     .on_click({
                         let weak = cx.weak_entity();
                         let id2 = id.to_string();
@@ -1474,7 +1496,7 @@ impl Agenda {
             .unwrap_or_else(|| "Без проекта".to_string());
         props = props.child(
             self.prop_chip("tp-proj", DropKind::Project, id, &project_label, window, cx)
-                .child(icon("icons/folder.svg", 14., c(MUTED_FG))),
+                .child(icon("icons/folder.svg", 14., c(MUTED_FG()))),
         );
 
         // tag pills + "Метки" add chip
@@ -1492,7 +1514,7 @@ impl Agenda {
                         .rounded_full()
                         .bg(fg_mix(0.06))
                         .text_size(px(12.))
-                        .text_color(c(FG))
+                        .text_color(c(FG()))
                         .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(c(dot)))
                         .child(tag.title.clone())
                         .child(
@@ -1501,9 +1523,10 @@ impl Agenda {
                                 .w_3p5()
                                 .h_3p5()
                                 .grid()
-                                .items_center().justify_center()
+                                .items_center()
+                                .justify_center()
                                 .rounded_full()
-                                .child(icon("icons/status-x.svg", 9., c(MUTED_FG)))
+                                .child(icon("icons/status-x.svg", 9., c(MUTED_FG())))
                                 .on_click({
                                     let weak = cx.weak_entity();
                                     let id2 = id.to_string();
@@ -1523,7 +1546,7 @@ impl Agenda {
         }
         props = props.child(
             self.prop_chip("tp-tags", DropKind::Tags, id, "Метки", window, cx)
-                .child(icon("icons/tag.svg", 14., c(MUTED_FG))),
+                .child(icon("icons/tag.svg", 14., c(MUTED_FG()))),
         );
 
         // recurrence chip
@@ -1534,7 +1557,7 @@ impl Agenda {
         };
         props = props.child(
             self.recur_chip("tp-recur", id, &recur_label, window, cx)
-                .child(icon("icons/repeat.svg", 14., c(MUTED_FG))),
+                .child(icon("icons/repeat.svg", 14., c(MUTED_FG()))),
         );
 
         // second row: significance + billable + fuel
@@ -1545,7 +1568,7 @@ impl Agenda {
             .unwrap_or_else(|| "Не оценено".to_string());
         props2 = props2.child(
             self.prop_chip("tp-sig", DropKind::Significance, id, &sig_label, window, cx)
-                .child(icon("icons/star.svg", 14., c(MUTED_FG))),
+                .child(icon("icons/star.svg", 14., c(MUTED_FG()))),
         );
         let bill_label = if t.billable {
             format!("Оплачиваемая ${}", t.price.unwrap_or(0))
@@ -1554,7 +1577,7 @@ impl Agenda {
         };
         props2 = props2.child(
             self.prop_chip("tp-bill", DropKind::Billable, id, &bill_label, window, cx)
-                .child(icon("icons/dollar.svg", 14., c(MUTED_FG))),
+                .child(icon("icons/dollar.svg", 14., c(MUTED_FG()))),
         );
         if let Some(f) = t.fuel_cost {
             props2 = props2.child(
@@ -1564,7 +1587,7 @@ impl Agenda {
                     .flex()
                     .items_center()
                     .text_size(px(13.))
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child(format!("~{}%", f)),
             );
         }
@@ -1591,7 +1614,7 @@ impl Agenda {
                 Input::new(&title_state)
                     .text_size(px(22.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(FG))
+                    .text_color(c(FG()))
                     .p_0()
                     .appearance(false)
                     .bordered(false)
@@ -1601,9 +1624,9 @@ impl Agenda {
             .child(props2)
             .child(recur_editor)
             .child(
-                Input::new(&notes_state)
+                Textarea::new(&notes_state)
                     .text_size(px(13.))
-                    .text_color(c(FG))
+                    .text_color(c(FG()))
                     .p_0()
                     .appearance(false)
                     .bordered(false)
@@ -1645,7 +1668,7 @@ impl Agenda {
             .gap_1p5()
             .rounded_md()
             .text_size(px(13.))
-            .text_color(c(FG))
+            .text_color(c(FG()))
             .bg(fg_mix(0.06 * t))
             .when(!label.is_empty(), |el| el.child(label.to_string()))
             .on_hover({
@@ -1689,7 +1712,7 @@ impl Agenda {
             .gap_1p5()
             .rounded_md()
             .text_size(px(13.))
-            .text_color(c(FG))
+            .text_color(c(FG()))
             .bg(fg_mix(0.06 * t))
             .when(!label.is_empty(), |el| el.child(label.to_string()))
             .on_hover({
@@ -1729,7 +1752,11 @@ impl Agenda {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let freq_label = ["День", "Неделя", "Месяц", "Год"][self.recur_freq as usize];
-        let type_label = if self.recur_type == 1 { "после выполнения" } else { "по расписанию" };
+        let type_label = if self.recur_type == 1 {
+            "после выполнения"
+        } else {
+            "по расписанию"
+        };
         let day_names = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
         let tid = t.id.to_string();
 
@@ -1750,10 +1777,10 @@ impl Agenda {
                 .items_center()
                 .rounded_md()
                 .text_size(px(12.))
-                .text_color(c(FG))
+                .text_color(c(FG()))
                 .bg(fg_mix(0.05 + 0.02 * t))
                 .border_1()
-                .border_color(c(BORDER))
+                .border_color(c(BORDER()))
                 .child(label)
                 .on_hover({
                     let weak = weak.clone();
@@ -1775,8 +1802,22 @@ impl Agenda {
         };
 
         let mut row = div().flex().items_center().gap_2().flex_wrap();
-        row = row.child(chip_btn(self, window, cx, "rc-freq", freq_label.to_string(), DropKind::RecurFreq));
-        row = row.child(chip_btn(self, window, cx, "rc-type", type_label.to_string(), DropKind::RecurType));
+        row = row.child(chip_btn(
+            self,
+            window,
+            cx,
+            "rc-freq",
+            freq_label.to_string(),
+            DropKind::RecurFreq,
+        ));
+        row = row.child(chip_btn(
+            self,
+            window,
+            cx,
+            "rc-type",
+            type_label.to_string(),
+            DropKind::RecurType,
+        ));
         if self.recur_freq == 1 {
             for (i, name) in day_names.iter().enumerate() {
                 let d = (i + 1) as u8;
@@ -1791,11 +1832,16 @@ impl Agenda {
                         .h_7()
                         .w_8()
                         .grid()
-                        .items_center().justify_center()
+                        .items_center()
+                        .justify_center()
                         .rounded_md()
                         .text_size(px(12.))
-                        .text_color(if sel { c(ACCENT_FG) } else { c(FG) })
-                        .bg(if sel { c(ACCENT) } else { fg_mix(0.04 + 0.03 * ht) })
+                        .text_color(if sel { c(ACCENT_FG()) } else { c(FG()) })
+                        .bg(if sel {
+                            c(ACCENT())
+                        } else {
+                            fg_mix(0.04 + 0.03 * ht)
+                        })
                         .child(*name)
                         .on_hover(move |hovered, _, cx| {
                             let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -1831,8 +1877,8 @@ impl Agenda {
                 .rounded_md()
                 .text_size(px(12.))
                 .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(c(ACCENT_FG))
-                .bg(lerp(ACCENT, 0x1e4fd8, t2 * 0.5))
+                .text_color(c(ACCENT_FG()))
+                .bg(lerp(ACCENT(), ACCENT_DIM(), t2 * 0.5))
                 .child("Применить")
                 .on_hover({
                     let weak = weak.clone();
@@ -1867,7 +1913,7 @@ impl Agenda {
                 .items_center()
                 .rounded_md()
                 .text_size(px(12.))
-                .text_color(mix(FG, 0.6 + 0.4 * t2, BG))
+                .text_color(mix(FG(), 0.6 + 0.4 * t2, BG()))
                 .bg(fg_mix(0.06 * t2))
                 .child("Убрать")
                 .on_hover({
@@ -1893,8 +1939,8 @@ impl Agenda {
             .p_3()
             .rounded_lg()
             .border_1()
-            .border_color(c(BORDER))
-            .bg(c(SECONDARY))
+            .border_color(c(BORDER()))
+            .bg(c(SECONDARY()))
             .child(row)
     }
 
@@ -1910,8 +1956,8 @@ impl Agenda {
                 (vec![k.clone()], fmt_day_month_year(&k))
             }
             CalMode::Week => {
-                let monday = anchor
-                    - Duration::days(anchor.weekday().num_days_from_monday() as i64);
+                let monday =
+                    anchor - Duration::days(anchor.weekday().num_days_from_monday() as i64);
                 let days: Vec<String> =
                     (0..7).map(|i| key_of(monday + Duration::days(i))).collect();
                 (days.clone(), fmt_week_period(&days[0], &days[6]))
@@ -1920,7 +1966,11 @@ impl Agenda {
         let today = today_key();
 
         // header controls
-        let seg = |app: &mut Self, window: &mut Window, cx: &mut Context<Self>, mode: CalMode, label: &str| {
+        let seg = |app: &mut Self,
+                   window: &mut Window,
+                   cx: &mut Context<Self>,
+                   mode: CalMode,
+                   label: &str| {
             let hid = format!("cal-seg-{label}");
             let t = app.hover_t(window, &hid);
             let active = app.cal_mode == mode;
@@ -1934,8 +1984,12 @@ impl Agenda {
                 .items_center()
                 .rounded_md()
                 .text_size(px(12.))
-                .text_color(if active { c(FG) } else { c(MUTED_FG) })
-                .bg(if active { fg_mix(0.10) } else { fg_mix(0.05 * t) })
+                .text_color(if active { c(FG()) } else { c(MUTED_FG()) })
+                .bg(if active {
+                    fg_mix(0.10)
+                } else {
+                    fg_mix(0.05 * t)
+                })
                 .child(label.to_string())
                 .on_hover({
                     let weak = weak.clone();
@@ -1964,7 +2018,7 @@ impl Agenda {
                 .items_center()
                 .rounded_md()
                 .text_size(px(12.))
-                .text_color(mix(FG, 0.65 + 0.35 * t, BG))
+                .text_color(mix(FG(), 0.65 + 0.35 * t, BG()))
                 .bg(fg_mix(0.05 + 0.03 * t))
                 .child(label.to_string())
                 .on_hover({
@@ -1980,7 +2034,11 @@ impl Agenda {
                         } else {
                             let a = parse_key(&this.cal_anchor)
                                 .unwrap_or_else(|| Local::now().date_naive());
-                            let step = if this.cal_mode == CalMode::Week { delta * 7 } else { delta };
+                            let step = if this.cal_mode == CalMode::Week {
+                                delta * 7
+                            } else {
+                                delta
+                            };
                             this.cal_anchor = key_of(a + Duration::days(step));
                         }
                     });
@@ -1998,7 +2056,7 @@ impl Agenda {
                 div()
                     .flex_1()
                     .text_size(px(13.))
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child(period),
             )
             .child(
@@ -2039,9 +2097,7 @@ impl Agenda {
             let day_todos: Vec<Todo> = self
                 .todos
                 .iter()
-                .filter(|t| {
-                    !t.is_trashed && task_date(t).0.as_deref() == Some(d.as_str())
-                })
+                .filter(|t| !t.is_trashed && task_date(t).0.as_deref() == Some(d.as_str()))
                 .cloned()
                 .collect();
             let is_today = *d == today;
@@ -2050,13 +2106,16 @@ impl Agenda {
             let mut head = div()
                 .text_size(px(13.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(c(FG))
+                .text_color(c(FG()))
                 .flex()
                 .gap_1()
                 .child(fmt_cal_day_label(d));
             if is_today {
                 head = head.child(
-                    div().text_size(px(11.)).text_color(c(ACCENT)).child("Сегодня"),
+                    div()
+                        .text_size(px(11.))
+                        .text_color(c(ACCENT()))
+                        .child("Сегодня"),
                 );
             }
             let mut col = div()
@@ -2065,8 +2124,8 @@ impl Agenda {
                 .min_h(px(160.))
                 .rounded_lg()
                 .border_1()
-                .border_color(if is_today { c(ACCENT) } else { c(BORDER) })
-                .bg(rgba(SECONDARY, 0.2))
+                .border_color(if is_today { c(ACCENT()) } else { c(BORDER()) })
+                .bg(rgba(SECONDARY(), 0.2))
                 .p_3()
                 .flex()
                 .flex_col()
@@ -2076,7 +2135,7 @@ impl Agenda {
                 col = col.child(
                     div()
                         .text_size(px(12.))
-                        .text_color(c(MUTED_FG))
+                        .text_color(c(MUTED_FG()))
                         .child("Нет задач"),
                 );
             }
@@ -2085,15 +2144,15 @@ impl Agenda {
                     .rounded_md()
                     .border_1()
                     .border_dashed()
-                    .border_color(c(BORDER))
-                    .bg(c(BG))
+                    .border_color(c(BORDER()))
+                    .bg(c(CARD()))
                     .p_2()
                     .flex()
                     .flex_col()
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(c(ACCENT))
+                            .text_color(c(ACCENT()))
                             .child(format!(
                                 "{}–{}",
                                 fmt_time(&e.starts_at),
@@ -2104,14 +2163,14 @@ impl Agenda {
                         div()
                             .text_size(px(13.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(c(FG))
+                            .text_color(c(FG()))
                             .child(e.title),
                     );
                 let loc = e.location.unwrap_or("PseudoCalendar");
                 card = card.child(
                     div()
                         .text_size(px(12.))
-                        .text_color(c(MUTED_FG))
+                        .text_color(c(MUTED_FG()))
                         .child(format!("{} · PseudoCalendar", loc)),
                 );
                 col = col.child(card);
@@ -2135,8 +2194,8 @@ impl Agenda {
                         .id(SharedString::from(format!("el-{hid}")))
                         .rounded_md()
                         .border_1()
-                        .border_color(lerp(BORDER, ACCENT, ht * 0.5))
-                        .bg(c(BG))
+                        .border_color(lerp(BORDER(), ACCENT(), ht * 0.5))
+                        .bg(c(CARD()))
                         .p_2()
                         .flex()
                         .flex_col()
@@ -2144,13 +2203,13 @@ impl Agenda {
                             div()
                                 .text_size(px(13.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
-                                .text_color(c(FG))
+                                .text_color(c(FG()))
                                 .child(t.title.clone()),
                         )
                         .child(
                             div()
                                 .text_size(px(12.))
-                                .text_color(c(MUTED_FG))
+                                .text_color(c(MUTED_FG()))
                                 .child(format!("{} · Agenda", st_label)),
                         )
                         .on_hover(move |hovered, _, cx| {
@@ -2202,8 +2261,12 @@ impl Agenda {
                     .rounded_md()
                     .text_size(px(13.))
                     .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(if active { c(ACCENT_FG) } else { c(FG) })
-                    .bg(if active { c(ACCENT) } else { fg_mix(0.05 + 0.03 * t) })
+                    .text_color(if active { c(ACCENT_FG()) } else { c(FG()) })
+                    .bg(if active {
+                        c(ACCENT())
+                    } else {
+                        fg_mix(0.05 + 0.03 * t)
+                    })
                     .child(*l)
                     .on_hover(move |hovered, _, cx| {
                         let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -2249,11 +2312,11 @@ impl Agenda {
             let mut week = div().flex_1().min_w_0().flex().flex_col().gap_1();
             for row in 0..7usize {
                 let v = vals[col_i * 7 + row];
+                let t = (v / max_v.max(1.0)).min(1.0) as f32;
                 let cell_bg = if v <= 0.0 {
-                    c(0xe5e5e5)
+                    c(SECONDARY())
                 } else {
-                    let t = (v / max_v.max(1.0)).min(1.0);
-                    lerp(0xbdbdbd, 0x262626, (0.35 + 0.65 * t) as f32)
+                    lerp(SECONDARY(), ACCENT(), 0.35 + 0.65 * t)
                 };
                 week = week.child(
                     div()
@@ -2261,14 +2324,18 @@ impl Agenda {
                         .h_8()
                         .rounded_md()
                         .border_1()
-                        .border_color(c(BORDER))
+                        .border_color(c(BORDER()))
                         .bg(cell_bg)
                         .flex()
                         .items_center()
                         .justify_center()
                         .text_size(px(10.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(if v > 0.0 { c(0xf5f5f5) } else { rgba(0, 0.0) })
+                        .text_color(if v > 0.0 {
+                            lerp(FG(), ACCENT_FG(), 0.35 + 0.65 * t)
+                        } else {
+                            rgba(0, 0.0)
+                        })
                         .child(if v > 0.0 {
                             format!("{}", v as i64)
                         } else {
@@ -2282,7 +2349,7 @@ impl Agenda {
         let desc = div()
             .mt_2()
             .text_size(px(12.))
-            .text_color(c(MUTED_FG))
+            .text_color(c(MUTED_FG()))
             .child(format!(
                 "{}: светлее — меньше, насыщеннее — больше. Ячейка показывает точное значение; серый цвет означает неполные или недоступные данные.",
                 metric_labels[self.stat_metric as usize]
@@ -2294,14 +2361,14 @@ impl Agenda {
             .gap_1()
             .mt_2()
             .text_size(px(12.))
-            .text_color(c(MUTED_FG))
+            .text_color(c(MUTED_FG()))
             .child("Меньше")
             .children((0..5).map(|i| {
                 div()
                     .w_3()
                     .h_3()
                     .rounded(px(2.))
-                    .bg(lerp(0xe5e5e5, 0x262626, i as f32 / 4.0))
+                    .bg(lerp(SECONDARY(), ACCENT(), i as f32 / 4.0))
             }))
             .child("Больше");
 
@@ -2364,7 +2431,7 @@ impl Agenda {
                     .id(SharedString::from(format!("el-{hid}")))
                     .rounded_lg()
                     .border_1()
-                    .border_color(lerp(BORDER, ACCENT, ht * 0.4))
+                    .border_color(lerp(BORDER(), ACCENT(), ht * 0.4))
                     .p_4()
                     .flex()
                     .flex_col()
@@ -2374,19 +2441,19 @@ impl Agenda {
                         div()
                             .text_size(px(15.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(c(FG))
+                            .text_color(c(FG()))
                             .child(t.title.clone()),
                     )
                     .child(
                         div()
                             .text_size(px(13.))
-                            .text_color(c(MUTED_FG))
+                            .text_color(c(MUTED_FG()))
                             .child(describe_recurrence(&t.recurrence)),
                     )
                     .child(
                         div()
                             .text_size(px(13.))
-                            .text_color(c(MUTED_FG))
+                            .text_color(c(MUTED_FG()))
                             .child(format!(
                                 "Следующий срок: {}",
                                 task_date(t).0.unwrap_or_default()
@@ -2408,7 +2475,12 @@ impl Agenda {
         list.into_any_element()
     }
 
-    fn settings_page(&mut self, fuel: bool, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+    fn settings_page(
+        &mut self,
+        fuel: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let mut col = div()
             .id("settings")
             .flex_1()
@@ -2426,29 +2498,31 @@ impl Agenda {
                 div()
                     .text_size(px(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(FG))
+                    .text_color(c(FG()))
                     .child("Мыслетопливо"),
             );
             col = col.child(
                 div()
                     .text_size(px(13.))
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child(
                         "Мыслетопливо оценивает стоимость задач в процентах. Оценивайте задачи от 1 до 10 на странице задачи.",
                     ),
             );
         } else {
+            // --- Mode ---
             col = col.child(
                 div()
                     .text_size(px(13.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(FG))
-                    .child("Тема"),
+                    .text_color(c(FG()))
+                    .child("Режим"),
             );
             let mut row = div().flex().gap_2();
-            for (i, l) in ["Светлая", "Тёмная", "Системная"].iter().enumerate() {
+            for (i, l) in ["Светлая", "Тёмная", "Системная"].iter().enumerate()
+            {
                 let active = self.theme_sel == i as u8;
-                let hid = format!("theme-{i}");
+                let hid = format!("mode-{i}");
                 let t = self.hover_t(window, &hid);
                 let weak = cx.weak_entity();
                 let key = SharedString::from(hid.clone());
@@ -2461,8 +2535,12 @@ impl Agenda {
                         .items_center()
                         .rounded_md()
                         .text_size(px(13.))
-                        .text_color(if active { c(ACCENT_FG) } else { c(FG) })
-                        .bg(if active { c(ACCENT) } else { fg_mix(0.05 + 0.03 * t) })
+                        .text_color(if active { c(ACCENT_FG()) } else { c(FG()) })
+                        .bg(if active {
+                            c(ACCENT())
+                        } else {
+                            fg_mix(0.05 + 0.03 * t)
+                        })
                         .child(*l)
                         .on_hover(move |hovered, _, cx| {
                             let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
@@ -2471,6 +2549,131 @@ impl Agenda {
                             let weak = cx.weak_entity();
                             move |_: &ClickEvent, _, cx| {
                                 let _ = weak.update(cx, |this, _| this.theme_sel = i as u8);
+                            }
+                        }),
+                );
+            }
+            col = col.child(row);
+
+            // --- Named themes (zeron palette list) ---
+            col = col.child(
+                div()
+                    .pt_3()
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(c(FG()))
+                    .child("Тема"),
+            );
+            for (i, def) in crate::palettes::THEMES.iter().enumerate() {
+                let active = self.theme_idx == i;
+                let p = if is_dark() { &def.dark } else { &def.light };
+                let hid = format!("theme-{i}");
+                let t = self.hover_t(window, &hid);
+                let weak = cx.weak_entity();
+                let key = SharedString::from(hid.clone());
+                let mut dots = div().flex().gap_1().items_center();
+                for sw in [p.accent, p.card, p.fg] {
+                    dots = dots.child(
+                        div()
+                            .size_3()
+                            .rounded_full()
+                            .bg(c(sw))
+                            .border_1()
+                            .border_color(border_mix(0.6)),
+                    );
+                }
+                col = col.child(
+                    div()
+                        .id(SharedString::from(format!("el-{hid}")))
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .px_3()
+                        .py_2()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(if active {
+                            rgba(ACCENT(), 0.5)
+                        } else {
+                            rgba(FG(), 0.08 + 0.05 * t)
+                        })
+                        .bg(if active {
+                            mix(ACCENT(), 0.08, BG())
+                        } else {
+                            fg_mix(0.02 + 0.02 * t)
+                        })
+                        .child(
+                            div()
+                                .flex()
+                                .flex_col()
+                                .gap_0p5()
+                                .child(div().text_size(px(13.)).text_color(c(FG())).child(def.name))
+                                .child(
+                                    div()
+                                        .text_size(px(11.))
+                                        .text_color(c(MUTED_FG()))
+                                        .child(def.desc),
+                                ),
+                        )
+                        .child(dots)
+                        .on_hover(move |hovered, _, cx| {
+                            let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
+                        })
+                        .on_click({
+                            let weak = cx.weak_entity();
+                            move |_: &ClickEvent, _, cx| {
+                                let _ = weak.update(cx, |this, _| this.theme_idx = i);
+                            }
+                        }),
+                );
+            }
+
+            // --- Sidebar material ---
+            col = col.child(
+                div()
+                    .pt_3()
+                    .text_size(px(13.))
+                    .font_weight(gpui::FontWeight::SEMIBOLD)
+                    .text_color(c(FG()))
+                    .child("Сайдбар"),
+            );
+            let material_labels: [&str; 3] = if cfg!(target_os = "windows") {
+                ["Монолит", "Акрилик", "Мика"]
+            } else if cfg!(target_os = "macos") {
+                ["Монолит", "Акрилик", "Вибранси"]
+            } else {
+                ["Монолит", "Акрилик", "Материал"]
+            };
+            let mut row = div().flex().gap_2();
+            for (i, l) in material_labels.iter().enumerate() {
+                let active = self.sb_material == i as u8;
+                let hid = format!("material-{i}");
+                let t = self.hover_t(window, &hid);
+                let weak = cx.weak_entity();
+                let key = SharedString::from(hid.clone());
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("el-{hid}")))
+                        .h_8()
+                        .px_3()
+                        .flex()
+                        .items_center()
+                        .rounded_md()
+                        .text_size(px(13.))
+                        .text_color(if active { c(ACCENT_FG()) } else { c(FG()) })
+                        .bg(if active {
+                            c(ACCENT())
+                        } else {
+                            fg_mix(0.05 + 0.03 * t)
+                        })
+                        .child(*l)
+                        .on_hover(move |hovered, _, cx| {
+                            let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
+                        })
+                        .on_click({
+                            let weak = cx.weak_entity();
+                            move |_: &ClickEvent, _, cx| {
+                                let _ = weak.update(cx, |this, _| this.sb_material = i as u8);
                             }
                         }),
                 );
@@ -2491,9 +2694,9 @@ impl Agenda {
                     .rounded_md()
                     .bg(fg_mix(0.04 * t))
                     .text_size(px(13.))
-                    .text_color(c(FG))
+                    .text_color(c(FG()))
                     .child("Мыслетопливо")
-                    .child(icon("icons/arrow-left.svg", 14., c(MUTED_FG)))
+                    .child(icon("icons/arrow-left.svg", 14., c(MUTED_FG())))
                     .on_hover({
                         let weak = weak.clone();
                         move |hovered, _, cx| {
@@ -2521,13 +2724,13 @@ impl Agenda {
                 div()
                     .text_size(px(20.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(FG))
+                    .text_color(c(FG()))
                     .child("Agenda"),
             )
             .child(
                 div()
                     .text_size(px(13.))
-                    .text_color(c(MUTED_FG))
+                    .text_color(c(MUTED_FG()))
                     .child("Версия 0.1.0 (GPUI clone)"),
             )
             .into_any_element()
@@ -2542,7 +2745,7 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let qs = self.input_state(window, cx, "qs", "Поиск задач и проектов...", false);
+        let qs = self.input_state(window, cx, "qs", "Поиск задач и проектов...");
         if !self.qs_focused {
             self.qs_focused = true;
             qs.update(cx, |s, cx| s.focus(window, cx));
@@ -2570,7 +2773,7 @@ impl Agenda {
                     .items_center()
                     .gap_2p5()
                     .text_size(px(13.))
-                    .text_color(c(PANEL_FG))
+                    .text_color(c(FG()))
                     .bg(panel_mix(if sel { 0.10 } else { 0.06 * ht }))
                     .child(status_ring(task_status(t)))
                     .child(
@@ -2617,9 +2820,9 @@ impl Agenda {
                     .items_center()
                     .gap_2p5()
                     .text_size(px(13.))
-                    .text_color(c(PANEL_FG))
+                    .text_color(c(FG()))
                     .bg(panel_mix(if sel { 0.10 } else { 0.06 * ht }))
-                    .child(icon("icons/folder.svg", 14., c(PANEL_MUTED)))
+                    .child(icon("icons/folder.svg", 14., c(MUTED_FG())))
                     .child(
                         div()
                             .flex_1()
@@ -2658,7 +2861,7 @@ impl Agenda {
                     .items_center()
                     .justify_center()
                     .text_size(px(13.))
-                    .text_color(c(PANEL_MUTED))
+                    .text_color(c(MUTED_FG()))
                     .child("Начните вводить для поиска"),
             );
         } else if results.is_empty() {
@@ -2674,13 +2877,13 @@ impl Agenda {
                     .child(
                         div()
                             .text_size(px(13.))
-                            .text_color(c(PANEL_FG))
+                            .text_color(c(FG()))
                             .child("Ничего не найдено"),
                     )
                     .child(
                         div()
                             .text_size(px(12.))
-                            .text_color(c(PANEL_MUTED))
+                            .text_color(c(MUTED_FG()))
                             .child(format!("По запросу «{}» совпадений нет", query.trim())),
                     ),
             );
@@ -2694,7 +2897,7 @@ impl Agenda {
             .flex_col()
             .rounded(px(10.))
             .overflow_hidden()
-            .bg(c(PANEL))
+            .bg(c(POPOVER()))
             .border_1()
             .border_color(panel_mix(0.10))
             .shadow(vec![gpui::BoxShadow {
@@ -2702,6 +2905,7 @@ impl Agenda {
                 offset: gpui::point(px(0.), px(16.)),
                 blur_radius: px(48.),
                 spread_radius: px(0.),
+                inset: false,
             }])
             .child(
                 div()
@@ -2711,12 +2915,12 @@ impl Agenda {
                     .items_center()
                     .gap_2p5()
                     .px_3p5()
-                    .child(icon("icons/search.svg", 16., c(PANEL_MUTED)))
+                    .child(icon("icons/search.svg", 16., c(MUTED_FG())))
                     .child(
                         Input::new(&qs)
                             .flex_1()
                             .text_size(px(14.))
-                            .text_color(c(PANEL_FG))
+                            .text_color(c(FG()))
                             .appearance(false)
                             .bordered(false)
                             .h(px(24.)),
@@ -2731,7 +2935,7 @@ impl Agenda {
                             .border_1()
                             .border_color(panel_mix(0.22))
                             .text_size(px(10.))
-                            .text_color(c(PANEL_MUTED))
+                            .text_color(c(MUTED_FG()))
                             .child("esc"),
                     ),
             )
@@ -2745,18 +2949,15 @@ impl Agenda {
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()
-            .child(
-                div()
-                    .id("qs-backdrop")
-                    .absolute()
-                    .inset_0()
-                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
-                            this.quick_open = false;
-                            this.qs_focused = false;
-                        });
-                    }),
-            )
+            .child(div().id("qs-backdrop").absolute().inset_0().on_mouse_down(
+                MouseButton::Left,
+                move |_: &MouseDownEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| {
+                        this.quick_open = false;
+                        this.qs_focused = false;
+                    });
+                },
+            ))
             .child(div().mt(px(128.)).child(deferred(panel)))
             .into_any_element()
     }
@@ -2776,13 +2977,11 @@ impl Agenda {
                 self.qe_project = Some(pid.clone());
             }
         }
-        if self.qe_date.is_none() && !self.qe_date_touched {
-            if self.route == Route::Today {
-                self.qe_date = Some(today_key());
-            }
+        if self.qe_date.is_none() && !self.qe_date_touched && self.route == Route::Today {
+            self.qe_date = Some(today_key());
         }
-        let title_state = self.input_state(window, cx, "qe-title", "Новая задача", false);
-        let notes_state = self.input_state(window, cx, "qe-notes", "Заметки", false);
+        let title_state = self.input_state(window, cx, "qe-title", "Новая задача");
+        let notes_state = self.input_state(window, cx, "qe-notes", "Заметки");
         if !self.qe_focused {
             self.qe_focused = true;
             title_state.update(cx, |s, cx| s.focus(window, cx));
@@ -2817,12 +3016,20 @@ impl Agenda {
             .rounded_full()
             .text_size(px(12.))
             .when(has_date, |el| {
-                el.bg(c(QE_CHIP_BG)).text_color(c(QE_CHIP_FG))
+                el.bg(c(QE_CHIP_BG())).text_color(c(QE_CHIP_FG()))
             })
             .when(!has_date, |el| {
-                el.bg(panel_mix(0.10)).text_color(c(PANEL_MUTED))
+                el.bg(panel_mix(0.10)).text_color(c(MUTED_FG()))
             })
-            .child(icon("icons/calendar-02.svg", 13., if has_date { c(QE_CHIP_FG) } else { c(PANEL_MUTED) }))
+            .child(icon(
+                "icons/calendar-02.svg",
+                13.,
+                if has_date {
+                    c(QE_CHIP_FG())
+                } else {
+                    c(MUTED_FG())
+                },
+            ))
             .child(date_label);
         if has_date {
             date_chip = date_chip.child(
@@ -2831,8 +3038,9 @@ impl Agenda {
                     .w_3p5()
                     .h_3p5()
                     .grid()
-                    .items_center().justify_center()
-                    .child(icon("icons/status-x.svg", 9., c(QE_CHIP_FG)))
+                    .items_center()
+                    .justify_center()
+                    .child(icon("icons/status-x.svg", 9., c(QE_CHIP_FG())))
                     .on_click({
                         let weak = weak.clone();
                         move |_: &ClickEvent, _, cx| {
@@ -2875,13 +3083,25 @@ impl Agenda {
                 .rounded_full()
                 .text_size(px(12.))
                 .when(self.qe_billable, |el| {
-                    el.bg(c(0xf5f5f5)).text_color(c(0x171717))
+                    el.bg(c(ACCENT())).text_color(c(ACCENT_FG()))
                 })
                 .when(!self.qe_billable, |el| {
-                    el.bg(panel_mix(0.10)).text_color(c(PANEL_MUTED))
+                    el.bg(panel_mix(0.10)).text_color(c(MUTED_FG()))
                 })
-                .child(icon("icons/dollar.svg", 13., if self.qe_billable { c(0x171717) } else { c(PANEL_MUTED) }))
-                .child(if self.qe_billable { "Оплачиваемая" } else { "Без оплаты" })
+                .child(icon(
+                    "icons/dollar.svg",
+                    13.,
+                    if self.qe_billable {
+                        c(ACCENT_FG())
+                    } else {
+                        c(MUTED_FG())
+                    },
+                ))
+                .child(if self.qe_billable {
+                    "Оплачиваемая"
+                } else {
+                    "Без оплаты"
+                })
                 .on_click({
                     let weak = weak.clone();
                     move |_: &ClickEvent, _, cx| {
@@ -2908,10 +3128,10 @@ impl Agenda {
                 .items_center()
                 .gap_1p5()
                 .rounded_full()
-                .bg(c(0xf5f5f5))
-                .text_color(c(0x171717))
+                .bg(c(SECONDARY()))
+                .text_color(c(FG()))
                 .text_size(px(12.))
-                .child(icon("icons/folder.svg", 13., c(0x404040)))
+                .child(icon("icons/folder.svg", 13., c(MUTED_FG())))
                 .child(proj_label)
                 .on_click({
                     let weak = weak.clone();
@@ -2935,7 +3155,7 @@ impl Agenda {
             .flex_col()
             .rounded(px(10.))
             .overflow_hidden()
-            .bg(c(PANEL))
+            .bg(c(POPOVER()))
             .border_1()
             .border_color(panel_mix(0.10))
             .shadow(vec![gpui::BoxShadow {
@@ -2943,6 +3163,7 @@ impl Agenda {
                 offset: gpui::point(px(0.), px(16.)),
                 blur_radius: px(48.),
                 spread_radius: px(0.),
+                inset: false,
             }])
             .child(
                 div()
@@ -2955,7 +3176,7 @@ impl Agenda {
                             .flex_1()
                             .h(px(48.))
                             .text_size(px(15.))
-                            .text_color(c(PANEL_FG))
+                            .text_color(c(FG()))
                             .appearance(false)
                             .bordered(false),
                     )
@@ -2965,9 +3186,10 @@ impl Agenda {
                             .w_7()
                             .h_7()
                             .grid()
-                            .items_center().justify_center()
+                            .items_center()
+                            .justify_center()
                             .rounded_md()
-                            .child(icon("icons/status-x.svg", 14., c(PANEL_MUTED)))
+                            .child(icon("icons/status-x.svg", 14., c(MUTED_FG())))
                             .on_click({
                                 let weak = weak.clone();
                                 move |_: &ClickEvent, _, cx| {
@@ -2985,7 +3207,7 @@ impl Agenda {
                         .w_full()
                         .h(px(36.))
                         .text_size(px(13.))
-                        .text_color(c(PANEL_FG))
+                        .text_color(c(FG()))
                         .appearance(false)
                         .bordered(false),
                 ),
@@ -3007,19 +3229,20 @@ impl Agenda {
             .py_3()
             .rounded_lg()
             .border_1()
-            .border_color(c(BORDER))
-            .bg(c(BG))
+            .border_color(c(BORDER()))
+            .bg(c(POPOVER()))
             .shadow(vec![gpui::BoxShadow {
                 color: rgba(0x000000, 0.15),
                 offset: gpui::point(px(0.), px(12.)),
                 blur_radius: px(32.),
                 spread_radius: px(0.),
+                inset: false,
             }])
             .flex()
             .items_center()
             .gap(px(10.))
             .text_size(px(12.))
-            .text_color(c(FG))
+            .text_color(c(FG()))
             .child("Значимость")
             .child(
                 div()
@@ -3033,13 +3256,13 @@ impl Agenda {
                             .w_full()
                             .h(px(4.))
                             .rounded_full()
-                            .bg(c(0xd4d4d4))
+                            .bg(c(SECONDARY()))
                             .child(
                                 div()
                                     .h_full()
                                     .w(gpui::DefiniteLength::Fraction(fill))
                                     .rounded_full()
-                                    .bg(c(ACCENT)),
+                                    .bg(c(ACCENT())),
                             ),
                     )
                     .child(
@@ -3048,7 +3271,7 @@ impl Agenda {
                             .w(px(16.))
                             .h(px(16.))
                             .rounded_full()
-                            .bg(c(ACCENT)),
+                            .bg(c(ACCENT())),
                     )
                     .on_click({
                         let weak = weak.clone();
@@ -3064,11 +3287,7 @@ impl Agenda {
                         }
                     }),
             )
-            .child(
-                div()
-                    .text_color(c(MUTED_FG))
-                    .child(sig_label),
-            );
+            .child(div().text_color(c(MUTED_FG())).child(sig_label));
 
         div()
             .absolute()
@@ -3076,18 +3295,15 @@ impl Agenda {
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()
-            .child(
-                div()
-                    .id("qe-backdrop")
-                    .absolute()
-                    .inset_0()
-                    .on_mouse_down(MouseButton::Left, move |_: &MouseDownEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
-                            this.quick_entry_open = false;
-                            this.qe_focused = false;
-                        });
-                    }),
-            )
+            .child(div().id("qe-backdrop").absolute().inset_0().on_mouse_down(
+                MouseButton::Left,
+                move |_: &MouseDownEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| {
+                        this.quick_entry_open = false;
+                        this.qe_focused = false;
+                    });
+                },
+            ))
             .child(div().mt(px(136.)).child(deferred(panel)))
             .child(deferred(sig_card))
             .into_any_element()
@@ -3118,7 +3334,7 @@ fn empty_state() -> gpui::Div {
             div()
                 .text_size(px(14.))
                 .font_weight(gpui::FontWeight::MEDIUM)
-                .text_color(c(MUTED_FG))
+                .text_color(c(MUTED_FG()))
                 .child("Ничего не найдено"),
         )
         .child(

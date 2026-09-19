@@ -1,19 +1,109 @@
-// Exact color/dimension tokens extracted from Vue CSS (global.css + imago theme).
-use gpui::{Hsla, rgb};
+// Runtime color palette, zeron themes (zeronsh/chat src/themes.css),
+// oklch→sRGB converted by scripts/gen-themes.mjs into src/palettes.rs.
+// Sidebar bg is a step darker than the app bg.
+#![allow(non_snake_case)]
 
-pub const BG: u32 = 0xffffff;
-pub const FG: u32 = 0x0a0a0a;
-pub const MUTED_FG: u32 = 0x737373;
-pub const BORDER: u32 = 0xe5e5e5;
-pub const ACCENT: u32 = 0x275ff3;
-pub const ACCENT_FG: u32 = 0xfafafa;
-pub const PRIMARY: u32 = 0x171717;
-pub const SECONDARY: u32 = 0xf5f5f5;
-pub const SURFACE: u32 = 0xf5f5f5;
-pub const DESTRUCTIVE: u32 = 0xe7000b;
-pub const WARN: u32 = 0xe1a035;
-pub const SUCCESS: u32 = 0x00a63e;
-pub const SIDEBAR_DIVIDER: u32 = 0x313131;
+use crate::palettes::THEMES;
+use gpui::{rgb, Hsla};
+use std::sync::atomic::{AtomicU8, Ordering};
+
+/// Resolved color set for one theme+mode (see src/palettes.rs).
+pub struct Palette {
+    pub bg: u32,
+    pub fg: u32,
+    pub muted_fg: u32,
+    pub border: u32,
+    pub accent: u32,
+    pub accent_fg: u32,
+    pub accent_dim: u32,
+    pub secondary: u32,
+    pub card: u32,
+    pub popover: u32,
+    pub sidebar_bg: u32,
+    pub sidebar_divider: u32,
+    pub destructive: u32,
+    pub warn: u32,
+    pub success: u32,
+    pub qe_chip_bg: u32,
+    pub qe_chip_fg: u32,
+}
+
+/// Selected theme index into palettes::THEMES.
+static THEME_IDX: AtomicU8 = AtomicU8::new(0);
+/// Resolved mode: 0 = light, 1 = dark. "System" is resolved at render time.
+static MODE: AtomicU8 = AtomicU8::new(1);
+
+pub fn set_theme(idx: usize) {
+    THEME_IDX.store(idx.min(THEMES.len() - 1) as u8, Ordering::Relaxed);
+}
+pub fn set_mode(dark: bool) {
+    MODE.store(dark as u8, Ordering::Relaxed);
+}
+pub fn is_dark() -> bool {
+    MODE.load(Ordering::Relaxed) != 0
+}
+
+pub fn pal() -> &'static Palette {
+    let def = &THEMES[THEME_IDX.load(Ordering::Relaxed) as usize];
+    if is_dark() {
+        &def.dark
+    } else {
+        &def.light
+    }
+}
+
+pub fn BG() -> u32 {
+    pal().bg
+}
+pub fn FG() -> u32 {
+    pal().fg
+}
+pub fn MUTED_FG() -> u32 {
+    pal().muted_fg
+}
+pub fn BORDER() -> u32 {
+    pal().border
+}
+pub fn ACCENT() -> u32 {
+    pal().accent
+}
+pub fn ACCENT_FG() -> u32 {
+    pal().accent_fg
+}
+pub fn ACCENT_DIM() -> u32 {
+    pal().accent_dim
+}
+pub fn SECONDARY() -> u32 {
+    pal().secondary
+}
+pub fn CARD() -> u32 {
+    pal().card
+}
+pub fn POPOVER() -> u32 {
+    pal().popover
+}
+pub fn SIDEBAR_BG() -> u32 {
+    pal().sidebar_bg
+}
+pub fn DESTRUCTIVE() -> u32 {
+    pal().destructive
+}
+pub fn WARN() -> u32 {
+    pal().warn
+}
+#[allow(dead_code)]
+pub fn SUCCESS() -> u32 {
+    pal().success
+}
+pub fn SIDEBAR_DIVIDER() -> u32 {
+    pal().sidebar_divider
+}
+pub fn QE_CHIP_BG() -> u32 {
+    pal().qe_chip_bg
+}
+pub fn QE_CHIP_FG() -> u32 {
+    pal().qe_chip_fg
+}
 pub const TAG_GRAY: u32 = 0x7a7a7a;
 
 pub fn c(hex: u32) -> Hsla {
@@ -61,19 +151,19 @@ pub fn tag_color(name: &str) -> u32 {
         "purple" => 0xa074d0,
         "pink" => 0xd981ac,
         "gray" | "grey" => TAG_GRAY,
-        _ => MUTED_FG,
+        _ => MUTED_FG(),
     }
 }
 
 /// foreground over background mixes (light theme: over white).
 pub fn fg_mix(a: f32) -> Hsla {
-    mix(FG, a, BG)
+    mix(FG(), a, BG())
 }
 pub fn border_mix(a: f32) -> Hsla {
-    mix(BORDER, a, BG)
+    mix(BORDER(), a, BG())
 }
 pub fn muted_fg_mix(a: f32) -> Hsla {
-    mix(MUTED_FG, a, BG)
+    mix(MUTED_FG(), a, BG())
 }
 
 /// cubic-bezier(x1,y1,x2,y2) easing via bisection on x.
@@ -117,4 +207,9 @@ pub fn ease_emphasized(x: f32) -> f32 {
 /// Standard ease for 120ms hover transitions (CSS `ease`).
 pub fn ease_standard(x: f32) -> f32 {
     cubic_bezier(0.25, 0.1, 0.25, 1.0, x)
+}
+
+/// Sliding hover-highlight move: cubic-bezier(0.23, 1, 0.32, 1).
+pub fn ease_out_quint(x: f32) -> f32 {
+    cubic_bezier(0.23, 1.0, 0.32, 1.0, x)
 }

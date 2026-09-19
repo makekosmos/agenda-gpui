@@ -63,15 +63,23 @@ pub struct Project {
     pub id: &'static str,
     pub title: String,
     pub status: u8, // 0 active, 1 someday, 2 completed
+    // Schema fields seeded for Agenda parity; not rendered yet.
+    #[allow(dead_code)]
     pub deadline: Option<String>,
+    #[allow(dead_code)]
     pub sort_order: i32,
+    #[allow(dead_code)]
     pub area_id: Option<&'static str>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Area {
+    // Seeded for Agenda parity; areas are not rendered yet.
+    #[allow(dead_code)]
     pub id: &'static str,
+    #[allow(dead_code)]
     pub title: String,
+    #[allow(dead_code)]
     pub sort_order: i32,
 }
 
@@ -84,14 +92,20 @@ pub struct Tag {
 
 #[derive(Clone, Debug)]
 pub struct Heading {
+    // Seeded for Agenda parity; headings are not rendered yet.
+    #[allow(dead_code)]
     pub id: &'static str,
+    #[allow(dead_code)]
     pub title: String,
+    #[allow(dead_code)]
     pub sort_order: i32,
+    #[allow(dead_code)]
     pub project_id: &'static str,
 }
 
 #[derive(Clone, Debug)]
 pub struct CalEvent {
+    #[allow(dead_code)]
     pub id: &'static str,
     pub title: &'static str,
     pub starts_at: String,
@@ -122,7 +136,14 @@ pub fn day_key(offset: i64) -> String {
 
 fn iso_at(offset: i64, h: u32, m: u32) -> String {
     let d = Local::now().date_naive() + Duration::days(offset);
-    format!("{:04}-{:02}-{:02}T{:02}:{:02}:00", d.year(), d.month(), d.day(), h, m)
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:00",
+        d.year(),
+        d.month(),
+        d.day(),
+        h,
+        m
+    )
 }
 
 /// dateOnly(): accepts "YYYY-MM-DD" or ISO datetime → "YYYY-MM-DD"
@@ -182,7 +203,7 @@ pub fn is_overdue(t: &Todo, today: &str) -> bool {
         return false;
     }
     let (date, conflict) = task_date(t);
-    !conflict && date.as_deref().map_or(false, |d| d < today)
+    !conflict && date.as_deref().is_some_and(|d| d < today)
 }
 
 pub fn is_due_today(t: &Todo, today: &str) -> bool {
@@ -194,7 +215,9 @@ pub fn is_due_today(t: &Todo, today: &str) -> bool {
 }
 
 pub fn completed_on(t: &Todo, today: &str) -> bool {
-    task_status(t) == Status::Done && !t.is_trashed && date_only(&t.completed_at).as_deref() == Some(today)
+    task_status(t) == Status::Done
+        && !t.is_trashed
+        && date_only(&t.completed_at).as_deref() == Some(today)
 }
 
 pub fn is_archived(t: &Todo, today: &str) -> bool {
@@ -208,7 +231,11 @@ pub fn is_archived(t: &Todo, today: &str) -> bool {
 }
 
 pub fn overdue_todos(todos: &[Todo], today: &str) -> Vec<Todo> {
-    let mut v: Vec<Todo> = todos.iter().filter(|t| is_overdue(t, today)).cloned().collect();
+    let mut v: Vec<Todo> = todos
+        .iter()
+        .filter(|t| is_overdue(t, today))
+        .cloned()
+        .collect();
     v.sort_by(|a, b| {
         let da = task_date(a).0.unwrap_or_default();
         let db = task_date(b).0.unwrap_or_default();
@@ -237,7 +264,7 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
             .filter(|t| is_due_today(t, &today) || completed_on(t, &today))
             .cloned()
             .collect();
-        due.sort_by(|a, b| a.sort_order.cmp(&b.sort_order));
+        due.sort_by_key(|a| a.sort_order);
         v.extend(due);
         return v;
     }
@@ -248,7 +275,7 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
             SmartList::Inbox => is_inbox(t),
             SmartList::Plans => {
                 let (date, _) = task_date(t);
-                date.as_deref().map_or(false, |d| d > today.as_str())
+                date.as_deref().is_some_and(|d| d > today.as_str())
                     && is_active(t)
                     && !is_deferred(t)
                     && t.system_kind.is_none()
@@ -304,9 +331,11 @@ pub fn sorted(items: &[Todo], key: SortKey) -> Vec<Todo> {
             let db = task_date(b).0.unwrap_or_else(|| "9999".into());
             da.cmp(&db).then(a.sort_order.cmp(&b.sort_order))
         }),
-        SortKey::Priority => {
-            arr.sort_by(|a, b| b.priority.cmp(&a.priority).then(a.sort_order.cmp(&b.sort_order)))
-        }
+        SortKey::Priority => arr.sort_by(|a, b| {
+            b.priority
+                .cmp(&a.priority)
+                .then(a.sort_order.cmp(&b.sort_order))
+        }),
         SortKey::Title => arr.sort_by(|a, b| {
             a.title
                 .to_lowercase()
@@ -322,16 +351,42 @@ pub fn sorted(items: &[Todo], key: SortKey) -> Vec<Todo> {
 // ---------------------------------------------------------------------------
 
 const MONTH_SHORT: [&str; 12] = [
-    "янв.", "февр.", "мар.", "апр.", "мая", "июня", "июля", "авг.", "сент.", "окт.", "нояб.",
+    "янв.",
+    "февр.",
+    "мар.",
+    "апр.",
+    "мая",
+    "июня",
+    "июля",
+    "авг.",
+    "сент.",
+    "окт.",
+    "нояб.",
     "дек.",
 ];
 const MONTH_LONG: [&str; 12] = [
-    "января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября",
-    "октября", "ноября", "декабря",
+    "января",
+    "февраля",
+    "марта",
+    "апреля",
+    "мая",
+    "июня",
+    "июля",
+    "августа",
+    "сентября",
+    "октября",
+    "ноября",
+    "декабря",
 ];
 const WEEKDAY_SHORT: [&str; 7] = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
 const WEEKDAY_DATIVE: [&str; 7] = [
-    "понедельникам", "вторникам", "средам", "четвергам", "пятницам", "субботам", "воскресеньям",
+    "понедельникам",
+    "вторникам",
+    "средам",
+    "четвергам",
+    "пятницам",
+    "субботам",
+    "воскресеньям",
 ];
 
 /// {day: numeric, month: short} then strip trailing dot → "18 сент"
@@ -351,7 +406,12 @@ pub fn fmt_cal_day_label(key: &str) -> String {
     match parse_key(key) {
         Some(d) => {
             let wd = WEEKDAY_SHORT[d.weekday().num_days_from_monday() as usize];
-            format!("{}, {} {}", wd, d.day(), MONTH_SHORT[(d.month() - 1) as usize])
+            format!(
+                "{}, {} {}",
+                wd,
+                d.day(),
+                MONTH_SHORT[(d.month() - 1) as usize]
+            )
         }
         None => key.to_string(),
     }
@@ -360,7 +420,12 @@ pub fn fmt_cal_day_label(key: &str) -> String {
 /// {day: numeric, month: long, year: numeric} → "18 сентября 2025"
 pub fn fmt_day_month_year(key: &str) -> String {
     match parse_key(key) {
-        Some(d) => format!("{} {} {}", d.day(), MONTH_LONG[(d.month() - 1) as usize], d.year()),
+        Some(d) => format!(
+            "{} {} {}",
+            d.day(),
+            MONTH_LONG[(d.month() - 1) as usize],
+            d.year()
+        ),
         None => key.to_string(),
     }
 }
@@ -384,6 +449,7 @@ pub fn fmt_week_period(first: &str, last: &str) -> String {
 }
 
 /// "dd.mm.yyyy" for statistics day labels
+#[allow(dead_code)]
 pub fn fmt_dot_date(key: &str) -> String {
     match parse_key(key) {
         Some(d) => format!("{:02}.{:02}.{}", d.day(), d.month(), d.year()),
@@ -442,26 +508,25 @@ pub fn describe_recurrence(rule: &Option<RecurrenceRule>) -> String {
 pub fn parse_project_mention(title: &str, projects: &[Project]) -> (String, Option<String>) {
     let lower = title.to_lowercase();
     let mut sorted: Vec<&Project> = projects.iter().collect();
-    sorted.sort_by(|a, b| b.title.len().cmp(&a.title.len()));
+    sorted.sort_by_key(|p| std::cmp::Reverse(p.title.len()));
     for p in sorted {
         let marker = format!("@{}", p.title.to_lowercase());
-        let Some(idx) = lower.find(&marker) else { continue };
+        let Some(idx) = lower.find(&marker) else {
+            continue;
+        };
         let prev_ok = lower[..idx]
             .chars()
             .last()
-            .map_or(true, |c| c.is_whitespace());
+            .is_none_or(|c| c.is_whitespace());
         let next_ok = lower[idx + marker.len()..]
             .chars()
             .next()
-            .map_or(true, |c| !(c.is_alphanumeric() || c == '_'));
+            .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
         if !(prev_ok && next_ok) {
             continue;
         }
         // Remove the mention at the same byte range in the original string.
-        let byte_idx = title
-            .to_lowercase()
-            .find(&marker)
-            .unwrap_or(idx);
+        let byte_idx = title.to_lowercase().find(&marker).unwrap_or(idx);
         let end = byte_idx + marker.len();
         if !title.is_char_boundary(byte_idx) || !title.is_char_boundary(end) {
             return (title.to_string(), Some(p.id.to_string()));
@@ -469,7 +534,11 @@ pub fn parse_project_mention(title: &str, projects: &[Project]) -> (String, Opti
         let clean = format!("{}{}", &title[..byte_idx], &title[end..]);
         let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
         return (
-            if clean.is_empty() { title.to_string() } else { clean },
+            if clean.is_empty() {
+                title.to_string()
+            } else {
+                clean
+            },
             Some(p.id.to_string()),
         );
     }
@@ -479,7 +548,10 @@ pub fn parse_project_mention(title: &str, projects: &[Project]) -> (String, Opti
 /// Simplified parseQuickEntryCapture: handles Russian date keywords
 /// (сегодня/завтра/послезавтра, weekday names → next occurrence, "через N дн/нед").
 /// Full chrono-node parity is out of scope (documented gap).
-pub fn parse_quick_entry_capture(title: &str, selected: Option<String>) -> (String, Option<String>) {
+pub fn parse_quick_entry_capture(
+    title: &str,
+    selected: Option<String>,
+) -> (String, Option<String>) {
     if selected.is_some() {
         return (title.to_string(), selected);
     }
@@ -496,8 +568,13 @@ pub fn parse_quick_entry_capture(title: &str, selected: Option<String>) -> (Stri
     let mut date: Option<NaiveDate> = None;
     let mut remove_range: Option<(usize, usize)> = None;
     let ru_weekdays = [
-        ("понедельник", 0u32), ("вторник", 1), ("сред", 2), ("четверг", 3),
-        ("пятниц", 4), ("суббот", 5), ("воскресень", 6),
+        ("понедельник", 0u32),
+        ("вторник", 1),
+        ("сред", 2),
+        ("четверг", 3),
+        ("пятниц", 4),
+        ("суббот", 5),
+        ("воскресень", 6),
     ];
     for (i, (start, w)) in words.iter().enumerate() {
         let end = *start + w.len();
@@ -523,14 +600,24 @@ pub fn parse_quick_entry_capture(title: &str, selected: Option<String>) -> (Stri
         }
         if trimmed == "через" {
             if let Some((s2, w2)) = words.get(i + 1) {
-                if let Ok(n) = w2.trim_matches(|c: char| !c.is_alphanumeric()).parse::<i64>() {
+                if let Ok(n) = w2
+                    .trim_matches(|c: char| !c.is_alphanumeric())
+                    .parse::<i64>()
+                {
                     let unit = words
                         .get(i + 2)
                         .map(|(_, u)| u.trim_matches(|c: char| !c.is_alphanumeric()))
                         .unwrap_or("дня");
-                    let days = if unit.starts_with("недел") { n * 7 } else { n };
+                    let days = if unit.starts_with("недел") {
+                        n * 7
+                    } else {
+                        n
+                    };
                     date = Some(today + Duration::days(days));
-                    let e = words.get(i + 2).map(|(s, u)| s + u.len()).unwrap_or(s2 + w2.len());
+                    let e = words
+                        .get(i + 2)
+                        .map(|(s, u)| s + u.len())
+                        .unwrap_or(s2 + w2.len());
                     remove_range = Some((*start, e));
                     break;
                 }
@@ -542,7 +629,11 @@ pub fn parse_quick_entry_capture(title: &str, selected: Option<String>) -> (Stri
     };
     let clean = if let Some((s, e)) = remove_range {
         let mut t = String::new();
-        if s <= title.len() && e <= title.len() && title.is_char_boundary(s) && title.is_char_boundary(e) {
+        if s <= title.len()
+            && e <= title.len()
+            && title.is_char_boundary(s)
+            && title.is_char_boundary(e)
+        {
             t.push_str(&title[..s]);
             t.push_str(&title[e..]);
         } else {
@@ -552,12 +643,22 @@ pub fn parse_quick_entry_capture(title: &str, selected: Option<String>) -> (Stri
     } else {
         title.to_string()
     };
-    (if clean.is_empty() { title.to_string() } else { clean }, Some(key_of(d)))
+    (
+        if clean.is_empty() {
+            title.to_string()
+        } else {
+            clean
+        },
+        Some(key_of(d)),
+    )
 }
 
 /// Next occurrence for a completed recurring task (createNextRecurrence subset).
 pub fn next_recurrence_date(rule: &RecurrenceRule, t: &Todo) -> String {
-    let base = task_date(t).0.and_then(|d| parse_key(&d)).unwrap_or_else(|| Local::now().date_naive());
+    let base = task_date(t)
+        .0
+        .and_then(|d| parse_key(&d))
+        .unwrap_or_else(|| Local::now().date_naive());
     let next = match rule.frequency {
         0 => base + Duration::days(rule.interval as i64),
         1 => {
@@ -688,8 +789,12 @@ pub fn seed_todos() -> Vec<Todo> {
             t.heading_id = Some("dev-head-prep");
             t.checklist = vec![
                 ChecklistItem { is_completed: true },
-                ChecklistItem { is_completed: false },
-                ChecklistItem { is_completed: false },
+                ChecklistItem {
+                    is_completed: false,
+                },
+                ChecklistItem {
+                    is_completed: false,
+                },
             ];
             t
         },
@@ -815,36 +920,120 @@ pub fn seed_projects() -> Vec<Project> {
 
 pub fn seed_areas() -> Vec<Area> {
     vec![
-        Area { id: "dev-area-work", title: "Работа".into(), sort_order: 0 },
-        Area { id: "dev-area-life", title: "Личное".into(), sort_order: 1 },
+        Area {
+            id: "dev-area-work",
+            title: "Работа".into(),
+            sort_order: 0,
+        },
+        Area {
+            id: "dev-area-life",
+            title: "Личное".into(),
+            sort_order: 1,
+        },
     ]
 }
 
 pub fn seed_tags() -> Vec<Tag> {
     vec![
-        Tag { id: "dev-tag-urgent", title: "срочно".into(), color: "red" },
-        Tag { id: "dev-tag-focus", title: "фокус".into(), color: "blue" },
-        Tag { id: "dev-tag-home", title: "дом".into(), color: "green" },
+        Tag {
+            id: "dev-tag-urgent",
+            title: "срочно".into(),
+            color: "red",
+        },
+        Tag {
+            id: "dev-tag-focus",
+            title: "фокус".into(),
+            color: "blue",
+        },
+        Tag {
+            id: "dev-tag-home",
+            title: "дом".into(),
+            color: "green",
+        },
     ]
 }
 
 pub fn seed_headings() -> Vec<Heading> {
     vec![
-        Heading { id: "dev-head-prep", title: "Подготовка".into(), sort_order: 0, project_id: "dev-proj-release" },
-        Heading { id: "dev-head-polish", title: "Полировка".into(), sort_order: 1, project_id: "dev-proj-release" },
+        Heading {
+            id: "dev-head-prep",
+            title: "Подготовка".into(),
+            sort_order: 0,
+            project_id: "dev-proj-release",
+        },
+        Heading {
+            id: "dev-head-polish",
+            title: "Полировка".into(),
+            sort_order: 1,
+            project_id: "dev-proj-release",
+        },
     ]
 }
 
 pub fn seed_events() -> Vec<CalEvent> {
     vec![
-        CalEvent { id: "dev-event-standup", title: "Ежедневный стендап", starts_at: iso_at(0, 10, 0), ends_at: Some(iso_at(0, 10, 30)), location: Some("Zoom") },
-        CalEvent { id: "dev-event-lunch", title: "Обед с Аней", starts_at: iso_at(0, 13, 0), ends_at: Some(iso_at(0, 14, 0)), location: Some("Кафе на углу") },
-        CalEvent { id: "dev-event-gym", title: "Спортзал", starts_at: iso_at(0, 18, 30), ends_at: Some(iso_at(0, 19, 30)), location: None },
-        CalEvent { id: "dev-event-design-review", title: "Дизайн-ревью", starts_at: iso_at(1, 11, 0), ends_at: Some(iso_at(1, 12, 30)), location: Some("Переговорка 2") },
-        CalEvent { id: "dev-event-one-on-one", title: "1:1 с руководителем", starts_at: iso_at(2, 15, 0), ends_at: Some(iso_at(2, 16, 0)), location: None },
-        CalEvent { id: "dev-event-planning", title: "Планирование спринта", starts_at: iso_at(3, 9, 0), ends_at: Some(iso_at(3, 10, 30)), location: Some("Zoom") },
-        CalEvent { id: "dev-event-demo", title: "Демо заказчику", starts_at: iso_at(4, 17, 0), ends_at: Some(iso_at(4, 18, 0)), location: None },
-        CalEvent { id: "dev-event-webinar", title: "Вебинар по Rust", starts_at: iso_at(5, 12, 0), ends_at: Some(iso_at(5, 13, 0)), location: None },
-        CalEvent { id: "dev-event-strategy", title: "Стратегическая сессия", starts_at: iso_at(8, 10, 0), ends_at: Some(iso_at(8, 16, 0)), location: Some("Офис") },
+        CalEvent {
+            id: "dev-event-standup",
+            title: "Ежедневный стендап",
+            starts_at: iso_at(0, 10, 0),
+            ends_at: Some(iso_at(0, 10, 30)),
+            location: Some("Zoom"),
+        },
+        CalEvent {
+            id: "dev-event-lunch",
+            title: "Обед с Аней",
+            starts_at: iso_at(0, 13, 0),
+            ends_at: Some(iso_at(0, 14, 0)),
+            location: Some("Кафе на углу"),
+        },
+        CalEvent {
+            id: "dev-event-gym",
+            title: "Спортзал",
+            starts_at: iso_at(0, 18, 30),
+            ends_at: Some(iso_at(0, 19, 30)),
+            location: None,
+        },
+        CalEvent {
+            id: "dev-event-design-review",
+            title: "Дизайн-ревью",
+            starts_at: iso_at(1, 11, 0),
+            ends_at: Some(iso_at(1, 12, 30)),
+            location: Some("Переговорка 2"),
+        },
+        CalEvent {
+            id: "dev-event-one-on-one",
+            title: "1:1 с руководителем",
+            starts_at: iso_at(2, 15, 0),
+            ends_at: Some(iso_at(2, 16, 0)),
+            location: None,
+        },
+        CalEvent {
+            id: "dev-event-planning",
+            title: "Планирование спринта",
+            starts_at: iso_at(3, 9, 0),
+            ends_at: Some(iso_at(3, 10, 30)),
+            location: Some("Zoom"),
+        },
+        CalEvent {
+            id: "dev-event-demo",
+            title: "Демо заказчику",
+            starts_at: iso_at(4, 17, 0),
+            ends_at: Some(iso_at(4, 18, 0)),
+            location: None,
+        },
+        CalEvent {
+            id: "dev-event-webinar",
+            title: "Вебинар по Rust",
+            starts_at: iso_at(5, 12, 0),
+            ends_at: Some(iso_at(5, 13, 0)),
+            location: None,
+        },
+        CalEvent {
+            id: "dev-event-strategy",
+            title: "Стратегическая сессия",
+            starts_at: iso_at(8, 10, 0),
+            ends_at: Some(iso_at(8, 16, 0)),
+            location: Some("Офис"),
+        },
     ]
 }

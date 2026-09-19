@@ -1,0 +1,42 @@
+# Git hooks — lefthook
+# Install: bun install
+
+glob_matcher: doublestar
+
+pre-commit:
+  parallel: false
+  commands:
+    rust:
+      glob: "{Cargo.toml,Cargo.lock,rust-toolchain*,.cargo/**/*,build.rs,src/**/*.rs,vendor/**/Cargo.toml,vendor/**/*.rs}"
+      run: cargo check --quiet
+    rustfmt:
+      glob: "{build.rs,src/**/*.rs}"
+      run: cargo fmt --check
+    oxlint:
+      glob: "**/*.{ts,tsx,vue,mjs,cjs,js,jsx}"
+      run: bunx oxlint {staged_files}
+    oxfmt:
+      glob: "**/*.{ts,tsx,vue,mjs,cjs,js,jsx,json}"
+      run: bunx oxfmt --check {staged_files}
+
+pre-push:
+  parallel: false
+  commands:
+    test:
+      glob: "{Cargo.toml,Cargo.lock,rust-toolchain*,.cargo/**/*,build.rs,src/**/*.rs,vendor/**/Cargo.toml,vendor/**/*.rs}"
+      # The binary currently has no test targets; keep the Core gate wired without
+      # turning an empty suite into a failure.
+      run: cargo nextest run --workspace --all-features --no-tests=pass
+    cargo-shear:
+      glob: "Cargo.toml"
+      run: cargo shear
+    clippy:
+      glob: "{Cargo.toml,Cargo.lock,rust-toolchain*,.cargo/**/*,build.rs,src/**/*.rs,vendor/**/Cargo.toml,vendor/**/*.rs}"
+      # `dead_code` is the explicit baseline for seeded UI model fields/helpers that
+      # mirror Agenda state but are not rendered by the GPUI clone yet.
+      run: cargo clippy --workspace --all-targets --all-features -- -D warnings -A dead_code -A clippy::too_many_arguments -A clippy::option_map_unit_fn -A clippy::map_flatten -A clippy::nonminimal_bool -A clippy::type_complexity -A clippy::collapsible_if -A clippy::let_and_return -A clippy::result_large_err -A clippy::duplicated_attributes -A clippy::useless_conversion -A clippy::panic -A clippy::assertions_on_constants
+    cargo-deny:
+      glob: "{Cargo.toml,Cargo.lock,deny.toml}"
+      run: cargo deny check advisories bans sources
+    source-size:
+      run: bun run check:source-size

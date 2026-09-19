@@ -5,18 +5,17 @@ edition = "2021"
 description = "GPUI clone of the Agenda task UI (experimental, KOS-124)"
 
 [dependencies]
-gpui = { path = "vendor/gpui-0.2.2-patched", version = "0.2.2" }
-gpui-component = "0.5.1"
+# gpui-kit pins the matching gpui-pre snapshot (0.3.5) and puts GPUI at its
+# root, so `use gpui::...` keeps working through this alias.
+gpui = { package = "gpui-kit", version = "=0.6.2" }
+gpui-component = "=0.6.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [profile.release]
-# debug-assertions MUST stay false: with it on, gpui takes the debug runtime
-# shader path (D3DCompileFromFile at startup from env!("CARGO_MANIFEST_DIR"),
-# which would be a Linux cargo-registry path baked into the exe) and cannot
-# render on a real Windows PC. With it off, gpui embeds precompiled shader
-# bytes from $OUT_DIR/shaders_bytes.rs. The vendored gpui build.rs generates
-# that file on any host via GPUI_FXC_PATH=tools/fxc (a dxc-backed shim);
-# see tools/build-windows.sh.
+# debug-assertions MUST stay false: gpui-pre-windows compiles its HLSL
+# shaders via fxc only when build scripts are built without debug
+# assertions (see its build.rs); the debug path is a runtime compile that
+# bakes a Linux cargo-registry path into the exe when cross-compiling.
 debug = false
 debug-assertions = false
 
@@ -27,6 +26,14 @@ debug-assertions = false
 debug-assertions = false
 opt-level = 0
 
+[target.'cfg(target_os = "windows")'.build-dependencies]
+embed-resource = "3.0"
+
 [patch.crates-io]
-gpui = { path = "vendor/gpui-0.2.2-patched" }
+# Local patches carried over from vendor/gpui-0.2.2-patched: WM_NCHITTEST
+# resolves window-control hitboxes at the cursor position carried by the
+# message instead of the one-event-stale Window::mouse_hit_test. See
+# vendor/gpui-pre-windows-0.3.5-patched/PATCH.md.
+gpui-pre = { path = "vendor/gpui-pre-0.3.5-patched" }
+gpui-pre-windows = { path = "vendor/gpui-pre-windows-0.3.5-patched" }
 

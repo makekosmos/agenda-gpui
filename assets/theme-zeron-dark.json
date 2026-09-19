@@ -1,0 +1,63 @@
+{
+  "_source": "zeronsh/chat src/themes.css `.dark` (T3 Chat Cloneathon app), oklch->sRGB converted",
+  "_usage": "applied to src/theme.rs constants",
+  "colors": {
+    "background": { "oklch": "oklch(0.158 0.009 300)", "hex": "#0d0c10" },
+    "foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "card": { "oklch": "oklch(0.184 0.01 300)", "hex": "#131216" },
+    "card-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "popover": { "oklch": "oklch(0.206 0.011 300)", "hex": "#18161c" },
+    "popover-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "primary": { "oklch": "oklch(0.73 0.145 295)", "hex": "#af94f9" },
+    "primary-foreground": { "oklch": "oklch(0.15 0.01 300)", "hex": "#0c0a0f" },
+    "secondary": { "oklch": "oklch(0.225 0.011 300)", "hex": "#1c1b20" },
+    "secondary-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "muted": { "oklch": "oklch(0.213 0.011 300)", "hex": "#1a181d" },
+    "muted-foreground": { "oklch": "oklch(0.64 0.014 300)", "hex": "#8d8a94" },
+    "accent": { "oklch": "oklch(0.225 0.011 300)", "hex": "#1c1b20" },
+    "accent-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "destructive": { "oklch": "oklch(0.7 0.18 22)", "hex": "#fa686a" },
+    "destructive-foreground": { "oklch": "oklch(0.158 0.009 300)", "hex": "#0d0c10" },
+    "border": {
+      "oklch": "oklch(0.925 0.006 300 / 6%)",
+      "note": "alpha border; solid equiv fg12%/bg = #27262a"
+    },
+    "input": { "oklch": "oklch(0.925 0.006 300 / 6%)" },
+    "ring": { "oklch": "oklch(0.73 0.145 295)", "hex": "#af94f9" },
+    "sidebar": { "oklch": "oklch(0.138 0.008 300)", "hex": "#09080c" },
+    "sidebar-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "sidebar-primary": { "oklch": "oklch(0.73 0.145 295)", "hex": "#af94f9" },
+    "sidebar-primary-foreground": { "oklch": "oklch(0.15 0.01 300)", "hex": "#0c0a0f" },
+    "sidebar-accent": { "oklch": "oklch(0.225 0.011 300)", "hex": "#1c1b20" },
+    "sidebar-accent-foreground": { "oklch": "oklch(0.925 0.006 300)", "hex": "#e7e5ea" },
+    "sidebar-border": { "oklch": "oklch(0.925 0.006 300 / 6%)" },
+    "sidebar-ring": { "oklch": "oklch(0.73 0.145 295)", "hex": "#af94f9" },
+    "chart-1": { "oklch": "oklch(0.73 0.145 295)", "hex": "#af94f9" },
+    "chart-2": { "oklch": "oklch(0.7 0.11 230)", "hex": "#8ca5e8" },
+    "chart-3": { "oklch": "oklch(0.72 0.14 150)", "hex": "#5bbd74" },
+    "chart-4": { "oklch": "oklch(0.78 0.13 60)", "hex": "#f4a25c" },
+    "chart-5": { "oklch": "oklch(0.7 0.16 18)", "hex": "#f0687b" }
+  },
+  "derived": {
+    "fg-12-over-bg": "#27262a",
+    "fg-8-over-sidebar": "#1b1a1e",
+    "fg-12-over-popover": "#312f35",
+    "accent-30-over-popover": "#453c5e",
+    "accent-lightened": "#cbb9fb",
+    "accent-darkened-25": "#836fbb"
+  },
+  "fonts": {
+    "sans": "Geist",
+    "serif": "IBM Plex Serif",
+    "mono": "Geist Mono"
+  },
+  "radius": "0.625rem",
+  "shadows": {
+    "shadow-2xs": "0px 4px 6px 0px hsl(254 55% 6% / 0.06)",
+    "shadow-sm": "0px 4px 6px 0px hsl(254 55% 6% / 0.12), 0px 1px 2px -1px hsl(254 55% 6% / 0.12)",
+    "shadow-md": "0px 4px 6px 0px hsl(254 55% 6% / 0.12), 0px 2px 4px -1px hsl(254 55% 6% / 0.12)",
+    "shadow-lg": "0px 4px 6px 0px hsl(254 55% 6% / 0.12), 0px 4px 6px -1px hsl(254 55% 6% / 0.12)",
+    "shadow-xl": "0px 4px 6px 0px hsl(254 55% 6% / 0.12), 0px 8px 10px -1px hsl(254 55% 6% / 0.12)",
+    "shadow-2xl": "0px 4px 6px 0px hsl(254 55% 6% / 0.3)"
+  }
+}

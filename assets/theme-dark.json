@@ -1,0 +1,73 @@
+{
+  "$meta": {
+    "source": "makekosmos/imago theme/css-variables.css (.dark + root tokens used by it)",
+    "extracted": "2026-09-18",
+    "note": "hex = oklch->sRGB(D65) computed; alpha kept separately. Not wired into the app yet — reference data for the future dark theme."
+  },
+  "tokens": {
+    "background": { "oklch": "0.17 0 0", "hex": "#0f0f0f" },
+    "foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "card": { "oklch": "0.205 0 0", "hex": "#171717" },
+    "card-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "popover": { "oklch": "0.205 0 0", "hex": "#171717" },
+    "popover-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "primary": { "oklch": "0.922 0 0", "hex": "#e5e5e5" },
+    "primary-foreground": { "oklch": "0.205 0 0", "hex": "#171717" },
+    "secondary": { "oklch": "0.269 0.00003 271", "hex": "#262626" },
+    "secondary-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "muted": { "oklch": "0.269 0 0", "hex": "#262626" },
+    "muted-foreground": { "oklch": "0.708 0 0", "hex": "#a1a1a1" },
+    "surface": { "oklch": "0.269 0 0", "hex": "#262626" },
+    "surface-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "destructive": { "oklch": "0.704 0.191 22.216", "hex": "#ff6467" },
+    "destructive-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "status-success": { "oklch": "0.627 0.194 149.214", "hex": "#00a63e" },
+    "status-warning": { "oklch": "0.75 0.14 75", "hex": "#e1a035" },
+    "status-connecting": { "oklch": "0.75 0.14 75", "hex": "#e1a035" },
+    "border": { "oklch": "0.23 0.00004 271", "hex": "#1d1d1d" },
+    "input": { "oklch": "1 0 0 / 15%", "hex": "#ffffff", "alpha": 0.15 },
+    "ring": { "oklch": "0.53 0 0", "hex": "#6c6c6c" },
+    "color-shape-highlight-light-solid": { "oklch": "0.17 0.003 251", "hex": "#0e0f11" },
+    "bg-app": { "css": "#1d1d1f", "hex": "#1d1d1f" },
+    "kosmos-titlebar-background": { "css": "#2a2a2a", "hex": "#2a2a2a" },
+    "sidebar-bg": { "oklch": "0.15 0 0", "hex": "#0b0b0b" },
+    "sidebar-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "sidebar-primary": { "oklch": "0.58 0 0", "hex": "#7a7a7a" },
+    "sidebar-primary-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "sidebar-surface": { "oklch": "0.32 0 0", "hex": "#333333" },
+    "sidebar-surface-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "sidebar-border": { "oklch": "1 0 0 / 10%", "hex": "#ffffff", "alpha": 0.1 },
+    "sidebar-ring": { "oklch": "0.556 0 0", "hex": "#737373" },
+
+    "accent": { "oklch": "0.546 0.229 264.1", "hex": "#275ff3" },
+    "accent-foreground": { "oklch": "0.985 0 0", "hex": "#fafafa" },
+    "main-background-color": { "oklch": "0.2002 0 0 / 60%", "hex": "#161616", "alpha": 0.6 },
+    "color-bg-primary": { "oklch": "0.145 0 0", "hex": "#0a0a0a" },
+    "second-text-color": { "css": "#717171", "hex": "#717171" },
+    "border-color-low-emphasis": { "css": "#313131", "hex": "#313131" },
+    "border-color-high-emphasis": { "css": "#3b3b3b", "hex": "#3b3b3b" },
+    "settings-search-surface": { "css": "#262626", "hex": "#262626" },
+    "settings-search-surface-focused": { "css": "#303030", "hex": "#303030" },
+    "settings-sidebar-active": { "css": "#343434", "hex": "#343434" },
+    "settings-sidebar-icon-from": { "oklch": "0.42 0 0", "hex": "#4d4d4d" },
+    "settings-sidebar-icon-to": { "oklch": "0.26 0 0", "hex": "#242424" },
+    "settings-list-background": {
+      "css": "color-mix(foreground 5%)",
+      "hex": "#fafafa",
+      "alpha": 0.05
+    }
+  },
+  "shadows": {
+    "shadow-floating": "0 4px 24px rgba(0,0,0,0.55)",
+    "shadow-lg": "0 10px 15px -3px rgba(0,0,0,0.10), 0 4px 6px -4px rgba(0,0,0,0.10)"
+  },
+  "motion": {
+    "easing-standard": "cubic-bezier(0.4, 0, 0.2, 1)",
+    "easing-emphasized": "cubic-bezier(0.2, 0, 0, 1)",
+    "sidebar-width": "0.33s cubic-bezier(0.22, 1, 0.36, 1)",
+    "sidebar-item-hover": "background-color,color 0.12s cubic-bezier(0.2, 0, 0, 1)",
+    "sidebar-highlight": "transform,width,height 0.16s cubic-bezier(0.23, 1, 0.32, 1); opacity 0.08s ease",
+    "group-icon-swap": "0.35s cubic-bezier(0.22, 1, 0.36, 1)",
+    "popover-in": "opacity,transform 0.15s ease (translateY(6px) scale(0.98) -> none)"
+  }
+}
