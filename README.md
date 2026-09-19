@@ -5,9 +5,12 @@
 ## Требования
 
 - Rust stable
-- Bun 1.3.14 для установки Git hooks (`bun install`)
+- `hk` для Git hooks: `cargo install hk --locked`, затем `hk install` в корне репозитория
+- Гейты pre-push: `cargo nextest`, `cargo shear`, `cargo clippy`, `cargo deny` (ставятся через `cargo install` по необходимости)
 - Linux: обычный `cargo run`
 - Windows release: нужен Windows SDK `fxc.exe` в `PATH` или `GPUI_FXC_PATH` (вшитые DXBC-шейдеры). Иначе падение на DirectWrite/шейдерах.
+
+Весь гейт можно прогнать вручную: `hk check --all` или `hk run pre-push`.
 
 ## Сборка
 

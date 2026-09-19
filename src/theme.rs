@@ -1,5 +1,5 @@
 // Runtime color palette, zeron themes (zeronsh/chat src/themes.css),
-// oklch→sRGB converted by scripts/gen-themes.mjs into src/palettes.rs.
+// oklch→sRGB converted by `cargo run --bin gen-themes` into src/palettes.rs.
 // Sidebar bg is a step darker than the app bg.
 #![allow(non_snake_case)]
 

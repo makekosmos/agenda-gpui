@@ -1,0 +1,249 @@
+//! Generates src/palettes.rs from .dev/zeron/src/themes.css.
+//! Run: cargo run --bin gen-themes
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+/// oklch(L C H) -> sRGB [r,g,b] in 0..255.
+fn oklch_to_srgb(l: f64, c: f64, h: f64) -> [u8; 3] {
+    let hr = h.to_radians();
+    let (a, b) = (c * hr.cos(), c * hr.sin());
+    let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
+    let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
+    let s_ = l - 0.0894841775 * a - 1.291485548 * b;
+    let (l3, m3, s3) = (l_.powi(3), m_.powi(3), s_.powi(3));
+    let gam = |x: f64| {
+        if x <= 0.0031308 {
+            12.92 * x
+        } else {
+            1.055 * x.powf(1.0 / 2.4) - 0.055
+        }
+    };
+    let c255 = |x: f64| (x.clamp(0.0, 1.0) * 255.0).round() as u8;
+    [
+        c255(gam(
+            4.0767416621 * l3 - 3.3077115913 * m3 + 0.2309699292 * s3
+        )),
+        c255(gam(
+            -1.2684380046 * l3 + 2.6097574011 * m3 - 0.3413193965 * s3
+        )),
+        c255(gam(
+            -0.0041960863 * l3 - 0.7034186147 * m3 + 1.707614701 * s3
+        )),
+    ]
+}
+
+fn hex(v: [u8; 3]) -> String {
+    format!("0x{:02x}{:02x}{:02x}", v[0], v[1], v[2])
+}
+
+fn mix_rgb(a: [u8; 3], t: f64, b: [u8; 3]) -> [u8; 3] {
+    let mut out = [0u8; 3];
+    for i in 0..3 {
+        out[i] = (a[i] as f64 * t + b[i] as f64 * (1.0 - t)).round() as u8;
+    }
+    out
+}
+
+/// Extract the body of `selector { ... }` (no nested braces in themes.css).
+fn block<'a>(css: &'a str, sel: &str) -> &'a str {
+    let at = css
+        .find(sel)
+        .unwrap_or_else(|| panic!("selector not found: {sel}"));
+    let rest = &css[at + sel.len()..];
+    let open = rest.find('{').expect("block open") + 1;
+    let close = rest[open..].find('}').expect("block close") + open;
+    &rest[open..close]
+}
+
+/// `--name: oklch(L C H)` tokens from a selector body.
+fn tokens(body: &str) -> HashMap<String, [f64; 3]> {
+    let mut map = HashMap::new();
+    for part in body.split(';') {
+        let Some((name, val)) = part
+            .trim()
+            .strip_prefix("--")
+            .and_then(|s| s.split_once(':'))
+        else {
+            continue;
+        };
+        let val = val.trim();
+        let Some(inner) = val.strip_prefix("oklch(").and_then(|s| s.strip_suffix(')')) else {
+            continue;
+        };
+        let inner = inner.split('/').next().unwrap();
+        let nums: Vec<f64> = inner
+            .split_whitespace()
+            .filter_map(|t| t.parse().ok())
+            .collect();
+        if nums.len() == 3 {
+            map.insert(name.trim().to_string(), [nums[0], nums[1], nums[2]]);
+        }
+    }
+    map
+}
+
+fn col(t: &HashMap<String, [f64; 3]>, name: &str) -> [u8; 3] {
+    let v = t
+        .get(name)
+        .unwrap_or_else(|| panic!("missing token {name}"));
+    oklch_to_srgb(v[0], v[1], v[2])
+}
+
+const THEME_DEFS: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "default",
+        "Default",
+        "Чистый минималистичный стиль",
+        ".default",
+        ".dark.default",
+    ),
+    (
+        "t3-chat",
+        "T3 Chat",
+        "Стиль современного чат-интерфейса",
+        ".t3-chat",
+        ".t3-chat.dark",
+    ),
+    (
+        "claymorphism",
+        "Claymorphism",
+        "Мягкий глиняный вид",
+        ".claymorphism",
+        ".claymorphism.dark",
+    ),
+    (
+        "claude",
+        "Claude",
+        "Тема в духе Anthropic Claude",
+        ".claude",
+        ".claude.dark",
+    ),
+    (
+        "graphite",
+        "Graphite",
+        "Тёмный и строгий",
+        ".graphite",
+        ".graphite.dark",
+    ),
+    (
+        "amethyst-haze",
+        "Amethyst Haze",
+        "Фиолетовый оттенок",
+        ".amethyst-haze",
+        ".dark.amethyst-haze",
+    ),
+    (
+        "vercel",
+        "Vercel",
+        "Дизайн в стиле Vercel",
+        ".vercel",
+        ".dark.vercel",
+    ),
+];
+
+fn palette(t: &HashMap<String, [f64; 3]>) -> String {
+    let bg = col(t, "background");
+    let fg = col(t, "foreground");
+    let pop = col(t, "popover");
+    let accent = col(t, "primary");
+    let sidebar = col(t, "sidebar");
+    let v = [
+        hex(bg),
+        hex(fg),
+        hex(col(t, "muted-foreground")),
+        hex(mix_rgb(fg, 0.12, bg)),
+        hex(accent),
+        hex(col(t, "primary-foreground")),
+        hex(mix_rgb(accent, 0.72, bg)),
+        hex(col(t, "secondary")),
+        hex(col(t, "card")),
+        hex(pop),
+        hex(sidebar),
+        hex(mix_rgb(fg, 0.08, sidebar)),
+        hex(col(t, "destructive")),
+        hex(col(t, "chart-4")),
+        hex(col(t, "chart-3")),
+        hex(mix_rgb(accent, 0.30, pop)),
+        hex(mix_rgb(accent, 0.75, fg)),
+    ];
+    format!("p({})", v.join(", "))
+}
+
+fn main() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let css_path = root.join(".dev/zeron/src/themes.css");
+    let css = std::fs::read_to_string(&css_path)
+        .unwrap_or_else(|e| panic!("{}: {e}", css_path.display()));
+
+    let mut out = String::from(
+        "//! GENERATED by `cargo run --bin gen-themes` from .dev/zeron/src/themes.css — do not edit by hand.\n\nuse crate::theme::Palette;\n\n",
+    );
+    out.push_str(
+        "const fn p(
+    bg: u32,
+    fg: u32,
+    muted_fg: u32,
+    border: u32,
+    accent: u32,
+    accent_fg: u32,
+    accent_dim: u32,
+    secondary: u32,
+    card: u32,
+    popover: u32,
+    sidebar_bg: u32,
+    sidebar_divider: u32,
+    destructive: u32,
+    warn: u32,
+    success: u32,
+    qe_chip_bg: u32,
+    qe_chip_fg: u32,
+) -> Palette {
+    Palette {
+        bg,
+        fg,
+        muted_fg,
+        border,
+        accent,
+        accent_fg,
+        accent_dim,
+        secondary,
+        card,
+        popover,
+        sidebar_bg,
+        sidebar_divider,
+        destructive,
+        warn,
+        success,
+        qe_chip_bg,
+        qe_chip_fg,
+    }
+}
+
+pub struct ThemeDef {
+    #[allow(dead_code)]
+    pub key: &'static str,
+    pub name: &'static str,
+    pub desc: &'static str,
+    pub light: Palette,
+    pub dark: Palette,
+}
+
+#[rustfmt::skip]
+pub const THEMES: &[ThemeDef] = &[
+",
+    );
+    for (key, name, desc, lsel, dsel) in THEME_DEFS {
+        let light = tokens(block(&css, lsel));
+        let dark = tokens(block(&css, dsel));
+        out.push_str(&format!(
+            "    ThemeDef {{ key: \"{key}\", name: \"{name}\", desc: \"{desc}\",\n        light: {},\n        dark: {},\n    }},\n",
+            palette(&light),
+            palette(&dark),
+        ));
+    }
+    out.push_str("];\n");
+
+    let out_path = root.join("src/palettes.rs");
+    std::fs::write(&out_path, out).expect("write src/palettes.rs");
+    println!("wrote {}", out_path.display());
+}
