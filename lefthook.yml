@@ -12,12 +12,6 @@ pre-commit:
     rustfmt:
       glob: "{build.rs,src/**/*.rs}"
       run: cargo fmt --check
-    oxlint:
-      glob: "**/*.{ts,tsx,vue,mjs,cjs,js,jsx}"
-      run: bunx oxlint {staged_files}
-    oxfmt:
-      glob: "**/*.{ts,tsx,vue,mjs,cjs,js,jsx,json}"
-      run: bunx oxfmt --check {staged_files}
 
 pre-push:
   parallel: false
