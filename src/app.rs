@@ -198,6 +198,7 @@ pub struct Agenda {
     pub(crate) theme_idx: usize,
     pub(crate) sb_material: u8, // 0 solid 1 acrylic 2 mica
     pub(crate) applied_material: Option<u8>,
+    pub(crate) applied_theme_sel: Option<u8>,
     pub(crate) delete_blocked: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
@@ -305,6 +306,7 @@ impl Agenda {
             theme_idx: 0,
             sb_material: 0,
             applied_material: None,
+            applied_theme_sel: None,
             delete_blocked: false,
             scrolls: HashMap::new(),
             inputs: HashMap::new(),
@@ -406,16 +408,18 @@ impl Agenda {
     }
 
     /// Sidebar shell background for the selected material. "Solid" is the
-    /// opaque theme color; acrylic/mica let the system backdrop show through
-    /// with a light theme tint on top. On platforms without a real backdrop
-    /// the sidebar stays opaque.
+    /// opaque theme color; acrylic gets a strong theme tint (native acrylic
+    /// stays readable over the blurred desktop — the material shows as
+    /// texture, not as the dominant color); mica/vibrancy is already a flat
+    /// readable surface, so it only gets a faint tint or it would look like
+    /// a dirty smear instead of the system material.
     pub(crate) fn sidebar_surface(&self) -> Hsla {
-        if !cfg!(any(target_os = "windows", target_os = "macos")) {
+        if !self.backdrop_active() {
             return c(SIDEBAR_BG());
         }
         match self.sb_material {
-            1 => rgba(SIDEBAR_BG(), 0.55),
-            2 => rgba(SIDEBAR_BG(), 0.25),
+            1 => rgba(SIDEBAR_BG(), 0.8),
+            2 => rgba(SIDEBAR_BG(), 0.12),
             _ => c(SIDEBAR_BG()),
         }
     }
@@ -561,6 +565,17 @@ impl Render for Agenda {
                 }
                 2 => Self::mica_appearance(),
                 _ => gpui::WindowBackgroundAppearance::Opaque,
+            });
+        }
+        // Pin the window's light/dark appearance to the selected theme mode so
+        // Mica/Acrylic tint and system-chrome rendering follow the app theme,
+        // not just the OS. "System" clears the override.
+        if self.applied_theme_sel != Some(self.theme_sel) {
+            self.applied_theme_sel = Some(self.theme_sel);
+            cx.set_window_appearance(match self.theme_sel {
+                0 => Some(gpui::WindowAppearance::Light),
+                1 => Some(gpui::WindowAppearance::Dark),
+                _ => None,
             });
         }
 

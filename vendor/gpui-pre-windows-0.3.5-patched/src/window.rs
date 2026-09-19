@@ -49,6 +49,9 @@ pub struct WindowsWindowState {
     pub fullscreen_restore_bounds: Cell<Bounds<Pixels>>,
     pub border_offset: WindowBorderOffset,
     pub appearance: Cell<WindowAppearance>,
+    /// Shared with `WindowsPlatform`: Some(..) pins this window's appearance
+    /// to the app-selected theme instead of following `ImmersiveColorSet`.
+    pub appearance_override: Arc<Cell<Option<WindowAppearance>>>,
     pub background_appearance: Cell<WindowBackgroundAppearance>,
     pub scale_factor: Cell<f32>,
     pub restore_from_minimized: Cell<Option<Box<dyn FnMut(RequestFrameOptions)>>>,
@@ -124,6 +127,7 @@ impl WindowsWindowState {
         display: WindowsDisplay,
         min_size: Option<Size<Pixels>>,
         appearance: WindowAppearance,
+        appearance_override: Arc<Cell<Option<WindowAppearance>>>,
         disable_direct_composition: bool,
         invalidate_devices: Arc<AtomicBool>,
         draw_coordinator: Rc<DrawCoordinator>,
@@ -168,6 +172,7 @@ impl WindowsWindowState {
             fullscreen_restore_bounds: Cell::new(fullscreen_restore_bounds),
             border_offset,
             appearance: Cell::new(appearance),
+            appearance_override,
             background_appearance: Cell::new(WindowBackgroundAppearance::Opaque),
             scale_factor: Cell::new(scale_factor),
             restore_from_minimized: Cell::new(restore_from_minimized),
@@ -282,6 +287,7 @@ impl WindowsWindowInner {
             context.display,
             context.min_size,
             context.appearance,
+            context.appearance_override.clone(),
             context.disable_direct_composition,
             context.invalidate_devices.clone(),
             context.draw_coordinator.clone(),
@@ -431,6 +437,7 @@ struct WindowCreateContext {
     main_receiver: PriorityQueueReceiver<RunnableVariant>,
     platform_window_handle: HWND,
     appearance: WindowAppearance,
+    appearance_override: Arc<Cell<Option<WindowAppearance>>>,
     disable_direct_composition: bool,
     directx_devices: DirectXDevices,
     invalidate_devices: Arc<AtomicBool>,
@@ -463,6 +470,7 @@ impl WindowsWindow {
             directx_devices,
             invalidate_devices,
             draw_coordinator,
+            appearance_override,
         } = creation_info;
         register_window_class(icon);
         let parent_hwnd = if params.kind == WindowKind::Dialog {
@@ -526,7 +534,9 @@ impl WindowsWindow {
         }
         .or_else(WindowsDisplay::primary_monitor)
         .context("failed to find any monitor")?;
-        let appearance = system_appearance().unwrap_or_default();
+        let appearance = appearance_override
+            .get()
+            .unwrap_or_else(|| system_appearance().unwrap_or_default());
         let mut context = WindowCreateContext {
             inner: None,
             handle,
@@ -544,6 +554,7 @@ impl WindowsWindow {
             main_receiver,
             platform_window_handle,
             appearance,
+            appearance_override,
             disable_direct_composition,
             directx_devices,
             invalidate_devices,

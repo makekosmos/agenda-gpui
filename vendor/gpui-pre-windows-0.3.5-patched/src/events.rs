@@ -1287,14 +1287,19 @@ impl WindowsWindowInner {
                 let new_appearance = system_appearance()
                     .context("unable to get system appearance when handling ImmersiveColorSet")
                     .log_err()?;
+                let effective_appearance = self
+                    .state
+                    .appearance_override
+                    .get()
+                    .unwrap_or(new_appearance);
 
-                if new_appearance != self.state.appearance.get() {
-                    self.state.appearance.set(new_appearance);
+                if effective_appearance != self.state.appearance.get() {
+                    self.state.appearance.set(effective_appearance);
                     let mut callback = self.state.callbacks.appearance_changed.take()?;
 
                     callback();
                     self.state.callbacks.appearance_changed.set(Some(callback));
-                    configure_dwm_dark_mode(handle, new_appearance);
+                    configure_dwm_dark_mode(handle, effective_appearance);
                 }
             }
         }

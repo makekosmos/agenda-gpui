@@ -52,3 +52,26 @@ restoring the legacy accent policy.
 Files changed:
 - src/window.rs — `Opaque`, `Transparent`, and `Blurred` arms of
   `set_background_appearance` reset the system backdrop type first.
+
+### set_window_appearance: app-level light/dark override
+
+The trait already declares `set_window_appearance` (default no-op, used by
+the macOS backend); the Windows backend ignored it, so window appearance
+always followed the OS. Apps that offer their own light/dark theme
+(Zed-style) need the window — and especially the DWM-drawn Mica/MicaAlt
+material tint — to follow the app theme instead.
+
+Files changed:
+- src/platform.rs — `WindowsPlatform` gains a shared
+  `appearance_override: Arc<Cell<Option<WindowAppearance>>>`, passes it to
+  every new window through `WindowCreationInfo`, reports it from
+  `window_appearance`, and implements `set_window_appearance`: stores the
+  override, applies `configure_dwm_dark_mode` (which also tints the Mica
+  backdrop) to every tracked hwnd, and fires `appearance_changed` so
+  windows repaint.
+- src/window.rs — `WindowsWindowState` stores the shared
+  `appearance_override`; window creation resolves the effective
+  appearance through it.
+- src/events.rs — `ImmersiveColorSet` handling applies the override on
+  top of the fresh system appearance, so OS theme flips do not clobber
+  the app-pinned mode.

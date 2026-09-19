@@ -42,6 +42,10 @@ use gpui::*;
 pub struct WindowsPlatform {
     inner: Rc<WindowsPlatformInner>,
     raw_window_handles: Arc<RwLock<SmallVec<[SafeHwnd; 4]>>>,
+    /// App-level light/dark override set by `set_window_appearance` (None =
+    /// follow the OS). Shared with every window so `ImmersiveColorSet` and new
+    /// windows keep honoring the override.
+    appearance_override: Arc<Cell<Option<WindowAppearance>>>,
     // The below members will never change throughout the entire lifecycle of the app.
     headless: bool,
     icon: HICON,
@@ -251,6 +255,7 @@ impl WindowsPlatform {
             inner,
             handle,
             raw_window_handles,
+            appearance_override: Arc::new(Cell::new(None)),
             headless,
             icon,
             background_executor,
@@ -299,6 +304,7 @@ impl WindowsPlatform {
             directx_devices: self.inner.state.directx_devices.borrow().clone().unwrap(),
             invalidate_devices: self.invalidate_devices.clone(),
             draw_coordinator: self.inner.state.draw_coordinator.clone(),
+            appearance_override: self.appearance_override.clone(),
         }
     }
 
@@ -649,7 +655,29 @@ impl Platform for WindowsPlatform {
     }
 
     fn window_appearance(&self) -> WindowAppearance {
-        system_appearance().log_err().unwrap_or_default()
+        self.appearance_override
+            .get()
+            .unwrap_or_else(|| system_appearance().log_err().unwrap_or_default())
+    }
+
+    fn set_window_appearance(&self, appearance: Option<WindowAppearance>) {
+        self.appearance_override.set(appearance);
+        let effective = self.window_appearance();
+        for hwnd in self.raw_window_handles.read().iter() {
+            // DWM dark mode also drives the Mica/MicaAlt material tint, so the
+            // backdrop must follow the app theme, not only the OS theme.
+            configure_dwm_dark_mode(hwnd.as_raw(), effective);
+            if let Some(window) = self.window_from_hwnd(hwnd.as_raw())
+                && window.state.appearance.get() != effective
+            {
+                window.state.appearance.set(effective);
+                let mut callback = window.state.callbacks.appearance_changed.take();
+                if let Some(callback) = callback.as_mut() {
+                    callback();
+                }
+                window.state.callbacks.appearance_changed.set(callback);
+            }
+        }
     }
 
     fn open_url(&self, url: &str) {
@@ -1282,6 +1310,8 @@ pub(crate) struct WindowCreationInfo {
     pub(crate) invalidate_devices: Arc<AtomicBool>,
     /// Shared with [`WindowsPlatformState::draw_coordinator`] and every other window.
     pub(crate) draw_coordinator: Rc<DrawCoordinator>,
+    /// App-level appearance override shared with [`WindowsPlatform`].
+    pub(crate) appearance_override: Arc<Cell<Option<WindowAppearance>>>,
 }
 
 struct PlatformWindowCreateContext {
