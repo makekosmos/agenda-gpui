@@ -53,6 +53,21 @@ Files changed:
 - src/window.rs — `Opaque`, `Transparent`, and `Blurred` arms of
   `set_background_appearance` reset the system backdrop type first.
 
+### set_background_appearance: actually show the system backdrop
+
+Upstream set `DWMWA_SYSTEMBACKDROP_TYPE` but never extended the glass
+frame, so DWM had no frame region to draw the material into and Mica
+rendered nothing. `dwm_set_window_composition_attribute` now calls
+`DwmExtendFrameIntoClientArea` with `-1` margins while a backdrop is
+active (and restores `0` when cleared), and returns success so the
+`Blurred` arm can prefer the documented `DWMSBT_TRANSIENTWINDOW` acrylic
+backdrop, falling back to the undocumented accent policy only on
+pre-22621 builds where it silently did nothing anyway.
+
+Files changed:
+- src/window.rs — backdrop arms use `DWMSBT_*` constants, the helper
+  extends/restores the glass frame and returns `bool`.
+
 ### set_window_appearance: app-level light/dark override
 
 The trait already declares `set_window_appearance` (default no-op, used by

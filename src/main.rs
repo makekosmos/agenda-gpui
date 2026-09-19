@@ -9,7 +9,8 @@ mod theme;
 mod widgets;
 
 use gpui::{
-    px, size, App, AppContext, Bounds, Context, SharedString, Window, WindowBounds, WindowOptions,
+    px, size, App, AppContext, Bounds, Context, SharedString, Styled, Window, WindowBounds,
+    WindowOptions,
 };
 
 use app::Agenda;
@@ -37,7 +38,14 @@ fn main() {
             |window, cx| {
                 let view = cx.new(Agenda::new);
                 // gpui-component widgets (Input, menus) require a ui::Root window layer.
-                cx.new(|cx| gpui_component::Root::new(view, window, cx))
+                let root = cx.new(|cx| gpui_component::Root::new(view, window, cx));
+                // Root paints an opaque theme background over the whole window;
+                // Agenda's own root owns the window background so the sidebar
+                // acrylic/mica material can show through.
+                root.update(cx, |root, _| {
+                    root.style().background = Some(gpui::transparent_black().into());
+                });
+                root
             },
         )
         .unwrap();

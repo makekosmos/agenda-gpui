@@ -919,30 +919,33 @@ impl PlatformWindow for WindowsWindow {
         self.state.background_appearance.set(background_appearance);
         let hwnd = self.0.hwnd;
 
-        // using Dwm APIs for Mica and MicaAlt backdrops.
-        // others follow the set_window_composition_attribute approach
+        // using Dwm APIs for Mica, MicaAlt and Acrylic backdrops.
+        // The undocumented accent policy is kept as a pre-22621 fallback.
         match background_appearance {
             WindowBackgroundAppearance::Opaque => {
-                // Reset the Mica system backdrop before restoring the plain
+                // Reset the system backdrop before restoring the plain
                 // accent policy; otherwise it would keep rendering.
-                dwm_set_window_composition_attribute(hwnd, 1);
+                dwm_set_window_composition_attribute(hwnd, DWMSBT_NONE);
                 set_window_composition_attribute(hwnd, None, 0);
             }
             WindowBackgroundAppearance::Transparent => {
-                dwm_set_window_composition_attribute(hwnd, 1);
+                dwm_set_window_composition_attribute(hwnd, DWMSBT_NONE);
                 set_window_composition_attribute(hwnd, None, 2);
             }
             WindowBackgroundAppearance::Blurred => {
-                dwm_set_window_composition_attribute(hwnd, 1);
-                set_window_composition_attribute(hwnd, Some((0, 0, 0, 0)), 4);
+                // DWMSBT_TRANSIENTWINDOW is the documented acrylic backdrop
+                // (22621+); the accent policy below only covers older builds.
+                if !dwm_set_window_composition_attribute(hwnd, DWMSBT_TRANSIENTWINDOW) {
+                    set_window_composition_attribute(hwnd, Some((0, 0, 0, 0)), 4);
+                }
             }
             WindowBackgroundAppearance::MicaBackdrop => {
                 // DWMSBT_MAINWINDOW => MicaBase
-                dwm_set_window_composition_attribute(hwnd, 2);
+                dwm_set_window_composition_attribute(hwnd, DWMSBT_MAINWINDOW);
             }
             WindowBackgroundAppearance::MicaAltBackdrop => {
                 // DWMSBT_TABBEDWINDOW => MicaAlt
-                dwm_set_window_composition_attribute(hwnd, 4);
+                dwm_set_window_composition_attribute(hwnd, DWMSBT_TABBEDWINDOW);
             }
         }
     }
@@ -1609,28 +1612,41 @@ fn retrieve_window_placement(
     Ok(placement)
 }
 
-fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: u32) {
+fn dwm_set_window_composition_attribute(hwnd: HWND, backdrop_type: DWM_SYSTEMBACKDROP_TYPE) -> bool {
     let mut version = unsafe { std::mem::zeroed() };
     let status = unsafe { windows::Wdk::System::SystemServices::RtlGetVersion(&mut version) };
 
     // DWMWA_SYSTEMBACKDROP_TYPE is available only on version 22621 or later
     // using SetWindowCompositionAttributeType as a fallback
     if !status.is_ok() || version.dwBuildNumber < 22621 {
-        return;
+        return false;
     }
 
     unsafe {
-        let result = DwmSetWindowAttribute(
+        if DwmSetWindowAttribute(
             hwnd,
             DWMWA_SYSTEMBACKDROP_TYPE,
             &backdrop_type as *const _ as *const _,
             std::mem::size_of_val(&backdrop_type) as u32,
-        );
-
-        if !result.is_ok() {
-            return;
+        )
+        .is_err()
+        {
+            return false;
         }
+
+        // The system backdrop material is drawn inside the window frame, so
+        // the glass frame has to cover the whole client area for it to show.
+        // Extend it while a backdrop is active and restore it when cleared.
+        let inset = if backdrop_type == DWMSBT_NONE { 0 } else { -1 };
+        let margins = windows::Win32::UI::Controls::MARGINS {
+            cxLeftWidth: inset,
+            cxRightWidth: inset,
+            cyTopHeight: inset,
+            cyBottomHeight: inset,
+        };
+        DwmExtendFrameIntoClientArea(hwnd, &margins).ok();
     }
+    true
 }
 
 fn set_window_composition_attribute(hwnd: HWND, color: Option<Color>, state: u32) {

@@ -181,7 +181,6 @@ impl DirectXRenderer {
                 .context("Setting swap chain for DirectComposition")?;
             Some(composition)
         };
-
         Ok(DirectXRenderer {
             hwnd,
             atlas,
