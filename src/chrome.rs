@@ -31,91 +31,65 @@ struct SbRect {
     h: f32,
 }
 
-impl Agenda {
-    /// One sidebar row (`.kosmos-sidebar-btn`): h32, pl10 pr8, r8, gap6,
-    /// fs13 lh1.15, children opacity .6 (→1 on hover/active).
-    /// Hover bg comes from the sliding highlight, not per-item bg.
-    fn nav_btn(
-        &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-        id: &str,
-        icon_path: &'static str,
-        label: &str,
-        active: bool,
-        route: Route,
-    ) -> gpui::Stateful<gpui::Div> {
-        let t = self.hover_t(window, &format!("nav-{id}"));
-        let glyph_alpha = if active { 1.0 } else { 0.6 + 0.4 * t };
-        let glyph = rgba(FG(), glyph_alpha);
-        let weak = cx.weak_entity();
-        let key = SharedString::from(format!("nav-{id}"));
-        let mut el = div()
-            .id(SharedString::from(format!("sb-{id}")))
-            .h(px(32.))
-            .w_full()
-            .flex()
-            .items_center()
-            .gap_1p5()
-            .pl(px(10.))
-            .pr_2()
-            .rounded_lg()
-            .text_size(px(13.))
-            .line_height(px(15.))
-            .child(icon(icon_path, 16., glyph))
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_color(glyph)
-                    .child(label.to_string()),
-            );
-        if active {
-            el = el.bg(rgba(FG(), 0.12));
-        } else {
-            // Paint-time hover truth (like CSS :hover in zeron): the bg is
-            // resolved from the current hitbox each frame, so it can never
-            // get stuck if a hover event is lost.
-            el = el.hover(|s| s.bg(rgba(FG(), 0.08)));
+/// Sidebar row spec shared by nav buttons and project links.
+struct SbItem {
+    id: String,
+    label: String,
+    /// `Some` renders an SVG icon; `None` renders the 8px muted project dot.
+    icon: Option<&'static str>,
+    active: bool,
+    /// Bottom-rounded row (last project in the accordion list).
+    last: bool,
+    route: Route,
+    /// `Some(pid)` attaches the rename/archive right-click context menu.
+    ctx_project: Option<String>,
+}
+
+impl SbItem {
+    fn nav(id: &str, icon: &'static str, label: &str, active: bool, route: Route) -> Self {
+        Self {
+            id: id.to_string(),
+            label: label.to_string(),
+            icon: Some(icon),
+            active,
+            last: false,
+            route,
+            ctx_project: None,
         }
-        el.on_hover({
-            let key2 = key.clone();
-            let weak2 = weak.clone();
-            move |hovered, _, cx| {
-                let _ = weak2.update(cx, |this, _| {
-                    this.set_hover(&key2, *hovered);
-                    this.sb_hover(*hovered, &key2);
-                });
-            }
-        })
-        .on_click(move |_: &ClickEvent, _, cx| {
-            let _ = weak.update(cx, |this, _| this.navigate(route.clone()));
-        })
     }
 
-    /// Sidebar project link (`.kosmos-sidebar-project-link`): same metrics,
-    /// 8px muted dot instead of an icon.
-    fn project_link(
+    fn project(project: &Project, active: bool, last: bool) -> Self {
+        let pid = project.id.to_string();
+        Self {
+            id: format!("proj-{pid}"),
+            label: project.title.clone(),
+            icon: None,
+            active,
+            last,
+            route: Route::Project(pid.clone()),
+            ctx_project: Some(pid),
+        }
+    }
+}
+
+impl Agenda {
+    /// One sidebar row (`.kosmos-sidebar-btn` / `.kosmos-sidebar-project-link`):
+    /// h32, pl10 pr8, r8, gap6, fs13 lh1.15, children opacity .6 (→1 on
+    /// hover/active). Hover bg comes from the sliding highlight, not per-item
+    /// bg.
+    fn sb_item(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
-        id: &str,
-        label: &str,
-        active: bool,
-        last: bool,
-        project_id: &str,
+        spec: SbItem,
     ) -> gpui::Stateful<gpui::Div> {
-        let t = self.hover_t(window, &format!("nav-{id}"));
-        let glyph_alpha = if active { 1.0 } else { 0.6 + 0.4 * t };
+        let t = self.hover_t(window, &format!("nav-{}", spec.id));
+        let glyph_alpha = if spec.active { 1.0 } else { 0.6 + 0.4 * t };
         let glyph = rgba(FG(), glyph_alpha);
         let weak = cx.weak_entity();
-        let pid = project_id.to_string();
-        let key = SharedString::from(format!("nav-{id}"));
+        let key = SharedString::from(format!("nav-{}", spec.id));
         let mut el = div()
-            .id(SharedString::from(format!("sb-{id}")))
+            .id(SharedString::from(format!("sb-{}", spec.id)))
             .min_h(px(32.))
             .w_full()
             .flex()
@@ -123,72 +97,84 @@ impl Agenda {
             .gap_1p5()
             .pl(px(10.))
             .pr_2()
-            .child(
+            .text_size(px(13.))
+            .line_height(px(15.));
+        el = match spec.icon {
+            Some(path) => el.child(icon(path, 16., glyph)),
+            None => el.child(
                 div()
                     .w_2()
                     .h_2()
                     .rounded_full()
                     .flex_none()
                     .bg(rgba(MUTED_FG(), glyph_alpha)),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .overflow_hidden()
-                    .whitespace_nowrap()
-                    .text_ellipsis()
-                    .text_size(px(13.))
-                    .line_height(px(15.))
-                    .text_color(glyph)
-                    .child(label.to_string()),
-            );
-        if last {
+            ),
+        };
+        let mut el = el.child(
+            div()
+                .flex_1()
+                .min_w_0()
+                .overflow_hidden()
+                .whitespace_nowrap()
+                .text_ellipsis()
+                .text_color(glyph)
+                .child(spec.label),
+        );
+        if spec.last {
             el = el.rounded_b_lg();
+        } else if spec.icon.is_some() {
+            el = el.rounded_lg();
         }
-        if active {
+        if spec.active {
             el = el.bg(rgba(FG(), 0.12));
         } else {
+            // Paint-time hover truth (like CSS :hover in zeron): the bg is
+            // resolved from the current hitbox each frame, so it can never
+            // get stuck if a hover event is lost.
             el = el.hover(|s| s.bg(rgba(FG(), 0.08)));
         }
-        el.on_hover(move |hovered, _, cx| {
-            let _ = weak.update(cx, |this, _| {
-                this.set_hover(&key, *hovered);
-                this.sb_hover(*hovered, &key);
-            });
-        })
-        .on_click({
-            let weak = cx.weak_entity();
-            let pid = pid.clone();
-            move |_: &ClickEvent, _, cx| {
-                let _ = weak.update(cx, |this, _| this.navigate(Route::Project(pid.clone())));
-            }
-        })
-        .on_mouse_down(MouseButton::Right, {
-            let weak = cx.weak_entity();
-            move |ev: &MouseDownEvent, _, cx| {
-                let pos = ev.position;
-                let pid = pid.clone();
+        let mut el = el
+            .on_hover(move |hovered, _, cx| {
                 let _ = weak.update(cx, |this, _| {
-                    this.menu = Some(crate::app::CtxMenu {
-                        x: pos.x.into(),
-                        y: pos.y.into(),
-                        items: vec![
-                            (
-                                "Переименовать".into(),
-                                false,
-                                MenuAction::RenameProject(pid.clone()),
-                            ),
-                            (
-                                "Архивировать".into(),
-                                false,
-                                MenuAction::ArchiveProject(pid.clone()),
-                            ),
-                        ],
-                    });
+                    this.set_hover(&key, *hovered);
+                    this.sb_hover(*hovered, &key);
                 });
-            }
-        })
+            })
+            .on_click({
+                let weak = cx.weak_entity();
+                let route = spec.route.clone();
+                move |_: &ClickEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| this.navigate(route.clone()));
+                }
+            });
+        if let Some(pid) = spec.ctx_project {
+            el = el.on_mouse_down(MouseButton::Right, {
+                let weak = cx.weak_entity();
+                move |ev: &MouseDownEvent, _, cx| {
+                    let pos = ev.position;
+                    let pid = pid.clone();
+                    let _ = weak.update(cx, |this, _| {
+                        this.menu = Some(crate::app::CtxMenu {
+                            x: pos.x.into(),
+                            y: pos.y.into(),
+                            items: vec![
+                                (
+                                    "Переименовать".into(),
+                                    false,
+                                    MenuAction::RenameProject(pid.clone()),
+                                ),
+                                (
+                                    "Архивировать".into(),
+                                    false,
+                                    MenuAction::ArchiveProject(pid.clone()),
+                                ),
+                            ],
+                        });
+                    });
+                }
+            });
+        }
+        el
     }
 
     fn sb_hover(&mut self, hovered: bool, id: &str) {
@@ -260,36 +246,42 @@ impl Agenda {
 
         let mut navs: Vec<gpui::Stateful<gpui::Div>> = vec![];
         if settings {
-            navs.push(self.nav_btn(
+            navs.push(self.sb_item(
                 window,
                 cx,
-                "back",
-                "icons/arrow-left.svg",
-                "Назад",
-                false,
-                self.back_route.clone(),
+                SbItem::nav(
+                    "back",
+                    "icons/arrow-left.svg",
+                    "Назад",
+                    false,
+                    self.back_route.clone(),
+                ),
             ));
             rects.push(("nav-back".into(), SbRect { y, h: 32. }));
             y += 33.;
-            navs.push(self.nav_btn(
+            navs.push(self.sb_item(
                 window,
                 cx,
-                "general",
-                "icons/settings.svg",
-                "Общие",
-                self.route == Route::Settings,
-                Route::Settings,
+                SbItem::nav(
+                    "general",
+                    "icons/settings.svg",
+                    "Общие",
+                    self.route == Route::Settings,
+                    Route::Settings,
+                ),
             ));
             rects.push(("nav-general".into(), SbRect { y, h: 32. }));
             y += 33.;
-            navs.push(self.nav_btn(
+            navs.push(self.sb_item(
                 window,
                 cx,
-                "fuel",
-                "icons/star.svg",
-                "Мыслетопливо",
-                self.route == Route::SettingsFuel,
-                Route::SettingsFuel,
+                SbItem::nav(
+                    "fuel",
+                    "icons/star.svg",
+                    "Мыслетопливо",
+                    self.route == Route::SettingsFuel,
+                    Route::SettingsFuel,
+                ),
             ));
             rects.push(("nav-fuel".into(), SbRect { y, h: 32. }));
         } else {
@@ -319,7 +311,7 @@ impl Agenda {
             ];
             for (id, ic, label, route) in items {
                 let active = self.route == route;
-                navs.push(self.nav_btn(window, cx, id, ic, label, active, route));
+                navs.push(self.sb_item(window, cx, SbItem::nav(id, ic, label, active, route)));
                 rects.push((format!("nav-{id}").into(), SbRect { y, h: 32. }));
                 y += 33.;
             }
@@ -436,19 +428,10 @@ impl Agenda {
             let count = active_projects.len();
             if gt > 0.001 {
                 for (i, pr) in active_projects.iter().enumerate() {
-                    let pid = pr.id.to_string();
-                    let active = matches!(&self.route, Route::Project(r) if *r == pid);
-                    let id = format!("proj-{}", pr.id);
-                    links.push(self.project_link(
-                        window,
-                        cx,
-                        &id,
-                        &pr.title,
-                        active,
-                        i == count - 1,
-                        &pid,
-                    ));
-                    rects.push((format!("nav-{id}").into(), SbRect { y, h: 32. * gt }));
+                    let active = matches!(&self.route, Route::Project(r) if r == pr.id);
+                    let spec = SbItem::project(pr, active, i == count - 1);
+                    rects.push((format!("nav-{}", spec.id).into(), SbRect { y, h: 32. * gt }));
+                    links.push(self.sb_item(window, cx, spec));
                     y += 32. * gt;
                 }
             }
