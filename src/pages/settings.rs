@@ -205,34 +205,6 @@ impl Agenda {
                 );
             }
             col = col.child(row);
-            // fuel nav row
-            let hid = "set-fuel";
-            let t = self.hover_t(window, hid);
-            let weak = cx.weak_entity();
-            col = col.child(
-                div()
-                    .id("set-fuel-row")
-                    .h_10()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .px_3()
-                    .rounded_md()
-                    .bg(fg_mix(0.04 * t))
-                    .text_size(px(13.))
-                    .text_color(c(FG()))
-                    .child("Мыслетопливо")
-                    .child(icon("icons/arrow-left.svg", 14., c(MUTED_FG())))
-                    .on_hover({
-                        let weak = weak.clone();
-                        move |hovered, _, cx| {
-                            let _ = weak.update(cx, |this, _| this.set_hover(hid, *hovered));
-                        }
-                    })
-                    .on_click(move |_: &ClickEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| this.navigate(Route::SettingsFuel));
-                    }),
-            );
         }
         col.into_any_element()
     }

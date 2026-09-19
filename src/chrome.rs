@@ -239,7 +239,7 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let settings = matches!(self.route, Route::Settings | Route::SettingsFuel);
+        let settings = Self::is_settings_route(&self.route);
         let w = SIDEBAR_W * p;
         let mut rects: Vec<(SharedString, SbRect)> = vec![];
         let mut y = 44.0f32; // pt40 shell + pt4 body
@@ -263,27 +263,27 @@ impl Agenda {
                 window,
                 cx,
                 SbItem::nav(
-                    "general",
-                    "icons/settings.svg",
-                    "Общие",
+                    "appearance",
+                    "icons/sliders.svg",
+                    "Отображение",
                     self.route == Route::Settings,
                     Route::Settings,
                 ),
             ));
-            rects.push(("nav-general".into(), SbRect { y, h: 32. }));
+            rects.push(("nav-appearance".into(), SbRect { y, h: 32. }));
             y += 33.;
             navs.push(self.sb_item(
                 window,
                 cx,
                 SbItem::nav(
-                    "fuel",
-                    "icons/star.svg",
-                    "Мыслетопливо",
-                    self.route == Route::SettingsFuel,
-                    Route::SettingsFuel,
+                    "about",
+                    "icons/help-circle.svg",
+                    "О приложении",
+                    self.route == Route::About,
+                    Route::About,
                 ),
             ));
-            rects.push(("nav-fuel".into(), SbRect { y, h: 32. }));
+            rects.push(("nav-about".into(), SbRect { y, h: 32. }));
         } else {
             let items: [(&str, &'static str, &str, Route); 7] = [
                 ("inbox", "icons/inbox.svg", "Входящие", Route::Inbox),

@@ -456,9 +456,19 @@ impl Agenda {
         }
     }
 
+    /// Settings-group routes share the sidebar chrome and a single "Назад"
+    /// exit point.
+    pub(crate) fn is_settings_route(r: &Route) -> bool {
+        matches!(r, Route::Settings | Route::SettingsFuel | Route::About)
+    }
+
     pub(crate) fn navigate(&mut self, route: Route) {
         if self.route != route {
-            self.back_route = self.route.clone();
+            // Only crossing the settings boundary retargets "Назад" —
+            // navigating between settings pages must not loop it.
+            if Self::is_settings_route(&self.route) != Self::is_settings_route(&route) {
+                self.back_route = self.route.clone();
+            }
             self.route = route;
             self.options_open = false;
             self.options_for = None;
@@ -513,7 +523,8 @@ impl Agenda {
             Route::Recurring => ("Повторяющиеся".into(), "icons/repeat.svg"),
             Route::Logbook => ("Архив".into(), "icons/book-open.svg"),
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
-            Route::Settings | Route::SettingsFuel => ("Настройки".into(), "icons/settings.svg"),
+            Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
+            Route::SettingsFuel => ("Мыслетопливо".into(), "icons/star.svg"),
             Route::About => ("О приложении".into(), "icons/help-circle.svg"),
             Route::Project(id) => (
                 self.project(id)
