@@ -125,7 +125,7 @@ impl Agenda {
             }
             for tag_id in &t.tag_ids {
                 if let Some(tag) = self.tag(tag_id) {
-                    let dot = tag_color(tag.color);
+                    let dot = tag_color(&tag.color);
                     meta = meta.child(
                         div()
                             .h_5()
@@ -142,7 +142,7 @@ impl Agenda {
                     );
                 }
             }
-            if let Some(pid) = t.project_id {
+            if let Some(pid) = t.project_id.as_deref() {
                 if let Some(p) = self.project(pid) {
                     meta = meta.child(
                         div()
@@ -166,7 +166,7 @@ impl Agenda {
                 );
             }
             if t.billable {
-                meta = meta.child(format!("${}", t.price.unwrap_or(0)));
+                meta = meta.child(format!("${}", t.price.unwrap_or(0.0)));
             }
             row = row.child(meta);
         }

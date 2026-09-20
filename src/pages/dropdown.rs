@@ -62,7 +62,7 @@ impl Agenda {
                 }
             }
             DropKind::Project => {
-                let cur = todo.as_ref().and_then(|t| t.project_id);
+                let cur = todo.as_ref().and_then(|t| t.project_id.as_deref());
                 rows.push(self.dd_row(
                     window,
                     cx,
@@ -80,14 +80,13 @@ impl Agenda {
                         cx,
                         i + 1,
                         &p.title,
-                        cur == Some(p.id),
+                        cur == Some(p.id.as_str()),
                         MenuAction::SetProject(tid.clone(), Some(p.id.to_string())),
                     ));
                 }
             }
             DropKind::Tags => {
-                let cur: Vec<&'static str> =
-                    todo.as_ref().map(|t| t.tag_ids.clone()).unwrap_or_default();
+                let cur: Vec<String> = todo.as_ref().map(|t| t.tag_ids.clone()).unwrap_or_default();
                 for (i, tag) in self.tags.clone().iter().enumerate() {
                     rows.push(self.dd_row(
                         window,
@@ -177,7 +176,7 @@ impl Agenda {
                         cx,
                         i + 1,
                         &p.title,
-                        self.qe_project.as_deref() == Some(p.id),
+                        self.qe_project.as_deref() == Some(p.id.as_str()),
                         MenuAction::QeSetProject(Some(p.id.to_string())),
                     ));
                 }

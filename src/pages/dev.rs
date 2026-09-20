@@ -244,7 +244,12 @@ impl Agenda {
                     .on_click({
                         let weak = cx.weak_entity();
                         move |_: &ClickEvent, _, cx| {
-                            let _ = weak.update(cx, |this, _| {
+                            let _ = weak.update(cx, |this, cx| {
+                                if !this.demo {
+                                    this.storage_error = Some("Генератор доступен только с AGENDA_DEMO=1".into());
+                                    cx.notify();
+                                    return;
+                                }
                                 this.dev_gen_batch += 1;
                                 let seed = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -257,6 +262,7 @@ impl Agenda {
                                     gen_random_todos(1000, seed, this.dev_gen_batch, first_sort);
                                 this.todos.append(&mut gen);
                                 this.model_rev += 1;
+                                cx.notify();
                             });
                         }
                     })

@@ -49,7 +49,9 @@ impl Agenda {
                             let bucket: Vec<usize> = items
                                 .iter()
                                 .copied()
-                                .filter(|&i| self.todos[i].project_id == Some(p.id))
+                                .filter(|&i| {
+                                    self.todos[i].project_id.as_deref() == Some(p.id.as_str())
+                                })
                                 .collect();
                             if !bucket.is_empty() {
                                 g.push((Some(p.title.clone()), bucket));
@@ -70,6 +72,7 @@ impl Agenda {
                             .filter(|&i| {
                                 self.todos[i]
                                     .project_id
+                                    .as_deref()
                                     .is_some_and(|pid| !self.projects.iter().any(|p| p.id == pid))
                             })
                             .collect();

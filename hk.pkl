@@ -24,8 +24,7 @@ local clippy_cmd =
 // file list on purpose — a push must not skip the gate when file matching fails.
 local gate = new Mapping<String, Step> {
   ["test"] {
-    // The binary currently has no test targets; keep the Core gate wired without
-    // turning an empty suite into a failure.
+    // Includes Engine protocol and cross-process persistence checks.
     check = "cargo nextest run --workspace --all-features --no-tests=pass"
   }
   ["cargo-shear"] { check = "cargo shear" }
