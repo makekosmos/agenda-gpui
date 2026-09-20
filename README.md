@@ -14,7 +14,7 @@
 
 ## CI и ночные релизы
 
-GitHub Actions проверяет форматирование, правила версий, Clippy (Windows),
+GitHub Actions проверяет форматирование, правила версий, Clippy и размер файлов (Windows),
 тесты и release-сборки при push в `main` и в pull request.
 Архивы сборок доступны в Artifacts каждого успешного запуска в течение 7 дней.
 

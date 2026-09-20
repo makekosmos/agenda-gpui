@@ -116,6 +116,9 @@ jobs:
           -A clippy::panic -A clippy::assertions_on_constants
       - name: Tests
         run: cargo test --locked --release --workspace --all-features --target "$BUILD_TARGET"
+      - name: Source size
+        if: runner.os == 'Windows'
+        run: cargo run --locked --release --bin check-source-size --target "$BUILD_TARGET"
       - name: Release build
         run: cargo build --locked --release --bin agenda-gpui --target "$BUILD_TARGET"
       - name: Package
