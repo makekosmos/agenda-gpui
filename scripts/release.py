@@ -83,7 +83,7 @@ def plan():
         changed = diff.returncode == 1
     current = tomllib.loads(Path("Cargo.toml").read_text("utf-8"))["package"]["version"]
     version = next_version(current, previous_tag[1:] if previous_tag else None, changed)
-    values = {"version": version or "", "release": str(version is not None).lower(), "sha": run("git", "rev-parse", "HEAD")}
+    values = {"version": version or "", "release": str(version is not None).lower(), "sha": run("git", "rev-parse", "HEAD"), "previous_tag": previous_tag or ""}
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         for key, value in values.items():
             print(f"{key}={value}", file=output)

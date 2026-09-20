@@ -26,6 +26,7 @@ jobs:
       sha: ${{ steps.plan.outputs.sha || steps.source.outputs.sha }}
       version: ${{ steps.plan.outputs.version }}
       release: ${{ steps.plan.outputs.release }}
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -42,7 +43,9 @@ jobs:
         with:
           python-version: '3.12'
       - name: Test version rules
-        run: python scripts/test_release.py
+        run: |
+          python scripts/test_release.py
+          python scripts/test_release_notes.py
       - name: Plan release
         id: plan
         if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -138,11 +141,13 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      pull-requests: read
     env:
       RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
       SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
       GH_TOKEN: ${{ github.token }}
+      PREVIOUS_TAG: ${{ needs.prepare.outputs.previous_tag }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -156,6 +161,10 @@ jobs:
           pattern: agenda-*
           merge-multiple: true
           path: dist
+      - name: Generate task and contributor notes
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: python scripts/release_notes.py --previous "$PREVIOUS_TAG" --head "$SOURCE_SHA"
       - name: Commit version and tag the tested source
         run: bash scripts/publish-version.sh
       - name: Publish all platforms together
@@ -168,6 +177,6 @@ jobs:
             python -c 'import json; assert json.load(open("release-state.json"))["isDraft"], "Release already published"'
             gh release upload "$tag" dist/* --clobber
           else
-            gh release create "$tag" dist/* --verify-tag --draft --title "Agenda $tag" --generate-notes
+            gh release create "$tag" dist/* --verify-tag --draft --title "Agenda $tag" --notes-file release-notes.md
           fi
-          gh release edit "$tag" --draft=false --latest
+          gh release edit "$tag" --notes-file release-notes.md --draft=false --latest
