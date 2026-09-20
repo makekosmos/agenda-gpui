@@ -6,6 +6,8 @@ use gpui::{
     deferred, div, prelude::*, px, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels,
     SharedString, Window, WindowControlArea,
 };
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+use gpui_component::InteractiveElementExt;
 
 use crate::app::{Agenda, MenuAction, Route};
 use crate::model::*;

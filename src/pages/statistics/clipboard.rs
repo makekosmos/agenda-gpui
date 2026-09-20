@@ -62,7 +62,7 @@ pub(super) fn capture_card(
             return None;
         }
 
-        for p in buf.chunks_exact_mut(4) {
+        for p in buf.as_chunks_mut::<4>().0 {
             p.swap(0, 2); // BGRA -> RGBA
             p[3] = 255;
         }
@@ -114,7 +114,7 @@ pub(super) fn write_card_to_clipboard(img: &image::RgbaImage) -> bool {
     for row in 0..h {
         let src = &raw[(h - 1 - row) * w * 4..(h - row) * w * 4];
         let dst = &mut dib[header_len + row * w * 4..header_len + (row + 1) * w * 4];
-        for (i, px) in src.chunks_exact(4).enumerate() {
+        for (i, px) in src.as_chunks::<4>().0.iter().enumerate() {
             dst[i * 4] = px[2];
             dst[i * 4 + 1] = px[1];
             dst[i * 4 + 2] = px[0];
