@@ -23,6 +23,9 @@ const TOGGLE_LEFT: f32 = 84.0;
 const TOGGLE_LEFT: f32 = 12.0;
 /// Window-drag areas start here so the floating toggle stays clickable.
 const DRAG_INSET: f32 = TOGGLE_LEFT + 40.0;
+/// Left-edge grid line shared by the titlebar page icon and the task-row
+/// status ring: row px_2 (8) + (w_5 cell 20 − ring 14) / 2.
+const CONTENT_GRID_X: f32 = 11.0;
 /// Native caption button width (Windows convention).
 pub(crate) const CAPTION_W: f32 = 46.0;
 
@@ -276,6 +279,45 @@ impl Agenda {
                 window,
                 cx,
                 SbItem::nav(
+                    "energy",
+                    "icons/clock-01.svg",
+                    "Энергосбережение",
+                    self.route == Route::SettingsEnergy,
+                    Route::SettingsEnergy,
+                ),
+            ));
+            rects.push(("nav-energy".into(), SbRect { y, h: 32. }));
+            y += 33.;
+            navs.push(self.sb_item(
+                window,
+                cx,
+                SbItem::nav(
+                    "statistics",
+                    "icons/analytics-01.svg",
+                    "Статистика",
+                    self.route == Route::Statistics,
+                    Route::Statistics,
+                ),
+            ));
+            rects.push(("nav-statistics".into(), SbRect { y, h: 32. }));
+            y += 33.;
+            navs.push(self.sb_item(
+                window,
+                cx,
+                SbItem::nav(
+                    "dev",
+                    "icons/settings.svg",
+                    "Для разработчиков",
+                    self.route == Route::Dev,
+                    Route::Dev,
+                ),
+            ));
+            rects.push(("nav-dev".into(), SbRect { y, h: 32. }));
+            y += 33.;
+            navs.push(self.sb_item(
+                window,
+                cx,
+                SbItem::nav(
                     "about",
                     "icons/help-circle.svg",
                     "О приложении",
@@ -285,7 +327,7 @@ impl Agenda {
             ));
             rects.push(("nav-about".into(), SbRect { y, h: 32. }));
         } else {
-            let items: [(&str, &'static str, &str, Route); 7] = [
+            let items: [(&str, &'static str, &str, Route); 6] = [
                 ("inbox", "icons/inbox.svg", "Входящие", Route::Inbox),
                 ("today", "icons/calendar-01.svg", "Сегодня", Route::Today),
                 ("plans", "icons/calendar-02.svg", "Планы", Route::Plans),
@@ -296,12 +338,6 @@ impl Agenda {
                     Route::Calendar,
                 ),
                 ("someday", "icons/clock-01.svg", "Потом", Route::Someday),
-                (
-                    "statistics",
-                    "icons/analytics-01.svg",
-                    "Статистика",
-                    Route::Statistics,
-                ),
                 (
                     "recurring",
                     "icons/repeat.svg",
@@ -638,7 +674,7 @@ impl Agenda {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let p = ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
-        let pl = DRAG_INSET + (16.0 - DRAG_INSET) * p;
+        let pl = DRAG_INSET + (CONTENT_GRID_X - DRAG_INSET) * p;
         let (title, icon_path) = self.page_title();
         #[allow(unused_mut)]
         let mut drag = div()

@@ -29,6 +29,7 @@ pub(crate) const WM_GPUI_KEYBOARD_LAYOUT_CHANGED: u32 = WM_USER + 6;
 pub(crate) const WM_GPUI_GPU_DEVICE_LOST: u32 = WM_USER + 7;
 pub(crate) const WM_GPUI_KEYDOWN: u32 = WM_USER + 8;
 pub(crate) const WM_GPUI_END_SESSION: u32 = WM_USER + 9;
+pub(crate) const WM_GPUI_VSYNC: u32 = WM_USER + 10;
 
 const SIZE_MOVE_LOOP_TIMER_ID: usize = 1;
 
@@ -86,6 +87,11 @@ impl WindowsWindowInner {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
+        if matches!(msg, WM_SIZE | WM_MOVE | WM_DPICHANGED | WM_ENTERSIZEMOVE) {
+            if let Ok(renderer) = self.state.renderer.try_borrow() {
+                renderer.note_frame_activity(true);
+            }
+        }
         let handled = match msg {
             // `DefWindowProc` answers `MA_NOACTIVATE` for a left click on `HTCAPTION`.
             // The activation is only triggered when `DefWindowProc` handles the following `WM_NCLBUTTONDOWN`.
@@ -108,6 +114,7 @@ impl WindowsWindowInner {
             WM_DISPLAYCHANGE => self.handle_display_change_msg(handle),
             WM_NCHITTEST => self.handle_hit_test_msg(handle, lparam),
             WM_PAINT => self.handle_paint_msg(handle),
+            WM_GPUI_VSYNC => self.handle_vsync_msg(handle, wparam),
             WM_CLOSE => self.handle_close_msg(),
             WM_DESTROY => self.handle_destroy_msg(handle),
             WM_QUERYENDSESSION => Some(1),
@@ -340,6 +347,32 @@ impl WindowsWindowInner {
     }
 
     fn handle_paint_msg(&self, handle: HWND) -> Option<isize> {
+        self.draw_window(handle, false)
+    }
+
+    // Vsync ticks arrive as posted messages (see `begin_vsync_thread`), which
+    // unlike WM_PAINT are dispatched in queue order instead of waiting for the
+    // queue to empty — steady input no longer starves the paint. Ticks that
+    // piled up while the pump was busy are drained here: one draw already
+    // presents the freshest scene.
+    fn handle_vsync_msg(&self, handle: HWND, wparam: WPARAM) -> Option<isize> {
+        if std::env::var("AGENDA_FRAME_LOG").is_ok() {
+            let queue_ms = crate::qpc_elapsed_ms(wparam.0);
+            if queue_ms > 4.0 {
+                gpui::log_frame_diagnostic(format!("[vsync] queue={queue_ms:.1}ms"));
+            }
+        }
+        let mut pending = MSG::default();
+        while unsafe {
+            PeekMessageW(
+                &mut pending,
+                Some(handle),
+                WM_GPUI_VSYNC,
+                WM_GPUI_VSYNC,
+                PM_REMOVE,
+            )
+            .as_bool()
+        } {}
         self.draw_window(handle, false)
     }
 
@@ -836,6 +869,9 @@ impl WindowsWindowInner {
 
     fn handle_activate_msg(self: &Rc<Self>, wparam: WPARAM) -> Option<isize> {
         let activated = wparam.loword() > 0;
+        if let Ok(renderer) = self.state.renderer.try_borrow() {
+            renderer.set_frame_active(activated);
+        }
 
         let events = self
             .state

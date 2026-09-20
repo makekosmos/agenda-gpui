@@ -1,4 +1,5 @@
 // Agenda GPUI clone — experimental, KOS-124. Seeds local state only.
+#![windows_subsystem = "windows"]
 mod app;
 mod assets;
 mod chrome;
@@ -13,6 +14,20 @@ use gpui::{
     WindowOptions,
 };
 
+/// `AGENDA_OFFSCREEN=1` parks the window far outside the desktop so automated
+/// soak runs (FPS/scroll benchmarks) don't pop a window on the user's screen.
+/// DWM still composes it, so frame pacing stays representative.
+fn window_bounds(cx: &mut App) -> Bounds<gpui::Pixels> {
+    if std::env::var("AGENDA_OFFSCREEN").is_ok() {
+        gpui::bounds(
+            gpui::point(px(-20000.), px(-20000.)),
+            size(px(1440.), px(900.)),
+        )
+    } else {
+        Bounds::centered(None, size(px(1440.), px(900.)), cx)
+    }
+}
+
 use app::Agenda;
 use assets::{font_bytes, Assets};
 
@@ -23,10 +38,19 @@ fn main() {
             .add_fonts(font_bytes())
             .expect("failed to load embedded fonts");
 
-        let bounds = Bounds::centered(None, size(px(1440.), px(900.)), cx);
+        let bounds = window_bounds(cx);
         cx.open_window(
             WindowOptions {
                 window_bounds: Some(WindowBounds::Windowed(bounds)),
+                // Windows adaptive pacing owns the background cap and input wakeup.
+                // A second focus-only cap would throttle unfocused interaction.
+                inactive_frame_interval: if cfg!(target_os = "windows")
+                    || std::env::var("AGENDA_FPS").is_ok()
+                {
+                    None
+                } else {
+                    Some(std::time::Duration::from_micros(33_333))
+                },
                 titlebar: Some(gpui::TitlebarOptions {
                     title: Some(SharedString::from("Agenda")),
                     appears_transparent: true,
@@ -36,7 +60,10 @@ fn main() {
                 ..Default::default()
             },
             |window, cx| {
-                let view = cx.new(Agenda::new);
+                let agenda = cx.new(Agenda::new);
+                // Shell keeps the FPS meter outside Agenda's subtree; the
+                // sidebar and content own their independent caches.
+                let view = cx.new(|_| app::AgendaShell { agenda });
                 // gpui-component widgets (Input, menus) require a ui::Root window layer.
                 let root = cx.new(|cx| gpui_component::Root::new(view, window, cx));
                 // Root paints an opaque theme background over the whole window;
@@ -49,7 +76,9 @@ fn main() {
             },
         )
         .unwrap();
-        cx.activate(true);
+        if std::env::var("AGENDA_OFFSCREEN").is_err() {
+            cx.activate(true);
+        }
     });
 }
 

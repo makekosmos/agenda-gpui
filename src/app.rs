@@ -1,10 +1,10 @@
 // Root view: chrome (sidebar + titlebar), routing, pages, overlays.
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::Instant;
 
 use gpui::{
     div, prelude::*, AnyElement, Context, Entity, FocusHandle, Hsla, KeyDownEvent, ScrollHandle,
-    SharedString, Subscription, Window,
+    SharedString, Subscription, WeakEntity, Window,
 };
 use gpui_component::input::{InputState, TextareaState};
 
@@ -26,6 +26,8 @@ pub enum Route {
     Trash,
     Settings,
     SettingsFuel,
+    SettingsEnergy,
+    Dev,
     About,
     Project(String),
     Task(String),
@@ -197,11 +199,21 @@ pub struct Agenda {
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) theme_idx: usize,
     pub(crate) sb_material: u8, // 0 solid 1 acrylic 2 mica
+    pub(crate) vsync_enabled: bool,
     pub(crate) applied_material: Option<u8>,
     pub(crate) applied_theme_sel: Option<u8>,
     pub(crate) delete_blocked: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
+    /// Persistent uniform-list scroll handles (keep last_item_size and
+    /// deferred_scroll_to_item across frames).
+    pub(crate) list_scrolls: HashMap<String, gpui::UniformListScrollHandle>,
+    /// Flat task rows for the current board list — rebuilt only when the
+    /// list, options or `model_rev` change.
+    pub(crate) row_cache: Option<crate::pages::RowCache>,
+    /// Bumped on every todos/projects mutation — cheap cache-invalidation
+    /// signal (zero per-frame cost vs fingerprinting the model).
+    pub(crate) model_rev: u64,
     pub(crate) inputs: HashMap<String, Entity<InputState>>,
     /// Single-line keys live in `inputs`; the task notes field is multi-line,
     /// which in gpui-base 0.6 is a distinct entity type (`TextareaState`).
@@ -219,7 +231,55 @@ pub struct Agenda {
     pub(crate) cal_mode: CalMode,
     pub(crate) cal_anchor: String,
 
-    pub(crate) stat_metric: u8, // 0 count 1 significance 2 fuel
+    #[allow(dead_code)]
+    pub(crate) stat_metric: u8, // 0 count 1 significance 2 fuel (selector hidden for now)
+    /// Share-card overlay on the statistics page.
+    pub(crate) share_open: bool,
+
+    /// Dev page (settings): 8px design grid overlay + FPS counter + task
+    /// generator state.
+    pub(crate) dev_grid: bool,
+    pub(crate) dev_fps: bool,
+    pub(crate) dev_gen_batch: u64,
+    pub(crate) fps_ema: f32,
+    /// Frames counted since the FPS meter was enabled.
+    pub(crate) fps_frames: u32,
+    /// `AGENDA_FPS=1` also logs `fps ema` + `render_ms` to stderr every 60.
+    pub(crate) fps_log: bool,
+    /// Wall time of the last `render()` call — for the FPS log line.
+    pub(crate) render_ms: f32,
+    /// Wall time of the last visible-range row build inside the uniform_list
+    /// processor — attributes scroll spikes (vs render/layout/present).
+    pub(crate) rows_ms: f32,
+    /// Per-frame intervals (seconds) covering the last ~60s — drives the
+    /// avg/1%/0.1% stats; the graph reads only its 5s tail.
+    pub(crate) fps_hist: VecDeque<f32>,
+    /// Running sum of `fps_hist` — window is evicted once it exceeds 60s.
+    pub(crate) fps_span: f32,
+    /// Stats over the 60s window, recomputed every 60 frames.
+    pub(crate) fps_avg: f32,
+    pub(crate) fps_low1: f32,
+    pub(crate) fps_low01: f32,
+    /// Don't sample until this instant: startup/enable spikes would poison
+    /// the avg/1%/0.1% window before the app is fully warmed up.
+    pub(crate) fps_warmup: Option<Instant>,
+    /// Frame-pipeline load: fraction of wall time the pump spent serving
+    /// frame work (callbacks + draw + submit), recomputed with the stats.
+    pub(crate) fps_load: f32,
+    /// Accumulators for `fps_load` — GPUI-side busy nanos + wall time between
+    /// stat recomputes.
+    pub(crate) fps_busy_ns: u64,
+    pub(crate) fps_busy_t0: Instant,
+    /// The FPS meter as its own view: its per-frame `notify` dirties only this
+    /// subtree, so idle frames replay the main UI's cached paint instead of
+    /// re-laying out the whole window.
+    pub(crate) fps_view: Entity<FpsOverlay>,
+    /// Cached subtree boundaries: a notify inside one subtree (scroll in the
+    /// page, hover in the sidebar, the meter ticking) repaints only that
+    /// subtree — siblings replay their cached layout/paint.
+    pub(crate) sidebar_view: Entity<SidebarView>,
+    pub(crate) content_view: Entity<ContentView>,
+
     #[allow(dead_code)]
     pub(crate) stat_day: Option<String>,
 
@@ -244,6 +304,8 @@ fn initial_route() -> Route {
         Some("trash") => Route::Trash,
         Some("settings") => Route::Settings,
         Some("settings-fuel") => Route::SettingsFuel,
+        Some("settings-energy") => Route::SettingsEnergy,
+        Some("dev") => Route::Dev,
         Some("about") => Route::About,
         Some(r) if r.starts_with("task/") => Route::Task(r[5..].to_string()),
         Some(r) if r.starts_with("project/") => Route::Project(r[8..].to_string()),
@@ -253,7 +315,7 @@ fn initial_route() -> Route {
 
 impl Agenda {
     pub fn new(cx: &mut Context<Self>) -> Self {
-        Self {
+        let mut this = Self {
             todos: seed_todos(),
             projects: seed_projects(),
             areas: seed_areas(),
@@ -305,10 +367,14 @@ impl Agenda {
             theme_sel: 1,
             theme_idx: 0,
             sb_material: 0,
+            vsync_enabled: std::env::var("AGENDA_VSYNC").as_deref() != Ok("0"),
             applied_material: None,
             applied_theme_sel: None,
             delete_blocked: false,
             scrolls: HashMap::new(),
+            list_scrolls: HashMap::new(),
+            row_cache: None,
+            model_rev: 0,
             inputs: HashMap::new(),
             notes_input: None,
             input_task: None,
@@ -330,13 +396,65 @@ impl Agenda {
             cal_mode: CalMode::Week,
             cal_anchor: today_key(),
             stat_metric: 0,
+            share_open: false,
+            dev_grid: false,
+            dev_fps: std::env::var("AGENDA_FPS").is_ok(),
+            dev_gen_batch: 0,
+            fps_ema: 0.0,
+            fps_frames: 0,
+            fps_log: std::env::var("AGENDA_FPS").is_ok(),
+            render_ms: 0.0,
+            rows_ms: 0.0,
+            fps_hist: VecDeque::new(),
+            fps_span: 0.0,
+            fps_avg: 0.0,
+            fps_low1: 0.0,
+            fps_low01: 0.0,
+            fps_warmup: if std::env::var("AGENDA_FPS").is_ok() {
+                Some(Instant::now() + std::time::Duration::from_secs(4))
+            } else {
+                None
+            },
+            fps_load: 0.0,
+            fps_busy_ns: 0,
+            fps_busy_t0: Instant::now(),
             stat_day: None,
+            fps_view: {
+                let agenda = cx.weak_entity();
+                cx.new(|_| FpsOverlay {
+                    agenda,
+                    armed: false,
+                    last_update: Instant::now(),
+                })
+            },
+            sidebar_view: {
+                let agenda = cx.entity();
+                cx.new(|cx| SidebarView::new(agenda, cx))
+            },
+            content_view: {
+                let agenda = cx.entity();
+                cx.new(|cx| ContentView::new(agenda, cx))
+            },
             root_focus: cx.focus_handle(),
             quick_focus: cx.focus_handle(),
             focused_once: false,
             qs_focused: false,
             qe_focused: false,
+        };
+        // AGENDA_DEVTASKS=N pre-seeds N generated tasks at startup so the
+        // perf paths can be exercised hands-free (see the Dev settings page).
+        let devtasks = std::env::var("AGENDA_DEVTASKS")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+        if devtasks > 0 {
+            this.dev_gen_batch = 1;
+            let first_sort = this.todos.iter().map(|t| t.sort_order).max().unwrap_or(0) + 1;
+            this.todos
+                .extend(gen_random_todos(devtasks, 0x5eed_5eed, 1, first_sort));
+            this.model_rev += 1;
         }
+        this
     }
 
     // ------------------------------------------------------------------
@@ -389,6 +507,84 @@ impl Agenda {
             window.request_animation_frame();
         }
         ease_standard(value)
+    }
+
+    /// One sampling tick for the dev FPS meter. Called by the `FpsOverlay`
+    /// view's `on_next_frame` callback; drains the present-to-present deltas
+    /// recorded at successful swapchain presents (RTSS-style: stats reflect
+    /// real presented frames, not message-loop timing).
+    pub(crate) fn sample_frame(&mut self) {
+        // Warmup: keep the frame loop alive but don't record — startup spikes
+        // (font/atlas/devtask seeding) would poison the stats window.
+        if let Some(until) = self.fps_warmup {
+            if Instant::now() < until {
+                return;
+            }
+            self.fps_warmup = None;
+            self.fps_hist.clear();
+            self.fps_span = 0.0;
+            self.fps_ema = 0.0;
+            gpui::drain_present_deltas();
+            gpui::take_frame_busy_ns();
+            self.fps_busy_ns = 0;
+            self.fps_busy_t0 = Instant::now();
+        }
+        self.fps_busy_ns += gpui::take_frame_busy_ns();
+        for dt in gpui::drain_present_deltas() {
+            if dt > 0.010 && self.fps_log {
+                gpui::log_frame_diagnostic(format!(
+                    "[slow] dt={:.1}ms render={:.1} rows={:.1}",
+                    dt * 1000.0,
+                    self.render_ms,
+                    self.rows_ms
+                ));
+            }
+            if dt > 0.0 {
+                let f = 1.0 / dt;
+                self.fps_ema = if self.fps_ema <= 0.0 {
+                    f
+                } else {
+                    // Time-based smoothing also converges immediately at the 1 Hz idle cadence.
+                    let alpha = 1.0 - (-dt / 0.1).exp();
+                    self.fps_ema * (1.0 - alpha) + f * alpha
+                };
+                self.fps_hist.push_back(dt);
+                self.fps_span += dt;
+                while self.fps_span > 60.0 && self.fps_hist.len() > 1 {
+                    if let Some(old) = self.fps_hist.pop_front() {
+                        self.fps_span -= old;
+                    }
+                }
+            }
+        }
+        self.fps_frames += 1;
+        // Recompute window stats ~once a second: sort a copy of the dt window
+        // (worst-case tails) — cheap relative to frame budget and off the
+        // render path.
+        if self.fps_busy_t0.elapsed().as_secs_f32() >= 1.0 && !self.fps_hist.is_empty() {
+            let mut v: Vec<f32> = self.fps_hist.iter().copied().collect();
+            v.sort_unstable_by(|a, b| a.total_cmp(b));
+            let n = v.len();
+            let p99 = ((n as f32 * 0.99) as usize).min(n - 1);
+            let p999 = ((n as f32 * 0.999) as usize).min(n - 1);
+            self.fps_avg = n as f32 / self.fps_span.max(1e-4);
+            self.fps_low1 = 1.0 / v[p99].max(1e-4);
+            self.fps_low01 = 1.0 / v[p999].max(1e-4);
+            let wall_ns = self.fps_busy_t0.elapsed().as_nanos() as f64;
+            self.fps_load = (self.fps_busy_ns as f64 / wall_ns.max(1.0)) as f32;
+            self.fps_busy_ns = 0;
+            self.fps_busy_t0 = Instant::now();
+            if self.fps_log {
+                gpui::log_frame_diagnostic(format!(
+                    "[fps] avg={:.1} 1%={:.1} 0.1%={:.1} load={:.0}% render={:.1}ms",
+                    self.fps_avg,
+                    self.fps_low1,
+                    self.fps_low01,
+                    self.fps_load * 100.0,
+                    self.render_ms
+                ));
+            }
+        }
     }
 
     pub(crate) fn sidebar_progress(&mut self, window: &mut Window) -> f32 {
@@ -459,11 +655,20 @@ impl Agenda {
     /// Settings-group routes share the sidebar chrome and a single "Назад"
     /// exit point.
     pub(crate) fn is_settings_route(r: &Route) -> bool {
-        matches!(r, Route::Settings | Route::SettingsFuel | Route::About)
+        matches!(
+            r,
+            Route::Settings
+                | Route::SettingsFuel
+                | Route::SettingsEnergy
+                | Route::About
+                | Route::Statistics
+                | Route::Dev
+        )
     }
 
     pub(crate) fn navigate(&mut self, route: Route) {
         if self.route != route {
+            self.share_open = false;
             // Only crossing the settings boundary retargets "Назад" —
             // navigating between settings pages must not loop it.
             if Self::is_settings_route(&self.route) != Self::is_settings_route(&route) {
@@ -525,6 +730,8 @@ impl Agenda {
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
             Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
             Route::SettingsFuel => ("Мыслетопливо".into(), "icons/star.svg"),
+            Route::SettingsEnergy => ("Энергосбережение".into(), "icons/clock-01.svg"),
+            Route::Dev => ("Для разработчиков".into(), "icons/settings.svg"),
             Route::About => ("О приложении".into(), "icons/help-circle.svg"),
             Route::Project(id) => (
                 self.project(id)
@@ -550,6 +757,11 @@ impl Agenda {
 
 impl Render for Agenda {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let render_t0 = Instant::now();
+        window.set_frame_pacing(self.vsync_enabled);
+        // Windows controls the tick source itself: full cadence during activity,
+        // one genuinely rendered frame per second while idle/background.
+        window.set_continuous_present(cfg!(target_os = "windows") || self.dev_fps);
         if !self.focused_once {
             self.focused_once = true;
             self.root_focus.focus(window, cx);
@@ -590,6 +802,15 @@ impl Render for Agenda {
             });
         }
 
+        // The shell renders the FPS meter beside this view. The sidebar and
+        // content caches survive meter notifications. Reset when toggled off.
+        if !self.dev_fps {
+            self.fps_ema = 0.0;
+            self.fps_frames = 0;
+            self.fps_hist.clear();
+            self.fps_span = 0.0;
+        }
+
         let weak = cx.weak_entity();
         let root = div()
             .id("agenda-root")
@@ -607,18 +828,23 @@ impl Render for Agenda {
                     let _ = weak.update(cx, |this, cx| this.on_key(ev, window, cx));
                 }
             })
-            .child(self.render_sidebar(sidebar_p, window, cx))
+            // Cached subtree boundaries: each is laid out at a definite style,
+            // and its contents render lazily — only when that view (or this
+            // one, via `observe`) was notified. A scroll inside the page
+            // replays the sidebar; a sidebar hover replays the page.
             .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .flex()
-                    .flex_col()
-                    .overflow_hidden()
-                    .bg(c(BG()))
-                    .child(self.render_titlebar(window, cx))
-                    .child(self.render_page(window, cx)),
+                self.sidebar_view.clone().cached(
+                    gpui::StyleRefinement::default()
+                        .w(gpui::px(crate::chrome::SIDEBAR_W * sidebar_p))
+                        .h_full()
+                        .flex_none()
+                        .overflow_hidden(),
+                ),
+            )
+            .child(
+                self.content_view
+                    .clone()
+                    .cached(gpui::StyleRefinement::default().flex_1().min_w_0().h_full()),
             )
             .child(self.render_sidebar_toggle(window, cx));
 
@@ -636,7 +862,50 @@ impl Render for Agenda {
         if self.quick_open {
             overlays.push(self.render_quick_search(window, cx).into_any_element());
         }
-
+        // Dev overlays: 8px design grid (minor every 8px, major every 40px)
+        // and the FPS badge. Neither is interactive — no hitboxes are
+        // painted, so input passes through to the UI below.
+        if self.dev_grid {
+            let minor = rgba(ACCENT(), 0.10);
+            let major = rgba(ACCENT(), 0.22);
+            overlays.push(
+                gpui::canvas(
+                    |_, _, _| (),
+                    move |bounds, _, window, _| {
+                        let w = f32::from(bounds.size.width);
+                        let h = f32::from(bounds.size.height);
+                        let (mut x, mut i) = (0.0f32, 0);
+                        while x <= w {
+                            window.paint_quad(gpui::fill(
+                                gpui::Bounds::from_corners(
+                                    gpui::point(gpui::px(x), gpui::px(0.)),
+                                    gpui::point(gpui::px(x + 1.), gpui::px(h)),
+                                ),
+                                if i % 5 == 0 { major } else { minor },
+                            ));
+                            x += 8.0;
+                            i += 1;
+                        }
+                        let (mut y, mut i) = (0.0f32, 0);
+                        while y <= h {
+                            window.paint_quad(gpui::fill(
+                                gpui::Bounds::from_corners(
+                                    gpui::point(gpui::px(0.), gpui::px(y)),
+                                    gpui::point(gpui::px(w), gpui::px(y + 1.)),
+                                ),
+                                if i % 5 == 0 { major } else { minor },
+                            ));
+                            y += 8.0;
+                            i += 1;
+                        }
+                    },
+                )
+                .absolute()
+                .inset_0()
+                .into_any_element(),
+            );
+        }
+        self.render_ms = render_t0.elapsed().as_secs_f32() * 1000.0;
         root.children(overlays)
     }
 }
@@ -789,6 +1058,7 @@ impl Agenda {
         }
         if let Some(t) = self.todos.iter_mut().find(|t| t.id == tid) {
             t.title = title;
+            self.model_rev += 1;
         }
     }
 
@@ -802,6 +1072,7 @@ impl Agenda {
         let notes = state.read(cx).value().trim().to_string();
         if let Some(t) = self.todos.iter_mut().find(|t| t.id == tid) {
             t.notes = if notes.is_empty() { None } else { Some(notes) };
+            self.model_rev += 1;
         }
     }
 
@@ -879,6 +1150,7 @@ impl Agenda {
         t.sort_order = self.todos.len() as i32;
         t.created_at = today_key();
         self.todos.push(t);
+        self.model_rev += 1;
         self.quick_entry_open = false;
     }
 
@@ -930,6 +1202,22 @@ impl Agenda {
         self.scrolls.entry(key.to_string()).or_default().clone()
     }
 
+    /// Persistent `UniformListScrollHandle` per page key — wraps the page's
+    /// regular `ScrollHandle` so the offset is shared, while the outer state
+    /// (`last_item_size`, `deferred_scroll_to_item`) survives between frames
+    /// instead of being rebuilt every render.
+    pub(crate) fn list_scroll(&mut self, key: &str) -> gpui::UniformListScrollHandle {
+        let base = self.scroll(key);
+        self.list_scrolls
+            .entry(key.to_string())
+            .or_insert_with(|| {
+                let h = gpui::UniformListScrollHandle::new();
+                h.0.borrow_mut().base_handle = base;
+                h
+            })
+            .clone()
+    }
+
     /// Todo mutations mirroring src/store/todos.ts (local, no ARK).
     pub(crate) fn set_todo_status(&mut self, id: &str, status: Status) {
         if status == Status::Done {
@@ -947,6 +1235,7 @@ impl Agenda {
             t.is_cancelled = status == Status::Canceled;
             t.is_someday = status == Status::Deferred;
             t.is_today = false;
+            self.model_rev += 1;
         }
     }
 
@@ -975,11 +1264,13 @@ impl Agenda {
             next.priority = t.priority;
             self.todos.push(next);
         }
+        self.model_rev += 1;
     }
 
     pub(crate) fn update_todo(&mut self, id: &str, f: impl FnOnce(&mut Todo)) {
         if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
             f(t);
+            self.model_rev += 1;
         }
     }
 
@@ -1078,6 +1369,8 @@ impl Agenda {
             MenuAction::RecurSetType(v) => self.recur_type = v,
             MenuAction::Noop => {}
         }
+        // Covers arms that bypass update_todo (trash, project archive/restore).
+        self.model_rev += 1;
     }
 
     pub(crate) fn quick_matches(&self) -> (Vec<Todo>, Vec<Project>) {
@@ -1100,5 +1393,272 @@ impl Agenda {
             .cloned()
             .collect();
         (todos, projects)
+    }
+}
+
+/// Hosts the FPS meter beside Agenda. Sidebar and content have their own
+/// caches; caching Agenda as well would force-refresh both when either is dirty.
+pub(crate) struct AgendaShell {
+    pub agenda: Entity<Agenda>,
+}
+
+impl gpui::Render for AgendaShell {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let agenda = self.agenda.read(cx);
+        div()
+            .size_full()
+            .relative()
+            .child(self.agenda.clone())
+            // A notified descendant invalidates every ancestor in GPUI.
+            // Keep the meter outside Agenda's subtree.
+            .when(agenda.dev_fps, |root| {
+                root.child(
+                    div()
+                        .absolute()
+                        .bottom_3()
+                        .right_3()
+                        .child(agenda.fps_view.clone()),
+                )
+            })
+    }
+}
+
+/// Dev FPS meter as its own view (see `Agenda::fps_view`). Its per-frame
+/// `on_next_frame` callback samples the interval onto `Agenda` and notifies
+/// only this view, so meter-driven frames repaint a tiny subtree while the
+/// main UI replays its cached paint. It is a sibling of Agenda in the shell.
+pub(crate) struct FpsOverlay {
+    agenda: WeakEntity<Agenda>,
+    /// Whether the self-rearming sampling chain is running. It lives
+    /// independently of renders so sampling continues on ticks where this
+    /// view doesn't repaint.
+    armed: bool,
+    /// Repaint at most ~33 Hz, but update on every 1 Hz idle tick.
+    last_update: Instant,
+}
+
+impl FpsOverlay {
+    /// Samples present deltas every vsync tick; repaints the overlay every 5th
+    /// tick. The entity survives toggling off, so explicitly stop the chain.
+    fn arm(weak: WeakEntity<FpsOverlay>, agenda: WeakEntity<Agenda>, window: &mut Window) {
+        window.on_next_frame(move |window, cx| {
+            let alive = weak
+                .update(cx, |this, cx| {
+                    let enabled = agenda
+                        .update(cx, |ag, _| {
+                            if ag.dev_fps {
+                                ag.sample_frame();
+                            }
+                            ag.dev_fps
+                        })
+                        .unwrap_or(false);
+                    if !enabled {
+                        this.armed = false;
+                        return false;
+                    }
+                    if this.last_update.elapsed().as_millis() >= 30 {
+                        this.last_update = Instant::now();
+                        cx.notify();
+                    }
+                    true
+                })
+                .unwrap_or(false);
+            if alive {
+                Self::arm(weak, agenda, window);
+            }
+        });
+    }
+}
+
+impl gpui::Render for FpsOverlay {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.armed {
+            self.armed = true;
+            Self::arm(cx.weak_entity(), self.agenda.clone(), window);
+        }
+
+        let (ema, avg, low1, low01, load, tail, warming) = self
+            .agenda
+            .upgrade()
+            .map(|e| {
+                let a = e.read(cx);
+                // 5s tail of the 60s dt window for the graph.
+                let mut tail: Vec<f32> = Vec::new();
+                let mut acc = 0.0f32;
+                for &dt in a.fps_hist.iter().rev() {
+                    if acc > 5.0 {
+                        break;
+                    }
+                    acc += dt;
+                    tail.push(dt);
+                }
+                tail.reverse();
+                (
+                    a.fps_ema,
+                    a.fps_avg,
+                    a.fps_low1,
+                    a.fps_low01,
+                    a.fps_load,
+                    tail,
+                    a.fps_warmup.is_some(),
+                )
+            })
+            .unwrap_or_default();
+
+        let step = (tail.len() / 150).max(1);
+        let off = tail.len() % step;
+        let samples: Vec<f32> = tail.iter().skip(off).step_by(step).copied().collect();
+        let accent = c(ACCENT());
+        let warn = c(WARN());
+        let guide = c(BORDER());
+        div()
+            .font_family("Inter")
+            .text_color(c(FG()))
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .border_1()
+            .border_color(c(BORDER()))
+            .bg(rgba(BG(), 0.85))
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(
+                gpui::canvas(
+                    move |_, _, _| samples,
+                    move |bounds, samples, window, _| {
+                        let w = f32::from(bounds.size.width);
+                        let h = f32::from(bounds.size.height);
+                        let y_of = |dt: f32| {
+                            let fps = 1.0 / dt.max(1e-4);
+                            h - (fps / 180.0).clamp(0.02, 1.0) * h
+                        };
+                        // Reference line at 165fps.
+                        let ty = y_of(1.0 / 165.0);
+                        window.paint_quad(gpui::fill(
+                            gpui::Bounds::from_corners(
+                                gpui::point(bounds.origin.x, bounds.origin.y + gpui::px(ty)),
+                                gpui::point(
+                                    bounds.origin.x + gpui::px(w),
+                                    bounds.origin.y + gpui::px(ty + 1.),
+                                ),
+                            ),
+                            guide,
+                        ));
+                        // Polyline: each column spans prev→cur y.
+                        let n = samples.len();
+                        if n >= 2 {
+                            let xs = w / (n - 1) as f32;
+                            for i in 1..n {
+                                let y0 = y_of(samples[i - 1]);
+                                let y1 = y_of(samples[i]);
+                                let x0 = bounds.origin.x + gpui::px((i - 1) as f32 * xs);
+                                let x1 = (bounds.origin.x + gpui::px(i as f32 * xs))
+                                    .max(x0 + gpui::px(1.5));
+                                let top = y0.min(y1);
+                                let bot = y0.max(y1).max(top + 1.5);
+                                let slow = (1.0 / samples[i].max(1e-4)) < 60.0;
+                                window.paint_quad(gpui::fill(
+                                    gpui::Bounds::from_corners(
+                                        gpui::point(x0, bounds.origin.y + gpui::px(top)),
+                                        gpui::point(x1, bounds.origin.y + gpui::px(bot)),
+                                    ),
+                                    if slow { warn } else { accent },
+                                ));
+                            }
+                        }
+                    },
+                )
+                .w(gpui::px(150.))
+                .h(gpui::px(26.)),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .child(
+                        div()
+                            .text_size(gpui::px(12.))
+                            .font_weight(gpui::FontWeight::SEMIBOLD)
+                            .text_color(c(FG()))
+                            .child(if warming {
+                                "прогрев…".to_string()
+                            } else {
+                                format!("{:.0} fps", ema)
+                            }),
+                    )
+                    .child(
+                        div()
+                            .text_size(gpui::px(9.))
+                            .text_color(c(MUTED_FG()))
+                            .child(if warming {
+                                "замер начнётся после загрузки".to_string()
+                            } else {
+                                format!(
+                                    "avg {:.0} · 1% {:.0} · 0.1% {:.0} · load {:.0}%",
+                                    avg,
+                                    low1,
+                                    low01,
+                                    load * 100.0
+                                )
+                            }),
+                    ),
+            )
+    }
+}
+
+/// Sidebar as a cached subtree boundary (see `Agenda::sidebar_view`). Render
+/// delegates back into `Agenda` — this entity exists only so GPUI's per-view
+/// dirty tracking can replay the sidebar while the page repaints (scroll,
+/// meter ticks) and vice versa. The `observe` subscription propagates
+/// `Agenda` notifications down: any `cx.notify()` on Agenda also dirties
+/// this view so its next render reflects current state.
+pub(crate) struct SidebarView {
+    agenda: Entity<Agenda>,
+    _sub: Subscription,
+}
+
+impl SidebarView {
+    fn new(agenda: Entity<Agenda>, cx: &mut Context<Self>) -> Self {
+        let _sub = cx.observe(&agenda, |_, _, cx| cx.notify());
+        Self { agenda, _sub }
+    }
+}
+
+impl gpui::Render for SidebarView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.agenda.update(cx, |a, cx| {
+            let p = a.sidebar_progress(window);
+            a.render_sidebar(p, window, cx)
+        })
+    }
+}
+
+/// Titlebar + page column as a cached subtree boundary (see
+/// `Agenda::content_view`) — same reasoning as `SidebarView`.
+pub(crate) struct ContentView {
+    agenda: Entity<Agenda>,
+    _sub: Subscription,
+}
+
+impl ContentView {
+    fn new(agenda: Entity<Agenda>, cx: &mut Context<Self>) -> Self {
+        let _sub = cx.observe(&agenda, |_, _, cx| cx.notify());
+        Self { agenda, _sub }
+    }
+}
+
+impl gpui::Render for ContentView {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.agenda.update(cx, |a, cx| {
+            div()
+                .size_full()
+                .flex()
+                .flex_col()
+                .overflow_hidden()
+                .bg(c(BG()))
+                .child(a.render_titlebar(window, cx))
+                .child(a.render_page(window, cx))
+        })
     }
 }

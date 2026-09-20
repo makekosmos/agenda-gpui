@@ -229,7 +229,11 @@ impl Agenda {
                 div()
                     .text_size(px(13.))
                     .text_color(c(MUTED_FG()))
-                    .child("Версия 0.1.0 (GPUI clone)"),
+                    .child(concat!(
+                        "Версия ",
+                        env!("CARGO_PKG_VERSION"),
+                        " (GPUI clone)"
+                    )),
             )
             .into_any_element()
     }

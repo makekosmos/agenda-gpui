@@ -1055,6 +1055,18 @@ impl PlatformWindow for WindowsWindow {
             .log_err();
     }
 
+    fn can_draw(&self) -> bool {
+        self.state.renderer.borrow().can_draw()
+    }
+
+    fn set_frame_pacing(&self, vsync: bool) {
+        self.state.renderer.borrow().set_frame_pacing(vsync, self.is_active());
+    }
+
+    fn note_frame_activity(&self, is_input: bool) {
+        self.state.renderer.borrow().note_frame_activity(is_input);
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     fn render_to_image(&self, scene: &Scene) -> anyhow::Result<image::RgbaImage> {
         self.state

@@ -29,6 +29,106 @@ const RENDER_TARGET_FORMAT: DXGI_FORMAT = DXGI_FORMAT_B8G8R8A8_UNORM;
 const PATH_MULTISAMPLE_COUNT: u32 = 4;
 const MAX_INSTANCE_BUFFER_SIZE: usize = 256 * 1024 * 1024;
 
+/// AGENDA: swapchain handle shared with the VSyncProvider thread. The UI
+/// thread renders the scene and bumps `submitted`; the vsync thread issues
+/// `Present` after the compositor tick. Timestamps measure successful Present
+/// calls, including real scheduling jitter; they are not scanout timestamps.
+///
+/// The UI checks `can_draw` before encoding into the back buffer. Posted ticks
+/// alone do not guarantee ordering: input and WM_PAINT can also request draws.
+pub(crate) struct PresentSlot {
+    hwnd: SafeHwnd,
+    pacing: parking_lot::Mutex<crate::vsync::FramePacing>,
+    /// The live swap chain. The mutex serializes vsync-thread `Present`
+    /// against UI-thread `ResizeBuffers` / swap-chain recreation.
+    swap_chain: std::sync::Mutex<Option<IDXGISwapChain1>>,
+    /// Bumped by the UI thread after a scene was encoded for presentation.
+    submitted: std::sync::atomic::AtomicU64,
+    /// Bumped by the vsync thread once that submission was presented.
+    presented: std::sync::atomic::AtomicU64,
+}
+
+/// Every window registers its slot here; dead windows drop out via `Weak`.
+static PRESENT_SLOTS: std::sync::Mutex<Vec<std::sync::Weak<PresentSlot>>> =
+    std::sync::Mutex::new(Vec::new());
+
+fn present_slots() -> Vec<Arc<PresentSlot>> {
+    let mut registry = match PRESENT_SLOTS.lock() {
+        Ok(registry) => registry,
+        Err(_) => return Vec::new(),
+    };
+    registry.retain(|slot| slot.upgrade().is_some());
+    registry.iter().filter_map(|slot| slot.upgrade()).collect()
+}
+
+/// None means an active window needs compositor ticks; otherwise sleep until due.
+pub(crate) fn next_frame_wait() -> Option<std::time::Duration> {
+    let now = std::time::Instant::now();
+    let mut wait = std::time::Duration::from_secs(1);
+    for slot in present_slots() {
+        let pacing = slot.pacing.lock();
+        if pacing.interval(now).is_zero() {
+            return None;
+        }
+        wait = wait.min(pacing.remaining(now));
+    }
+    Some(wait)
+}
+
+pub(crate) fn take_due_frame_windows() -> Vec<SafeHwnd> {
+    let now = std::time::Instant::now();
+    present_slots()
+        .into_iter()
+        .filter_map(|slot| {
+            let mut pacing = slot.pacing.lock();
+            if !pacing.remaining(now).is_zero() {
+                return None;
+            }
+            pacing.did_tick(now);
+            Some(slot.hwnd)
+        })
+        .collect()
+}
+
+/// Present each due window's completed submission, never an in-progress buffer.
+pub(crate) fn present_submitted_frames() {
+    for slot in present_slots() {
+        if !slot
+            .pacing
+            .lock()
+            .remaining(std::time::Instant::now())
+            .is_zero()
+        {
+            continue;
+        }
+        use std::sync::atomic::Ordering::{Acquire, Release};
+        let swap_chain = match slot.swap_chain.lock() {
+            Ok(swap_chain) => swap_chain,
+            Err(_) => continue,
+        };
+        let submitted = slot.submitted.load(Acquire);
+        if submitted == slot.presented.load(Acquire) {
+            continue;
+        }
+        if let Some(swap_chain) = swap_chain.as_ref() {
+            let result = unsafe { swap_chain.Present(0, DXGI_PRESENT(0)) };
+            if result == windows::Win32::Foundation::S_OK {
+                note_present(std::time::Instant::now());
+                static TRACE_PRESENTS: std::sync::LazyLock<bool> = std::sync::LazyLock::new(|| {
+                    std::env::var_os("AGENDA_PRESENT_TRACE").is_some()
+                });
+                if *TRACE_PRESENTS {
+                    gpui::log_frame_diagnostic(format!("[present] qpc={}", crate::qpc_now()));
+                }
+            }
+            // Release the buffer on failure too so device recovery can redraw.
+            // Errors and occlusion are not presented-frame samples.
+            result.ok().log_err();
+            slot.presented.store(submitted, Release);
+        }
+    }
+}
+
 pub(crate) struct FontInfo {
     pub gamma_ratios: [f32; 4],
     pub grayscale_enhanced_contrast: f32,
@@ -54,6 +154,10 @@ pub(crate) struct DirectXRenderer {
     /// In that case we want to discard the first frame that we draw as we got reset in the middle of a frame
     /// meaning we lost all the allocated gpu textures and scene resources.
     skip_draws: bool,
+
+    /// AGENDA: shared with the VSyncProvider thread — `draw` only encodes and
+    /// submits; `Present` is issued at the composition boundary.
+    present_slot: Arc<PresentSlot>,
 }
 
 /// Direct3D objects
@@ -181,6 +285,17 @@ impl DirectXRenderer {
                 .context("Setting swap chain for DirectComposition")?;
             Some(composition)
         };
+        let present_slot = Arc::new(PresentSlot {
+            hwnd: hwnd.into(),
+            pacing: parking_lot::Mutex::new(crate::vsync::FramePacing::new()),
+            swap_chain: std::sync::Mutex::new(Some(resources.swap_chain.clone())),
+            submitted: std::sync::atomic::AtomicU64::new(0),
+            presented: std::sync::atomic::AtomicU64::new(0),
+        });
+        if let Ok(mut registry) = PRESENT_SLOTS.lock() {
+            registry.retain(|slot| slot.upgrade().is_some());
+            registry.push(Arc::downgrade(&present_slot));
+        }
         Ok(DirectXRenderer {
             hwnd,
             atlas,
@@ -193,6 +308,7 @@ impl DirectXRenderer {
             width: 1,
             height: 1,
             skip_draws: false,
+            present_slot,
         })
     }
 
@@ -240,16 +356,14 @@ impl DirectXRenderer {
         Ok(())
     }
 
+    /// AGENDA: marks the encoded scene ready for the vsync thread to present.
+    /// The actual `IDXGISwapChain1::Present` runs in
+    /// [`present_submitted_frames`] after a compositor tick.
     #[inline]
-    fn present(&mut self) -> Result<()> {
-        let result = unsafe {
-            self.resources
-                .as_ref()
-                .expect("resources missing")
-                .swap_chain
-                .Present(0, DXGI_PRESENT(0))
-        };
-        result.ok().context("Presenting swap chain failed")
+    fn submit_frame(&self) {
+        self.present_slot
+            .submitted
+            .fetch_add(1, std::sync::atomic::Ordering::Release);
     }
 
     pub(crate) fn handle_device_lost(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
@@ -260,6 +374,15 @@ impl DirectXRenderer {
     }
 
     fn handle_device_lost_impl(&mut self, directx_devices: &DirectXDevices) -> Result<()> {
+        if let Ok(mut slot) = self.present_slot.swap_chain.lock() {
+            *slot = None;
+            self.present_slot.presented.store(
+                self.present_slot
+                    .submitted
+                    .load(std::sync::atomic::Ordering::Acquire),
+                std::sync::atomic::Ordering::Release,
+            );
+        }
         let disable_direct_composition = self.direct_composition.is_none();
 
         unsafe {
@@ -317,6 +440,11 @@ impl DirectXRenderer {
                 .device_context
                 .OMSetRenderTargets(Some(slice::from_ref(&resources.render_target_view)), None);
         }
+        // The swap chain was recreated — hand it to the vsync-thread present
+        // slot, serializing against an in-flight `Present`.
+        if let Ok(mut slot) = self.present_slot.swap_chain.lock() {
+            *slot = Some(resources.swap_chain.clone());
+        }
         self.devices = Some(devices);
         self.resources = Some(resources);
         self.globals = globals;
@@ -324,6 +452,41 @@ impl DirectXRenderer {
         self.direct_composition = direct_composition;
         self.skip_draws = true;
         Ok(())
+    }
+
+    pub(crate) fn can_draw(&self) -> bool {
+        use std::sync::atomic::Ordering::Acquire;
+        self.present_slot.submitted.load(Acquire) == self.present_slot.presented.load(Acquire)
+    }
+
+    pub(crate) fn set_frame_pacing(&self, vsync: bool, active: bool) {
+        let mut pacing = self.present_slot.pacing.lock();
+        if pacing.vsync != Some(vsync) {
+            pacing.vsync = Some(vsync);
+            pacing.last_activity = std::time::Instant::now();
+            crate::vsync::wake_frame_thread();
+        }
+        drop(pacing);
+        self.set_frame_active(active);
+    }
+
+    pub(crate) fn set_frame_active(&self, active: bool) {
+        let active = active || std::env::var_os("AGENDA_UNTHROTTLED").is_some();
+        let mut pacing = self.present_slot.pacing.lock();
+        if pacing.active != active {
+            pacing.active = active;
+            if active {
+                pacing.last_activity = std::time::Instant::now();
+            }
+            crate::vsync::wake_frame_thread();
+        }
+    }
+
+    pub(crate) fn note_frame_activity(&self, is_input: bool) {
+        let mut pacing = self.present_slot.pacing.lock();
+        if pacing.note_activity(std::time::Instant::now(), is_input) {
+            crate::vsync::wake_frame_thread();
+        }
     }
 
     pub(crate) fn draw(
@@ -337,7 +500,8 @@ impl DirectXRenderer {
             return Ok(());
         }
         self.render(scene, background_appearance)?;
-        self.present()
+        self.submit_frame();
+        Ok(())
     }
 
     /// Clear the render target for `background_appearance` and encode every
@@ -501,6 +665,14 @@ impl DirectXRenderer {
         // The app might have moved to a monitor that's attached to a different graphics device.
         // When a graphics device is removed or reset, the desktop resolution often changes, resulting in a window size change.
         // But here we just return the error, because we are handling device lost scenarios elsewhere.
+        // Serialize against a vsync-thread `Present` on the same swap chain.
+        let _present_guard = self.present_slot.swap_chain.lock().ok();
+        self.present_slot.presented.store(
+            self.present_slot
+                .submitted
+                .load(std::sync::atomic::Ordering::Acquire),
+            std::sync::atomic::Ordering::Release,
+        );
         unsafe {
             resources
                 .swap_chain

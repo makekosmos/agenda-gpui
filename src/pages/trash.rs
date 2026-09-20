@@ -1,28 +1,31 @@
 use super::*;
 
 impl Agenda {
-    pub(crate) fn trash_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let items = filter_todos(SmartList::Trash, &self.todos);
-        let mut list = div()
-            .id("list-trash")
-            .flex_1()
-            .min_h_0()
-            .flex()
-            .flex_col()
-            .overflow_y_scroll()
-            .track_scroll(&self.scroll("trash"));
-        if items.is_empty() {
-            list = list.child(empty_state());
-        }
-        for t in &items {
-            list = list.child(self.task_row(t, false, window, cx));
-        }
+    pub(crate) fn trash_page(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        let rows: Vec<FlatRow> = filter_idx(SmartList::Trash, &self.todos)
+            .into_iter()
+            .map(FlatRow::Task)
+            .collect();
         div()
             .flex_1()
             .min_h_0()
             .flex()
             .flex_col()
-            .child(list)
+            .child(if rows.is_empty() {
+                empty_state().into_any_element()
+            } else {
+                self.task_list(
+                    "list-trash".to_string(),
+                    "trash",
+                    std::rc::Rc::new(rows),
+                    false,
+                    cx,
+                )
+            })
             .into_any_element()
     }
 }

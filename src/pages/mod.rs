@@ -5,6 +5,7 @@ mod board;
 mod calendar;
 mod calendar_day;
 mod chips;
+mod dev;
 mod dropdown;
 mod fab;
 mod logbook;
@@ -21,7 +22,7 @@ mod task;
 mod task_props;
 mod trash;
 
-pub(crate) use chrono::{Datelike, Duration, Local};
+pub(crate) use chrono::{Datelike, Duration, Local, NaiveDate};
 pub(crate) use gpui::{
     deferred, div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
     SharedString, Window,
@@ -35,6 +36,7 @@ pub(crate) use crate::chrome::CAPTION_W;
 pub(crate) use crate::model::*;
 pub(crate) use crate::theme::*;
 pub(crate) use crate::widgets::*;
+pub(crate) use rows::{FlatRow, RowCache};
 
 fn panel_mix(a: f32) -> HslaAlias {
     mix(0xffffff, a, POPOVER())
@@ -74,6 +76,8 @@ impl Agenda {
             Route::Recurring => self.recurring_page(window, cx),
             Route::Settings => self.settings_page(false, window, cx),
             Route::SettingsFuel => self.settings_page(true, window, cx),
+            Route::SettingsEnergy => self.energy_page(window, cx),
+            Route::Dev => self.dev_page(window, cx),
             Route::About => self.about_page(),
             Route::Project(ref id) => self.project_page(id, window, cx),
             Route::Task(ref id) => self.task_page(id, window, cx),
@@ -110,6 +114,7 @@ impl Agenda {
     pub(crate) fn row_status_chip(
         &mut self,
         t: &Todo,
+        ix: usize,
         status: Status,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -125,7 +130,7 @@ impl Agenda {
         let key = SharedString::from(hid.clone());
         let tid = t.id.to_string();
         div()
-            .id(SharedString::from(format!("el-{hid}")))
+            .id(("chip", ix))
             .h(px(20.))
             .px_2()
             .flex()

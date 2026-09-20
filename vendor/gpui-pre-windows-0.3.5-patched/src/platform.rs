@@ -20,7 +20,8 @@ use windows::{
     UI::ViewManagement::UISettings,
     Win32::{
         Foundation::*,
-        Graphics::{Direct3D11::ID3D11Device, Gdi::*},
+        Graphics::Direct3D11::ID3D11Device,
+        Media::timeBeginPeriod,
         Security::Credentials::*,
         System::{
             Com::*,
@@ -29,7 +30,11 @@ use windows::{
             Power::*,
             SystemInformation::*,
             SystemServices::POWER_REQUEST_CONTEXT_VERSION,
-            Threading::{POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0},
+            Threading::{
+                AvSetMmThreadCharacteristicsW, GetCurrentThread, SetThreadPriority,
+                POWER_REQUEST_CONTEXT_SIMPLE_STRING, REASON_CONTEXT, REASON_CONTEXT_0,
+                THREAD_PRIORITY_TIME_CRITICAL,
+            },
         },
         UI::{Input::KeyboardAndMouse::*, Shell::*, WindowsAndMessaging::*},
     },
@@ -386,9 +391,42 @@ impl WindowsPlatform {
         std::thread::Builder::new()
             .name("VSyncProvider".to_owned())
             .spawn(move || {
+                // MMCSS + critical priority: DwmFlush wakeup latency directly
+                // becomes frame-time jitter at 120+Hz.
+                unsafe {
+                    let mut task_index = 0u32;
+                    let _ = AvSetMmThreadCharacteristicsW(w!("Games"), &mut task_index);
+                    let _ = SetThreadPriority(
+                        GetCurrentThread(),
+                        THREAD_PRIORITY_TIME_CRITICAL,
+                    );
+                }
                 let vsync_provider = VSyncProvider::new();
+                crate::vsync::register_frame_thread();
                 loop {
-                    vsync_provider.wait_for_vsync();
+                    if all_windows.strong_count() == 0 { break; }
+                    let wait_t0 = std::time::Instant::now();
+                    match crate::directx_renderer::next_frame_wait() {
+                        None => vsync_provider.wait_for_vsync(),
+                        Some(wait) if !wait.is_zero() => {
+                            if wait > std::time::Duration::from_millis(50) {
+                                // Idle sleep is interruptible by input/focus/animation.
+                                std::thread::park_timeout(wait);
+                            } else {
+                                // Rust uses a high-resolution Windows timer here.
+                                std::thread::sleep(wait);
+                            }
+                            continue;
+                        }
+                        Some(_) => {}
+                    }
+                    let wait_ms = wait_t0.elapsed().as_secs_f32() * 1000.0;
+                    if wait_ms > 10.0 && std::env::var("AGENDA_FRAME_LOG").is_ok() {
+                        gpui::log_frame_diagnostic(format!("[vsync] wait={wait_ms:.1}ms"));
+                    }
+                    // Present submitted frames after the compositor tick.
+                    // The UI thread never waits here for pacing.
+                    crate::directx_renderer::present_submitted_frames();
                     if check_device_lost(&directx_device.device)
                         || invalidate_devices.fetch_and(false, Ordering::Acquire)
                     {
@@ -402,12 +440,19 @@ impl WindowsPlatform {
                             panic!("Device lost: {err}");
                         }
                     }
-                    let Some(all_windows) = all_windows.upgrade() else {
-                        break;
-                    };
-                    for hwnd in all_windows.read().iter() {
+                    for hwnd in crate::directx_renderer::take_due_frame_windows() {
                         unsafe {
-                            let _ = RedrawWindow(Some(hwnd.as_raw()), None, None, RDW_INVALIDATE);
+                            // Posted message, not RedrawWindow/RDW_INVALIDATE:
+                            // WM_PAINT waits for an empty queue and coalesces,
+                            // so any input burst starves the frame. A posted
+                            // WM_GPUI_VSYNC is dispatched in order, and the
+                            // handler drains queued duplicates.
+                            let _ = PostMessageW(
+                                Some(hwnd.as_raw()),
+                                WM_GPUI_VSYNC,
+                                WPARAM(qpc_now()),
+                                LPARAM::default(),
+                            );
                         }
                     }
                 }
@@ -515,6 +560,16 @@ impl Platform for WindowsPlatform {
         on_finish_launching();
         if !self.headless {
             self.begin_vsync_thread();
+        }
+
+        // MMCSS on the UI thread: vsync ticks are dispatched through the
+        // message pump, so pump scheduling latency lands in the frame time.
+        // timeBeginPeriod(1): the default 15.6ms timer granularity makes
+        // DwmFlush and wait wakes late by up to a full refresh interval.
+        unsafe {
+            let mut task_index = 0u32;
+            let _ = AvSetMmThreadCharacteristicsW(w!("Games"), &mut task_index);
+            let _ = timeBeginPeriod(1);
         }
 
         let mut msg = MSG::default();

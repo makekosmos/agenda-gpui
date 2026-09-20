@@ -21,6 +21,7 @@ fn main() {
 
     // MSVC host/target: rc.exe via embed-resource (locates the Windows SDK
     // itself). GNU (cross or native mingw): windres → COFF .o → rustc link-arg.
+    #[cfg(target_os = "windows")]
     if target.ends_with("-msvc") {
         embed_resource::compile(&rc, embed_resource::NONE)
             .manifest_required()

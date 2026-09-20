@@ -254,6 +254,91 @@ pub enum SmartList {
     Trash,
 }
 
+/// Index-based twin of [`filter_todos`]: returns positions into `todos`
+/// without cloning any `Todo` — the hot path for virtualized lists.
+pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
+    let today = today_key();
+    if list == SmartList::Today {
+        let mut v: Vec<usize> = todos
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| is_overdue(t, &today))
+            .map(|(i, _)| i)
+            .collect();
+        v.sort_by_cached_key(|&i| {
+            (
+                task_date(&todos[i]).0.unwrap_or_default(),
+                todos[i].sort_order,
+            )
+        });
+        let mut due: Vec<usize> = todos
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| is_due_today(t, &today) || completed_on(t, &today))
+            .map(|(i, _)| i)
+            .collect();
+        due.sort_by_key(|&i| todos[i].sort_order);
+        v.extend(due);
+        return v;
+    }
+    let mut v: Vec<usize> = todos
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| match list {
+            SmartList::Today => unreachable!(),
+            SmartList::Inbox => is_inbox(t),
+            SmartList::Plans => {
+                let (date, _) = task_date(t);
+                date.as_deref().is_some_and(|d| d > today.as_str())
+                    && is_active(t)
+                    && !is_deferred(t)
+                    && t.system_kind.is_none()
+            }
+            SmartList::Someday => is_deferred(t),
+            SmartList::Logbook => is_archived(t, &today),
+            SmartList::Trash => t.is_trashed,
+        })
+        .map(|(i, _)| i)
+        .collect();
+    match list {
+        SmartList::Plans => {
+            v.sort_by_cached_key(|&i| task_date(&todos[i]).0.unwrap_or_else(|| "\u{ffff}".into()))
+        }
+        SmartList::Logbook => v.sort_by_cached_key(|&i| {
+            std::cmp::Reverse(todos[i].completed_at.clone().unwrap_or_default())
+        }),
+        SmartList::Trash => {
+            v.sort_by_cached_key(|&i| std::cmp::Reverse(todos[i].created_at.clone()))
+        }
+        _ => v.sort_by_key(|&i| todos[i].sort_order),
+    }
+    v
+}
+
+/// Index-based twin of [`sorted`]; `sort_by_cached_key` so date/title keys
+/// are computed once per item instead of once per comparison.
+pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey) -> Vec<usize> {
+    match key {
+        SortKey::Default => {}
+        SortKey::Date => items.sort_by_cached_key(|&i| {
+            (
+                task_date(&todos[i]).0.unwrap_or_else(|| "9999".into()),
+                todos[i].sort_order,
+            )
+        }),
+        SortKey::Priority => items.sort_by(|&a, &b| {
+            todos[b]
+                .priority
+                .cmp(&todos[a].priority)
+                .then(todos[a].sort_order.cmp(&todos[b].sort_order))
+        }),
+        SortKey::Title => {
+            items.sort_by_cached_key(|&i| (todos[i].title.to_lowercase(), todos[i].sort_order))
+        }
+    }
+    items
+}
+
 pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
     let today = today_key();
     // TodayPage.vue: [...overdueTodos(todos), ...filterTodos(SmartList.Today)]
@@ -350,7 +435,7 @@ pub fn sorted(items: &[Todo], key: SortKey) -> Vec<Todo> {
 // Russian date formatting (Intl.DateTimeFormat ru-RU equivalents)
 // ---------------------------------------------------------------------------
 
-const MONTH_SHORT: [&str; 12] = [
+pub(crate) const MONTH_SHORT: [&str; 12] = [
     "янв.",
     "февр.",
     "мар.",
@@ -364,7 +449,7 @@ const MONTH_SHORT: [&str; 12] = [
     "нояб.",
     "дек.",
 ];
-const MONTH_LONG: [&str; 12] = [
+pub(crate) const MONTH_LONG: [&str; 12] = [
     "января",
     "февраля",
     "марта",
@@ -887,6 +972,102 @@ pub fn seed_todos() -> Vec<Todo> {
         t.sort_order = i as i32;
     }
     v
+}
+
+/// Dev tool: `n` todos with random-character titles and randomized fields
+/// (xorshift64*, no external deps). ~55% are completed, spread over the past
+/// year so the statistics heatmap has data to show. Ids are namespaced as
+/// `dev-gen-{batch}-{i}` so batches never collide.
+pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec<Todo> {
+    const PROJECTS: [&str; 3] = ["dev-proj-release", "dev-proj-home", "dev-proj-someday"];
+    const TAGS: [&str; 3] = ["dev-tag-urgent", "dev-tag-focus", "dev-tag-home"];
+
+    let mut s = (seed | 1).wrapping_add(0x9E37_79B9_7F4A_7C15);
+    let mut rng = move || {
+        s ^= s >> 12;
+        s ^= s << 25;
+        s ^= s >> 27;
+        s = s.wrapping_mul(0x2545_F491_4F6C_DD1D);
+        s
+    };
+    fn rand_chars(rng: &mut impl FnMut() -> u64, words_max: u64) -> String {
+        let words = 1 + rng() % words_max;
+        (0..words)
+            .map(|_| {
+                let len = 2 + rng() % 9;
+                (0..len)
+                    .map(|_| (b'a' + (rng() % 26) as u8) as char)
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    (0..n)
+        .map(|i| {
+            let mut t = todo(format!("dev-gen-{batch}-{i}"), &rand_chars(&mut rng, 4));
+            t.created_at = iso_at(
+                -((rng() % 365) as i64),
+                (rng() % 24) as u32,
+                (rng() % 60) as u32,
+            );
+            t.sort_order = first_sort + i as i32;
+            if rng() % 100 < 55 {
+                t.status = Status::Done;
+                t.is_completed = true;
+                t.completed_at = Some(iso_at(
+                    -((rng() % 365) as i64),
+                    (rng() % 24) as u32,
+                    (rng() % 60) as u32,
+                ));
+            } else {
+                t.status = match rng() % 100 {
+                    0..=19 => Status::Inbox,
+                    20..=59 => Status::Todo,
+                    60..=74 => Status::Started,
+                    75..=89 => Status::Deferred,
+                    _ => Status::Canceled,
+                };
+                match t.status {
+                    Status::Canceled => {
+                        t.is_cancelled = true;
+                        t.completed_at = Some(iso_at(-((rng() % 180) as i64), 12, 0));
+                    }
+                    Status::Deferred => t.is_someday = rng() % 100 < 60,
+                    _ => {}
+                }
+                if rng() % 100 < 6 {
+                    t.is_today = true;
+                }
+                if rng() % 100 < 40 {
+                    t.scheduled_date = Some(day_key((rng() % 76) as i64 - 30));
+                }
+                if rng() % 100 < 15 {
+                    t.deadline = Some(day_key((rng() % 61) as i64 - 10));
+                }
+                if rng() % 100 < 3 {
+                    t.is_trashed = true;
+                }
+            }
+            if rng() % 100 < 30 {
+                t.priority = 1 + (rng() % 3) as u8;
+            }
+            if rng() % 100 < 35 {
+                t.project_id = Some(PROJECTS[(rng() % 3) as usize]);
+            }
+            if rng() % 100 < 20 {
+                t.tag_ids = vec![TAGS[(rng() % 3) as usize]];
+            }
+            if rng() % 100 < 15 {
+                t.notes = Some(rand_chars(&mut rng, 12));
+            }
+            if rng() % 100 < 30 {
+                t.fuel_cost = Some(5 + (rng() % 60) as u32);
+                t.significance = Some(1 + (rng() % 10) as u8);
+            }
+            t
+        })
+        .collect()
 }
 
 pub fn seed_projects() -> Vec<Project> {

@@ -956,7 +956,15 @@ pub trait PlatformWindow: HasWindowHandle + HasDisplayHandle {
     fn on_appearance_changed(&self, callback: Box<dyn FnMut()>);
     fn on_button_layout_changed(&self, _callback: Box<dyn FnMut()>) {}
     fn draw(&self, scene: &Scene);
+    /// Whether a new frame can be encoded without waiting for a pending present.
+    fn can_draw(&self) -> bool {
+        true
+    }
     fn schedule_frame(&self) {}
+    /// Opt into adaptive pacing: display cadence (or 60 Hz), 1 Hz when idle/background.
+    fn set_frame_pacing(&self, _vsync: bool) {}
+    /// Input wakes even unfocused windows; animations only keep focused windows awake.
+    fn note_frame_activity(&self, _is_input: bool) {}
     fn sprite_atlas(&self) -> Arc<dyn PlatformAtlas>;
     fn is_subpixel_rendering_supported(&self) -> bool;
 

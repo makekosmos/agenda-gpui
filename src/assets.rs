@@ -43,6 +43,7 @@ impl AssetSource for Assets {
         "icons/repeat.svg",
         "icons/search.svg",
         "icons/settings.svg",
+        "icons/share.svg",
         "icons/sidebar-left.svg",
         "icons/sliders.svg",
         "icons/star.svg",
