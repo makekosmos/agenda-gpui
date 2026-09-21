@@ -208,6 +208,9 @@ pub struct Agenda {
     pub(crate) vsync_enabled: bool,
     pub(crate) applied_material: Option<u8>,
     pub(crate) applied_theme_sel: Option<u8>,
+    /// (theme_idx, resolved dark) last pushed into gpui-component via
+    /// `imago_gpui::theme::apply` — re-applies only on real changes.
+    pub(crate) applied_palette: Option<(usize, bool)>,
     pub(crate) delete_blocked: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
@@ -386,6 +389,7 @@ impl Agenda {
             vsync_enabled: std::env::var("AGENDA_VSYNC").as_deref() != Ok("0"),
             applied_material: None,
             applied_theme_sel: None,
+            applied_palette: None,
             delete_blocked: false,
             scrolls: HashMap::new(),
             list_scrolls: HashMap::new(),
@@ -803,6 +807,13 @@ impl Render for Agenda {
         };
         set_mode(dark);
         set_theme(self.theme_idx);
+        // Push the imago palette into gpui-component (Inputs, tooltips,
+        // scrollbars) when the selected theme or resolved mode changed.
+        let palette_key = (self.theme_idx, dark);
+        if self.applied_palette != Some(palette_key) {
+            self.applied_palette = Some(palette_key);
+            imago_gpui::theme::apply(cx);
+        }
         if self.applied_material != Some(self.sb_material) {
             self.applied_material = Some(self.sb_material);
             window.set_background_appearance(match self.sb_material {
