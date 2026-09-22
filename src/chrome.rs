@@ -806,13 +806,12 @@ impl Agenda {
                 btn = btn.on_click(move |_: &ClickEvent, window, cx| match area {
                     WindowControlArea::Min => window.minimize_window(),
                     WindowControlArea::Max => window.zoom_window(),
-                    WindowControlArea::Close => {
+                    WindowControlArea::Close
                         if close_guard
                             .update(cx, |this, cx| this.prepare_close(cx))
-                            .unwrap_or(true)
-                        {
-                            window.remove_window();
-                        }
+                            .unwrap_or(true) =>
+                    {
+                        window.remove_window();
                     }
                     _ => {}
                 });

@@ -10,6 +10,11 @@ default-run = "agenda-gpui"
 # root, so `use gpui::...` keeps working through this alias.
 gpui = { package = "gpui-kit", version = "=0.6.2" }
 gpui-component = "=0.6.2"
+# Shared Kosmos GPUI visual core (theme/palettes seeded from this crate's
+# src/theme.rs + src/palettes.rs — hex values byte-identical). Its
+# gpui-base = "=0.6.4" pin constrains the transitive resolution for
+# gpui-component 0.6.2 (0.6.5+ broke the inspector API).
+imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "300fe3717cb68f1f653c39310fffb0d0b8b8ba6e" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 image = { version = "0.25.1", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
