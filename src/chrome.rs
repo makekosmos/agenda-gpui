@@ -466,7 +466,7 @@ impl Agenda {
             let count = active_projects.len();
             if gt > 0.001 {
                 for (i, pr) in active_projects.iter().enumerate() {
-                    let active = matches!(&self.route, Route::Project(r) if r == pr.id);
+                    let active = matches!(&self.route, Route::Project(r) if r == &pr.id);
                     let spec = SbItem::project(pr, active, i == count - 1);
                     rects.push((format!("nav-{}", spec.id).into(), SbRect { y, h: 32. * gt }));
                     links.push(self.sb_item(window, cx, spec));
@@ -802,10 +802,18 @@ impl Agenda {
             }
             #[cfg(target_os = "linux")]
             {
-                btn = btn.on_click(move |_: &ClickEvent, window, _| match area {
+                let close_guard = cx.weak_entity();
+                btn = btn.on_click(move |_: &ClickEvent, window, cx| match area {
                     WindowControlArea::Min => window.minimize_window(),
                     WindowControlArea::Max => window.zoom_window(),
-                    WindowControlArea::Close => window.remove_window(),
+                    WindowControlArea::Close => {
+                        if close_guard
+                            .update(cx, |this, cx| this.prepare_close(cx))
+                            .unwrap_or(true)
+                        {
+                            window.remove_window();
+                        }
+                    }
                     _ => {}
                 });
             }

@@ -7,13 +7,19 @@ impl Agenda {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let pid: Option<&'static str> = self.projects.iter().find(|p| p.id == id).map(|p| p.id);
+        let pid = self
+            .projects
+            .iter()
+            .find(|p| p.id == id)
+            .map(|p| p.id.as_str());
         let today = today_key();
         let items: Vec<usize> = self
             .todos
             .iter()
             .enumerate()
-            .filter(|(_, t)| t.project_id == pid && !t.is_trashed && !is_archived(t, &today))
+            .filter(|(_, t)| {
+                t.project_id.as_deref() == pid && !t.is_trashed && !is_archived(t, &today)
+            })
             .map(|(i, _)| i)
             .collect();
         let storage = format!("agenda.project.{id}.view");

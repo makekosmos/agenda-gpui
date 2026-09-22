@@ -1,4 +1,4 @@
-// Agenda GPUI clone — experimental, KOS-124. Seeds local state only.
+// Agenda GPUI — task data is owned by Kosmos Engine.
 #![windows_subsystem = "windows"]
 mod app;
 mod assets;
@@ -6,6 +6,7 @@ mod chrome;
 mod model;
 mod pages;
 mod palettes;
+mod store;
 mod theme;
 mod widgets;
 

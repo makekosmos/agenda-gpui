@@ -12,6 +12,7 @@ use crate::model::*;
 use crate::theme::*;
 
 const HOVER_MS: f32 = 120.0;
+mod storage;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -148,6 +149,11 @@ pub(crate) enum CalMode {
 }
 
 pub struct Agenda {
+    pub(crate) demo: bool,
+    pub(crate) storage: Option<crate::store::Worker>,
+    pub(crate) storage_ready: bool,
+    pub(crate) storage_busy: bool,
+    pub(crate) storage_error: Option<String>,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
     // Seeded model state kept for Agenda parity; not rendered yet.
@@ -315,13 +321,23 @@ fn initial_route() -> Route {
 
 impl Agenda {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        let demo = std::env::var("AGENDA_DEMO").as_deref() == Ok("1")
+            || std::env::var("AGENDA_DEVTASKS")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .is_some();
         let mut this = Self {
-            todos: seed_todos(),
-            projects: seed_projects(),
-            areas: seed_areas(),
-            tags: seed_tags(),
-            headings: seed_headings(),
-            events: seed_events(),
+            demo,
+            storage: None,
+            storage_ready: demo,
+            storage_busy: false,
+            storage_error: None,
+            todos: if demo { seed_todos() } else { vec![] },
+            projects: if demo { seed_projects() } else { vec![] },
+            areas: if demo { seed_areas() } else { vec![] },
+            tags: if demo { seed_tags() } else { vec![] },
+            headings: if demo { seed_headings() } else { vec![] },
+            events: if demo { seed_events() } else { vec![] },
             route: initial_route(),
             back_route: Route::Inbox,
             sidebar_t: 1.0,
@@ -454,6 +470,7 @@ impl Agenda {
                 .extend(gen_random_todos(devtasks, 0x5eed_5eed, 1, first_sort));
             this.model_rev += 1;
         }
+        this.start_storage(cx);
         this
     }
 
@@ -765,6 +782,12 @@ impl Render for Agenda {
         if !self.focused_once {
             self.focused_once = true;
             self.root_focus.focus(window, cx);
+            let agenda = cx.weak_entity();
+            window.on_window_should_close(cx, move |_, cx| {
+                agenda
+                    .update(cx, |this, cx| this.prepare_close(cx))
+                    .unwrap_or(true)
+            });
         }
         let sidebar_p = self.sidebar_progress(window);
 
@@ -906,6 +929,12 @@ impl Render for Agenda {
             );
         }
         self.render_ms = render_t0.elapsed().as_secs_f32() * 1000.0;
+        if self.storage_busy {
+            overlays.push(div().absolute().inset_0().occlude().into_any_element());
+        }
+        if self.storage_error.is_some() || self.storage_busy {
+            overlays.push(self.storage_banner(cx));
+        }
         root.children(overlays)
     }
 }
@@ -919,6 +948,11 @@ impl Agenda {
     ) {
         let k = &ev.keystroke;
         let ctrl = k.modifiers.control || k.modifiers.platform;
+        if ctrl && k.key == "r" && !self.demo {
+            self.reload_storage();
+            cx.notify();
+            return;
+        }
         if ctrl && k.key == "k" {
             self.quick_open = !self.quick_open;
             if self.quick_open {
@@ -1056,10 +1090,8 @@ impl Agenda {
         if title.is_empty() {
             return;
         }
-        if let Some(t) = self.todos.iter_mut().find(|t| t.id == tid) {
-            t.title = title;
-            self.model_rev += 1;
-        }
+        self.update_todo(&tid, |t| t.title = title);
+        cx.notify();
     }
 
     fn save_task_notes(&mut self, cx: &mut Context<Self>) {
@@ -1070,10 +1102,10 @@ impl Agenda {
             return;
         };
         let notes = state.read(cx).value().trim().to_string();
-        if let Some(t) = self.todos.iter_mut().find(|t| t.id == tid) {
-            t.notes = if notes.is_empty() { None } else { Some(notes) };
-            self.model_rev += 1;
-        }
+        self.update_todo(&tid, |t| {
+            t.notes = if notes.is_empty() { None } else { Some(notes) }
+        });
+        cx.notify();
     }
 
     pub(crate) fn current_task_id(&self) -> Option<String> {
@@ -1085,6 +1117,10 @@ impl Agenda {
 
     /// Quick entry save: title/notes from inputs, date/project/billable/sig from state.
     fn quick_entry_save(&mut self, cx: &mut Context<Self>) {
+        if !self.can_save() {
+            cx.notify();
+            return;
+        }
         let title = self
             .inputs
             .get("qe-title")
@@ -1130,28 +1166,22 @@ impl Agenda {
         } else {
             Status::Inbox
         };
-        let pid: Option<&'static str> = match project.as_deref() {
-            Some("dev-proj-release") => Some("dev-proj-release"),
-            Some("dev-proj-home") => Some("dev-proj-home"),
-            Some("dev-proj-someday") => Some("dev-proj-someday"),
-            _ => None,
-        };
-        let mut t = new_todo(format!("qe-{}", self.todos.len()), &clean_title);
+        let mut t = new_todo(uuid::Uuid::new_v4().to_string(), &clean_title);
         t.notes = if notes.trim().is_empty() {
             None
         } else {
             Some(notes.trim().to_string())
         };
         t.scheduled_date = scheduled;
-        t.project_id = pid;
+        t.project_id = project;
         t.status = status;
         t.billable = self.qe_billable;
         t.significance = self.qe_sig;
         t.sort_order = self.todos.len() as i32;
-        t.created_at = today_key();
-        self.todos.push(t);
-        self.model_rev += 1;
-        self.quick_entry_open = false;
+        t.created_at = chrono::Utc::now().to_rfc3339();
+        if self.save_todo(None, t) {
+            self.quick_entry_open = false;
+        }
     }
 
     /// Lazily create an InputState; subscriptions dispatch on `key`.
@@ -1218,13 +1248,13 @@ impl Agenda {
             .clone()
     }
 
-    /// Todo mutations mirroring src/store/todos.ts (local, no ARK).
+    /// Mutations are sent through the shared Engine persistence path.
     pub(crate) fn set_todo_status(&mut self, id: &str, status: Status) {
         if status == Status::Done {
             self.complete_todo(id);
             return;
         }
-        if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
+        self.update_todo(id, |t| {
             t.status = status;
             t.is_completed = false;
             t.completed_at = if status == Status::Canceled {
@@ -1235,43 +1265,49 @@ impl Agenda {
             t.is_cancelled = status == Status::Canceled;
             t.is_someday = status == Status::Deferred;
             t.is_today = false;
-            self.model_rev += 1;
-        }
+        });
     }
 
     pub(crate) fn complete_todo(&mut self, id: &str) {
-        let n = self.todos.len();
-        let Some(t) = self.todos.iter_mut().find(|t| t.id == id) else {
+        let Some(before) = self.todo(id).cloned() else {
             return;
         };
-        if t.is_completed {
+        if before.is_completed {
             return;
         }
-        let had_recurrence = t.recurrence.clone();
-        t.status = Status::Done;
-        t.is_completed = true;
-        t.completed_at = Some(format!("{}T12:00:00", today_key()));
-        // Recurrence: create next instance (createNextRecurrence simplified).
-        if let Some(rule) = had_recurrence {
-            let mut next = new_todo(format!("{}-next-{}", t.id, n), &t.title);
-            next.scheduled_date = Some(next_recurrence_date(&rule, t));
-            next.recurrence = Some(rule);
-            next.sort_order = n as i32;
-            next.created_at = today_key();
-            next.project_id = t.project_id;
-            next.area_id = t.area_id;
-            next.tag_ids = t.tag_ids.clone();
-            next.priority = t.priority;
-            self.todos.push(next);
-        }
-        self.model_rev += 1;
+        let mut todo = before.clone();
+        todo.status = Status::Done;
+        todo.is_completed = true;
+        todo.is_cancelled = false;
+        todo.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        let next = todo.recurrence.as_ref().map(|rule| {
+            let mut next = before.clone();
+            next.id = uuid::Uuid::new_v4().to_string();
+            next.status = Status::Todo;
+            next.scheduled_date = Some(next_recurrence_date(rule, &todo));
+            next.completed_at = None;
+            next.is_completed = false;
+            next.is_cancelled = false;
+            next.is_today = false;
+            next.is_evening = false;
+            next.is_someday = false;
+            next.deadline = None;
+            next.reminder_date = None;
+            next.checklist.clear();
+            next.created_at = chrono::Utc::now().to_rfc3339();
+            next.sort_order = self.todos.len() as i32;
+            next
+        });
+        self.save_completion(before, todo, next);
     }
 
     pub(crate) fn update_todo(&mut self, id: &str, f: impl FnOnce(&mut Todo)) {
-        if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
-            f(t);
-            self.model_rev += 1;
-        }
+        let Some(before) = self.todos.iter().find(|t| t.id == id).cloned() else {
+            return;
+        };
+        let mut todo = before.clone();
+        f(&mut todo);
+        self.save_todo(Some(before), todo);
     }
 
     pub(crate) fn move_to_today(&mut self, id: &str) {
@@ -1284,7 +1320,7 @@ impl Agenda {
         });
     }
 
-    pub(crate) fn move_to_project(&mut self, id: &str, pid: Option<&'static str>) {
+    pub(crate) fn move_to_project(&mut self, id: &str, pid: Option<String>) {
         self.update_todo(id, |t| {
             t.project_id = pid;
             if task_status(t) == Status::Inbox {
@@ -1296,21 +1332,13 @@ impl Agenda {
 
     pub(crate) fn run_menu_action(&mut self, action: MenuAction) {
         match action {
-            MenuAction::TrashTodo(id) => {
-                if let Some(t) = self.todos.iter_mut().find(|t| t.id == id) {
-                    t.is_trashed = true;
-                }
-            }
+            MenuAction::TrashTodo(id) => self.update_todo(&id, |t| t.is_trashed = true),
             MenuAction::OpenTask(id) => self.navigate(Route::Task(id)),
             MenuAction::RestoreProject(id) => {
-                if let Some(p) = self.projects.iter_mut().find(|p| p.id == id) {
-                    p.status = 0;
-                }
+                self.set_project_status(&id, 0);
             }
             MenuAction::ArchiveProject(id) => {
-                if let Some(p) = self.projects.iter_mut().find(|p| p.id == id) {
-                    p.status = 2;
-                }
+                self.set_project_status(&id, 2);
                 if matches!(&self.route, Route::Project(r) if *r == id) {
                     self.navigate(Route::Inbox);
                 }
@@ -1323,13 +1351,16 @@ impl Agenda {
             MenuAction::SetStatus(id, status) => self.set_todo_status(&id, status),
             MenuAction::SetPriority(id, p) => self.update_todo(&id, |t| t.priority = p),
             MenuAction::SetProject(id, pid) => {
-                let p: Option<&'static str> = pid
-                    .as_deref()
-                    .and_then(|p| self.projects.iter().find(|pr| pr.id == p).map(|pr| pr.id));
+                let p: Option<String> = pid.as_deref().and_then(|p| {
+                    self.projects
+                        .iter()
+                        .find(|pr| pr.id == p)
+                        .map(|pr| pr.id.clone())
+                });
                 self.move_to_project(&id, p);
             }
             MenuAction::AddTag(id, tag) => {
-                let st = self.tags.iter().find(|t| t.id == tag).map(|t| t.id);
+                let st = self.tags.iter().find(|t| t.id == tag).map(|t| t.id.clone());
                 if let Some(st) = st {
                     self.update_todo(&id, |t| {
                         if !t.tag_ids.contains(&st) {

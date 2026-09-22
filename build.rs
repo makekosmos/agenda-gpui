@@ -18,6 +18,10 @@ fn main() {
     let rc = windows_dir.join("app.rc");
     println!("cargo:rerun-if-changed={}", manifest.display());
     println!("cargo:rerun-if-changed={}", rc.display());
+    println!(
+        "cargo:rerun-if-changed={}",
+        windows_dir.join("app.ico").display()
+    );
 
     // MSVC host/target: rc.exe via embed-resource (locates the Windows SDK
     // itself). GNU (cross or native mingw): windres → COFF .o → rustc link-arg.

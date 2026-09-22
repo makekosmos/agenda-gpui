@@ -67,6 +67,56 @@ Linear в описании PR. Для прямых коммитов указыв
 
 ## Сборка
 
+Обычный запуск читает настоящие задачи через локальный Kosmos Engine API v1.
+Сначала запусти Kosmos Engine с той же папкой данных, что использует Vue Agenda.
+Приложение читает `engine.lock.json` из `%APPDATA%\Kosmos` (Windows),
+`~/Library/Application Support/Kosmos` (macOS) или `$XDG_CONFIG_HOME/Kosmos`
+(`~/.config/Kosmos` по умолчанию на Linux). Для другой папки задай `KOSMOS_DATA_DIR`.
+Приложение не открывает SQLite и не хранит собственную копию задач на диске.
+
+### Runbook: Engine → agenda-gpui (одна папка данных)
+
+Engine живёт в `makekosmos/cortex` (`runtime/`, бинарь `kepler-backend`),
+sidecar `ark-core-rpc` — в `makekosmos/core` (`crates/ark-core`). Подробный
+гайд по Linux-окружению: `cortex/docs/linux-dev.md`.
+
+```bash
+# 1. Sidecar из пинned ревизии core (cortex/desktop/scripts/ark-core-rpc.mjs)
+#    или из sibling checkout: cargo build --bin ark-core-rpc в core/.
+# 2. Engine (из cortex/):
+cargo build -p kepler-backend
+KOSMOS_DATA_DIR=/path/to/data KOSMOS_HEADLESS=1 \
+  ARK_CORE_RPC_PATH=/path/to/ark-core-rpc \
+  target/debug/kepler-backend &
+# 3. Проверь, что появился lock-файл:
+cat /path/to/data/engine.lock.json   # http_port + auth_token
+# 4. agenda-gpui на той же папке:
+KOSMOS_DATA_DIR=/path/to/data cargo run
+```
+
+Тот же `KOSMOS_DATA_DIR` должен использовать Electron Host / Vue Agenda —
+тогда обе Agenda видят одни задачи. Если Engine остановлен или lock-файла
+нет, приложение показывает баннер «Engine не запущен…» / «Нет подтверждения
+от Engine» и кнопку «Обновить»; seed-карточки при этом не рисуются.
+
+Создание, название, заметки, свойства, статус, перенос в Сегодня и корзина
+сохраняются через Engine. Изменение появляется в списке после подтверждения
+записи. Во время запроса закрытие окна блокируется; при ошибке приложение
+показывает сообщение и требует обновить список перед следующей записью.
+`Ctrl+R` / `Cmd+R` обновляет данные, в том числе изменения из Vue Agenda.
+Автоматической подписки на изменения другого клиента пока нет.
+
+Демо для дизайна: `AGENDA_DEMO=1`; `AGENDA_DEVTASKS=N` также явно включает
+демо и добавляет N сгенерированных задач. Демо не подключается к Engine,
+изменения в нём не сохраняются. При обычном запуске без Engine видна ошибка
+подключения, а не seed-карточки. Генератор задач доступен только в демо.
+
+Проверка сохранения между отдельными процессами клиента:
+`cargo test --bin agenda-gpui store::tests`. Тест использует локальный HTTP
+стенд контракта Engine с записью на диск. Для приёмки KOS-126 дополнительно
+проверь реальный Engine: создать → закрыть/открыть → переименовать →
+закрыть/открыть → завершить → закрыть/открыть; сравни Inbox/Сегодня с Vue Agenda.
+
 ```bash
 git clone git@github.com:makekosmos/agenda-gpui.git
 cd agenda-gpui

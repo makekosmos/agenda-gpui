@@ -86,6 +86,7 @@ impl Agenda {
         // project chip
         let project_label = t
             .project_id
+            .as_deref()
             .and_then(|pid| self.projects.iter().find(|p| p.id == pid))
             .map(|p| p.title.clone())
             .unwrap_or_else(|| "Без проекта".to_string());
@@ -97,7 +98,7 @@ impl Agenda {
         // tag pills + "Метки" add chip
         for tag_id in &t.tag_ids {
             if let Some(tag) = self.tag(tag_id) {
-                let dot = tag_color(tag.color);
+                let dot = tag_color(&tag.color);
                 props = props.child(
                     div()
                         .h(px(22.))
@@ -166,7 +167,7 @@ impl Agenda {
                 .child(icon("icons/star.svg", 14., c(MUTED_FG()))),
         );
         let bill_label = if t.billable {
-            format!("Оплачиваемая ${}", t.price.unwrap_or(0))
+            format!("Оплачиваемая ${}", t.price.unwrap_or(0.0))
         } else {
             "Без оплаты".to_string()
         };

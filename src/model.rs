@@ -1,7 +1,9 @@
 // Port of src/dev/seed.ts + task lifecycle/filter logic to Rust.
 use chrono::{Datelike, Duration, Local, NaiveDate};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, PartialEq, Eq, Copy)]
+#[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Status {
     Inbox,
     Todo,
@@ -11,22 +13,26 @@ pub enum Status {
     Canceled,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecurrenceRule {
     /// 0=daily 1=weekly 2=monthly 3=yearly (matches Frequency enum order)
     pub frequency: u8,
     pub interval: u32,
     /// 0=fixed (по расписанию) 1=after completion (после выполнения)
+    #[serde(alias = "recurrenceType", default)]
     pub recurrence_type: u8,
+    #[serde(alias = "daysOfWeek", default)]
     pub days_of_week: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChecklistItem {
+    #[serde(alias = "isCompleted", default)]
     pub is_completed: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Todo {
     pub id: String,
     pub title: String,
@@ -39,28 +45,35 @@ pub struct Todo {
     pub is_evening: bool,
     pub is_someday: bool,
     pub status: Status,
-    pub system_kind: Option<&'static str>,
+    pub system_kind: Option<String>,
     pub is_completed: bool,
     pub completed_at: Option<String>,
     pub is_cancelled: bool,
     pub is_trashed: bool,
     pub created_at: String,
-    pub heading_id: Option<&'static str>,
-    pub project_id: Option<&'static str>,
-    pub area_id: Option<&'static str>,
-    pub tag_ids: Vec<&'static str>,
+    pub heading_id: Option<String>,
+    pub project_id: Option<String>,
+    pub area_id: Option<String>,
+    pub tag_ids: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
     pub recurrence: Option<RecurrenceRule>,
     pub billable: bool,
-    pub price: Option<i64>,
+    pub price: Option<f64>,
     pub significance: Option<u8>,
-    pub fuel_cost: Option<u32>,
+    pub fuel_cost: Option<f64>,
     pub sort_order: i32,
 }
 
-#[derive(Clone, Debug)]
+impl Default for Todo {
+    fn default() -> Self {
+        new_todo(String::new(), "")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Project {
-    pub id: &'static str,
+    pub id: String,
     pub title: String,
     pub status: u8, // 0 active, 1 someday, 2 completed
     // Schema fields seeded for Agenda parity; not rendered yet.
@@ -69,41 +82,45 @@ pub struct Project {
     #[allow(dead_code)]
     pub sort_order: i32,
     #[allow(dead_code)]
-    pub area_id: Option<&'static str>,
+    pub area_id: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Area {
     // Seeded for Agenda parity; areas are not rendered yet.
     #[allow(dead_code)]
-    pub id: &'static str,
+    pub id: String,
     #[allow(dead_code)]
     pub title: String,
     #[allow(dead_code)]
     pub sort_order: i32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Tag {
-    pub id: &'static str,
+    pub id: String,
     pub title: String,
-    pub color: &'static str,
+    pub color: String,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Heading {
     // Seeded for Agenda parity; headings are not rendered yet.
     #[allow(dead_code)]
-    pub id: &'static str,
+    pub id: String,
     #[allow(dead_code)]
     pub title: String,
     #[allow(dead_code)]
     pub sort_order: i32,
     #[allow(dead_code)]
-    pub project_id: &'static str,
+    #[serde(default)]
+    pub project_id: Option<String>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct CalEvent {
     #[allow(dead_code)]
     pub id: &'static str,
@@ -149,11 +166,7 @@ fn iso_at(offset: i64, h: u32, m: u32) -> String {
 /// dateOnly(): accepts "YYYY-MM-DD" or ISO datetime → "YYYY-MM-DD"
 pub fn date_only(value: &Option<String>) -> Option<String> {
     let v = value.as_ref()?;
-    if v.len() >= 10 {
-        Some(v[..10].to_string())
-    } else {
-        None
-    }
+    v.get(..10).map(str::to_owned)
 }
 
 /// taskDate(): deadline wins over scheduled; different dates = conflict.
@@ -835,8 +848,8 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Todo;
             t.is_today = true;
             t.priority = 3;
-            t.tag_ids = vec!["dev-tag-urgent", "dev-tag-focus"];
-            t.fuel_cost = Some(35);
+            t.tag_ids = vec!["dev-tag-urgent".into(), "dev-tag-focus".into()];
+            t.fuel_cost = Some(35.0);
             t
         },
         {
@@ -845,8 +858,8 @@ pub fn seed_todos() -> Vec<Todo> {
             t.scheduled_date = Some(day_key(0));
             t.deadline = Some(day_key(0));
             t.billable = true;
-            t.price = Some(15000);
-            t.project_id = Some("dev-proj-release");
+            t.price = Some(15000.0);
+            t.project_id = Some("dev-proj-release".into());
             t
         },
         {
@@ -854,7 +867,7 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Todo;
             t.is_today = true;
             t.is_evening = true;
-            t.area_id = Some("dev-area-life");
+            t.area_id = Some("dev-area-life".into());
             t
         },
         {
@@ -862,16 +875,16 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(-1));
             t.priority = 3;
-            t.tag_ids = vec!["dev-tag-urgent"];
-            t.fuel_cost = Some(20);
+            t.tag_ids = vec!["dev-tag-urgent".into()];
+            t.fuel_cost = Some(20.0);
             t
         },
         {
             let mut t = todo("dev-checklist-1", "Подготовить демо для команды");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(1));
-            t.project_id = Some("dev-proj-release");
-            t.heading_id = Some("dev-head-prep");
+            t.project_id = Some("dev-proj-release".into());
+            t.heading_id = Some("dev-head-prep".into());
             t.checklist = vec![
                 ChecklistItem { is_completed: true },
                 ChecklistItem {
@@ -887,10 +900,10 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-week-2", "Ревью PR по навигации");
             t.status = Status::Started;
             t.scheduled_date = Some(day_key(2));
-            t.project_id = Some("dev-proj-release");
-            t.heading_id = Some("dev-head-polish");
+            t.project_id = Some("dev-proj-release".into());
+            t.heading_id = Some("dev-head-polish".into());
             t.significance = Some(7);
-            t.fuel_cost = Some(15);
+            t.fuel_cost = Some(15.0);
             t
         },
         {
@@ -898,22 +911,22 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Todo;
             t.deadline = Some(day_key(3));
             t.reminder_date = Some(iso_at(3, 9, 0));
-            t.project_id = Some("dev-proj-home");
+            t.project_id = Some("dev-proj-home".into());
             t
         },
         {
             let mut t = todo("dev-week-4", "Купить подарок Маше");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(4));
-            t.area_id = Some("dev-area-life");
-            t.tag_ids = vec!["dev-tag-home"];
+            t.area_id = Some("dev-area-life".into());
+            t.tag_ids = vec!["dev-tag-home".into()];
             t
         },
         {
             let mut t = todo("dev-recurring-1", "Поливать цветы");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(0));
-            t.area_id = Some("dev-area-life");
+            t.area_id = Some("dev-area-life".into());
             t.recurrence = Some(RecurrenceRule {
                 frequency: 1,
                 interval: 1,
@@ -933,7 +946,7 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-someday-1", "Собрать домашний кинотеатр");
             t.status = Status::Deferred;
             t.is_someday = true;
-            t.project_id = Some("dev-proj-someday");
+            t.project_id = Some("dev-proj-someday".into());
             t
         },
         {
@@ -1053,16 +1066,16 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                 t.priority = 1 + (rng() % 3) as u8;
             }
             if rng() % 100 < 35 {
-                t.project_id = Some(PROJECTS[(rng() % 3) as usize]);
+                t.project_id = Some(PROJECTS[(rng() % 3) as usize].into());
             }
             if rng() % 100 < 20 {
-                t.tag_ids = vec![TAGS[(rng() % 3) as usize]];
+                t.tag_ids = vec![TAGS[(rng() % 3) as usize].into()];
             }
             if rng() % 100 < 15 {
                 t.notes = Some(rand_chars(&mut rng, 12));
             }
             if rng() % 100 < 30 {
-                t.fuel_cost = Some(5 + (rng() % 60) as u32);
+                t.fuel_cost = Some(5.0 + (rng() % 60) as f64);
                 t.significance = Some(1 + (rng() % 10) as u8);
             }
             t
@@ -1073,28 +1086,28 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
 pub fn seed_projects() -> Vec<Project> {
     vec![
         Project {
-            id: "dev-proj-release",
+            id: "dev-proj-release".into(),
             title: "Релиз Agenda 1.0".into(),
             status: 0,
             deadline: Some(day_key(10)),
             sort_order: 0,
-            area_id: Some("dev-area-work"),
+            area_id: Some("dev-area-work".into()),
         },
         Project {
-            id: "dev-proj-home",
+            id: "dev-proj-home".into(),
             title: "Дом и быт".into(),
             status: 0,
             deadline: None,
             sort_order: 1,
-            area_id: Some("dev-area-life"),
+            area_id: Some("dev-area-life".into()),
         },
         Project {
-            id: "dev-proj-someday",
+            id: "dev-proj-someday".into(),
             title: "Путешествие в Японию".into(),
             status: 1,
             deadline: None,
             sort_order: 2,
-            area_id: Some("dev-area-life"),
+            area_id: Some("dev-area-life".into()),
         },
     ]
 }
@@ -1102,12 +1115,12 @@ pub fn seed_projects() -> Vec<Project> {
 pub fn seed_areas() -> Vec<Area> {
     vec![
         Area {
-            id: "dev-area-work",
+            id: "dev-area-work".into(),
             title: "Работа".into(),
             sort_order: 0,
         },
         Area {
-            id: "dev-area-life",
+            id: "dev-area-life".into(),
             title: "Личное".into(),
             sort_order: 1,
         },
@@ -1117,19 +1130,19 @@ pub fn seed_areas() -> Vec<Area> {
 pub fn seed_tags() -> Vec<Tag> {
     vec![
         Tag {
-            id: "dev-tag-urgent",
+            id: "dev-tag-urgent".into(),
             title: "срочно".into(),
-            color: "red",
+            color: "red".into(),
         },
         Tag {
-            id: "dev-tag-focus",
+            id: "dev-tag-focus".into(),
             title: "фокус".into(),
-            color: "blue",
+            color: "blue".into(),
         },
         Tag {
-            id: "dev-tag-home",
+            id: "dev-tag-home".into(),
             title: "дом".into(),
-            color: "green",
+            color: "green".into(),
         },
     ]
 }
@@ -1137,16 +1150,16 @@ pub fn seed_tags() -> Vec<Tag> {
 pub fn seed_headings() -> Vec<Heading> {
     vec![
         Heading {
-            id: "dev-head-prep",
+            id: "dev-head-prep".into(),
             title: "Подготовка".into(),
             sort_order: 0,
-            project_id: "dev-proj-release",
+            project_id: Some("dev-proj-release".into()),
         },
         Heading {
-            id: "dev-head-polish",
+            id: "dev-head-polish".into(),
             title: "Полировка".into(),
             sort_order: 1,
-            project_id: "dev-proj-release",
+            project_id: Some("dev-proj-release".into()),
         },
     ]
 }
