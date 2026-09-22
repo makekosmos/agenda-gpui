@@ -1,6 +1,6 @@
 [package]
 name = "agenda-gpui"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "GPUI clone of the Agenda task UI (experimental, KOS-124)"
 default-run = "agenda-gpui"
