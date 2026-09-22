@@ -131,6 +131,33 @@ export GPUI_FXC_PATH=/path/to/fxc   # wine-wrapper ok
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
+## Упаковка в состав Kosmos (KOS-137)
+
+Transitional Windows-инсталлер Kosmos зашивает этот бинарь как компонент
+`resources/components/agenda/Kosmos Agenda.exe` рядом с `components/manager`
+(GPUI Manager). Сборкой управляет
+`cortex/desktop/scripts/build-package-components.mjs`: он берёт checkout этого
+репозитория из `KOSMOS_AGENDA_GPUI_SRC` (или sibling `../agenda-gpui`),
+проверяет `git rev-parse HEAD` по пину `desktop/component-pins.json` и собирает
+`cargo build --locked --release --target x86_64-pc-windows-msvc` с
+`KOSMOS_AGENDA_VERSION=<win-версия релиза>` — build.rs штампует VERSIONINFO
+этой версией (без env — версия из Cargo.toml).
+
+Запуск из установленного продукта: launcher-команда «Открыть Agenda (GPUI)»,
+ярлык Start Menu «Kosmos Agenda» и кнопка «Открыть Agenda» в GPUI Manager —
+все три пути резолвят один exe и используют общий `KOSMOS_DATA_DIR`
+(`%APPDATA%\Kosmos` в prod), поэтому Agenda GPUI читает тот же
+`engine.lock.json`, что и Manager. Vue Agenda (`com.kosmos.agenda` .kspkg)
+остаётся fallback и не удаляется.
+
+Linux → MSVC evidence-build (не для публикации):
+
+```bash
+cargo xwin build --release --locked --target x86_64-pc-windows-msvc
+GPUI_FXC_PATH=/path/to/fxc scripts/compile-shaders-xwin.sh
+cargo xwin build --release --locked --target x86_64-pc-windows-msvc
+```
+
 ## Структура
 
 - `src/` — UI
