@@ -144,7 +144,8 @@ impl Agenda {
                             let _ =
                                 weak.update(cx, |this, _| this.navigate(Route::Task(tid.clone())));
                         }
-                    }),
+                    })
+                    .a11y_button(t.title.clone()),
             );
         }
         col

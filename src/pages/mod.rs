@@ -129,6 +129,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let key = SharedString::from(hid.clone());
         let tid = t.id.to_string();
+        let a11y_name = format!("Статус: {label}");
         div()
             .id(("chip", ix))
             .h(px(20.))
@@ -158,6 +159,7 @@ impl Agenda {
                     });
                 });
             })
+            .a11y_button(a11y_name)
     }
 }
 

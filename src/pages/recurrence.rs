@@ -38,7 +38,7 @@ impl Agenda {
                 .bg(fg_mix(0.05 + 0.02 * t))
                 .border_1()
                 .border_color(c(BORDER()))
-                .child(label)
+                .child(label.clone())
                 .on_hover({
                     let weak = weak.clone();
                     move |hovered, _, cx| {
@@ -56,6 +56,7 @@ impl Agenda {
                         });
                     });
                 })
+                .a11y_button(label)
         };
 
         let mut row = div().flex().items_center().gap_2().flex_wrap();
@@ -115,7 +116,8 @@ impl Agenda {
                                     }
                                 });
                             }
-                        }),
+                        })
+                        .a11y_checkbox(*name, sel),
                 );
             }
         }
@@ -156,6 +158,7 @@ impl Agenda {
                         this.recur_open = false;
                     });
                 })
+                .a11y_button("Применить")
         };
         let clear = {
             let hid = "rc-clear";
@@ -186,6 +189,7 @@ impl Agenda {
                         this.recur_open = false;
                     });
                 })
+                .a11y_button("Убрать")
         };
         row = row.child(apply).child(clear);
 

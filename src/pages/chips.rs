@@ -2,15 +2,19 @@ use super::*;
 
 impl Agenda {
     /// `.task-prop` chip button: h28 px8 r6 gap6 fs13, hover fg6%.
+    /// `labels` is `(a11y name, visible label)` — the name carries the
+    /// property plus its current value ("Статус: В работе"); the label is
+    /// only the text drawn inside the chip.
     pub(crate) fn prop_chip(
         &mut self,
         hid: &str,
         kind: DropKind,
         todo_id: &str,
-        label: &str,
+        labels: (impl Into<SharedString>, &str),
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> gpui::Stateful<gpui::Div> {
+        let (name, label) = labels;
         let t = self.hover_t(window, hid);
         let weak = cx.weak_entity();
         let key = SharedString::from(hid.to_string());
@@ -45,6 +49,7 @@ impl Agenda {
                     });
                 });
             })
+            .a11y_button(name)
     }
 
     pub(crate) fn recur_chip(
@@ -59,6 +64,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let key = SharedString::from(hid.to_string());
         let tid = todo_id.to_string();
+        let a11y_name = format!("Повторение: {label}");
         div()
             .id(SharedString::from(format!("chip-{hid}")))
             .h_7()
@@ -98,6 +104,7 @@ impl Agenda {
                     }
                 });
             })
+            .a11y_button(a11y_name)
     }
 
     /// Quick-entry chips row: date pill, billable toggle, project picker.
@@ -145,7 +152,7 @@ impl Agenda {
                     c(MUTED_FG())
                 },
             ))
-            .child(date_label);
+            .child(date_label.clone());
         if has_date {
             date_chip = date_chip.child(
                 div()
@@ -164,25 +171,30 @@ impl Agenda {
                                 this.qe_date_touched = true;
                             });
                         }
-                    }),
+                    })
+                    .a11y_button("Убрать срок"),
             );
         }
         let qe_date_t = self.hover_t(window, "qe-date");
         let _ = qe_date_t;
-        chips = chips.child(date_chip.on_click({
-            let weak = weak.clone();
-            move |ev: &ClickEvent, _, cx| {
-                let pos = ev.position();
-                let _ = weak.update(cx, |this, _| {
-                    this.dropdown = Some(DropState {
-                        kind: DropKind::QeDate,
-                        x: pos.x.into(),
-                        y: pos.y.into(),
-                        todo_id: None,
-                    });
-                });
-            }
-        }));
+        chips = chips.child(
+            date_chip
+                .on_click({
+                    let weak = weak.clone();
+                    move |ev: &ClickEvent, _, cx| {
+                        let pos = ev.position();
+                        let _ = weak.update(cx, |this, _| {
+                            this.dropdown = Some(DropState {
+                                kind: DropKind::QeDate,
+                                x: pos.x.into(),
+                                y: pos.y.into(),
+                                todo_id: None,
+                            });
+                        });
+                    }
+                })
+                .a11y_button(format!("Срок: {date_label}")),
+        );
 
         // billable pill (white when on)
         let bill_t = self.hover_t(window, "qe-bill");
@@ -224,7 +236,15 @@ impl Agenda {
                             this.qe_billable = !this.qe_billable;
                         });
                     }
-                }),
+                })
+                .a11y_switch(
+                    if self.qe_billable {
+                        "Оплачиваемая"
+                    } else {
+                        "Без оплаты"
+                    },
+                    self.qe_billable,
+                ),
         );
 
         // project pill (right-aligned, white)
@@ -234,6 +254,7 @@ impl Agenda {
             .and_then(|pid| self.projects.iter().find(|p| p.id == pid.as_str()))
             .map(|p| p.title.clone())
             .unwrap_or_else(|| "Входящие".to_string());
+        let proj_name = format!("Проект: {proj_label}");
         chips = chips.child(div().flex_1()).child(
             div()
                 .id("qe-proj")
@@ -261,7 +282,8 @@ impl Agenda {
                             });
                         });
                     }
-                }),
+                })
+                .a11y_button(proj_name),
         );
 
         chips

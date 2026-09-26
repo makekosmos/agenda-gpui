@@ -1,0 +1,26 @@
+Window ""
+  Button "Входящие" selected=true
+  Button "Сегодня" selected=false
+  Button "Планы" selected=false
+  Button "Календарь" selected=false
+  Button "Потом" selected=false
+  Button "Повторяющиеся" selected=false
+  Button "Проекты"
+  Button "Релиз Agenda 1.0" selected=false
+  Button "Дом и быт" selected=false
+  Button "Другое"
+  Button "Параметры отображения"
+  Button "Свернуть"
+  Button "Развернуть"
+  Button "Закрыть"
+  Button "Перечитать бриф по лендингу"
+    CheckBox "Перечитать бриф по лендингу" toggled=False
+    Button "Статус: К выполнению"
+  Button "Записаться к стоматологу"
+    CheckBox "Записаться к стоматологу" toggled=False
+    Button "Статус: К выполнению"
+  Button "Идея: виджет погоды в сайдбаре"
+    CheckBox "Идея: виджет погоды в сайдбаре" toggled=False
+    Button "Статус: К выполнению"
+  Button "Новая задача"
+  Switch "Боковая панель" toggled=True

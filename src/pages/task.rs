@@ -85,6 +85,7 @@ impl Agenda {
                             });
                         });
                     })
+                    .a11y_button("Действия с задачей")
             });
 
         let column = div()
@@ -100,6 +101,7 @@ impl Agenda {
             .child(bar)
             .child(
                 Input::new(&title_state)
+                    .accessibility_id("task-title")
                     .text_size(px(22.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
@@ -111,6 +113,7 @@ impl Agenda {
             .children(self.task_props(&t, id, window, cx))
             .child(
                 Textarea::new(&notes_state)
+                    .accessibility_id("task-notes")
                     .text_size(px(13.))
                     .text_color(c(FG()))
                     .p_0()

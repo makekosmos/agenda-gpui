@@ -31,15 +31,22 @@ impl Agenda {
 
         let mut props = div().flex().flex_wrap().items_center().gap_1();
         props = props.child(
-            self.prop_chip("tp-status", DropKind::Status, id, status_label, window, cx)
-                .child(status_ring(status)),
+            self.prop_chip(
+                "tp-status",
+                DropKind::Status,
+                id,
+                (format!("Статус: {status_label}"), status_label),
+                window,
+                cx,
+            )
+            .child(status_ring(status)),
         );
         props = props.child(
             self.prop_chip(
                 "tp-prio",
                 DropKind::Priority,
                 id,
-                priority_label,
+                (format!("Приоритет: {priority_label}"), priority_label),
                 window,
                 cx,
             )
@@ -51,8 +58,9 @@ impl Agenda {
             .as_ref()
             .map(|d| fmt_day_month(d))
             .unwrap_or_else(|| "Срок".to_string());
+        let date_name = format!("Срок: {date_label}");
         let mut date_chip = self
-            .prop_chip("tp-date", DropKind::Date, id, "", window, cx)
+            .prop_chip("tp-date", DropKind::Date, id, (date_name, ""), window, cx)
             .child(icon("icons/calendar-02.svg", 14., c(MUTED_FG())))
             .child(
                 div()
@@ -78,7 +86,8 @@ impl Agenda {
                                 this.run_menu_action(MenuAction::SetDate(id2.clone(), None));
                             });
                         }
-                    }),
+                    })
+                    .a11y_button("Убрать срок"),
             );
         }
         props = props.child(date_chip);
@@ -91,8 +100,15 @@ impl Agenda {
             .map(|p| p.title.clone())
             .unwrap_or_else(|| "Без проекта".to_string());
         props = props.child(
-            self.prop_chip("tp-proj", DropKind::Project, id, &project_label, window, cx)
-                .child(icon("icons/folder.svg", 14., c(MUTED_FG()))),
+            self.prop_chip(
+                "tp-proj",
+                DropKind::Project,
+                id,
+                (format!("Проект: {project_label}"), &project_label),
+                window,
+                cx,
+            )
+            .child(icon("icons/folder.svg", 14., c(MUTED_FG()))),
         );
 
         // tag pills + "Метки" add chip
@@ -135,14 +151,22 @@ impl Agenda {
                                             ));
                                         });
                                     }
-                                }),
+                                })
+                                .a11y_button(format!("Убрать метку «{}»", tag.title)),
                         ),
                 );
             }
         }
         props = props.child(
-            self.prop_chip("tp-tags", DropKind::Tags, id, "Метки", window, cx)
-                .child(icon("icons/tag.svg", 14., c(MUTED_FG()))),
+            self.prop_chip(
+                "tp-tags",
+                DropKind::Tags,
+                id,
+                ("Метки", "Метки"),
+                window,
+                cx,
+            )
+            .child(icon("icons/tag.svg", 14., c(MUTED_FG()))),
         );
 
         // recurrence chip
@@ -163,8 +187,15 @@ impl Agenda {
             .map(|s| format!("{}/10", s))
             .unwrap_or_else(|| "Не оценено".to_string());
         props2 = props2.child(
-            self.prop_chip("tp-sig", DropKind::Significance, id, &sig_label, window, cx)
-                .child(icon("icons/star.svg", 14., c(MUTED_FG()))),
+            self.prop_chip(
+                "tp-sig",
+                DropKind::Significance,
+                id,
+                (format!("Значимость: {sig_label}"), &sig_label),
+                window,
+                cx,
+            )
+            .child(icon("icons/star.svg", 14., c(MUTED_FG()))),
         );
         let bill_label = if t.billable {
             format!("Оплачиваемая ${}", t.price.unwrap_or(0.0))
@@ -172,8 +203,15 @@ impl Agenda {
             "Без оплаты".to_string()
         };
         props2 = props2.child(
-            self.prop_chip("tp-bill", DropKind::Billable, id, &bill_label, window, cx)
-                .child(icon("icons/dollar.svg", 14., c(MUTED_FG()))),
+            self.prop_chip(
+                "tp-bill",
+                DropKind::Billable,
+                id,
+                (format!("Оплата: {bill_label}"), &bill_label),
+                window,
+                cx,
+            )
+            .child(icon("icons/dollar.svg", 14., c(MUTED_FG()))),
         );
         if let Some(f) = t.fuel_cost {
             props2 = props2.child(

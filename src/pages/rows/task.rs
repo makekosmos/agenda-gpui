@@ -21,6 +21,8 @@ impl Agenda {
         let t_h = self.hover_t(window, &hid);
         let (date_val, _) = task_date(t);
         let overdue = date_val.as_deref().is_some_and(|d| d < today) && !done;
+        let row_name = t.title.clone();
+        let ring_name = t.title.clone();
 
         let mut row = div()
             .id(("tr", ix))
@@ -55,7 +57,8 @@ impl Agenda {
                                 this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
                             });
                         }
-                    }),
+                    })
+                    .a11y_checkbox(ring_name, done),
             )
             .child(
                 div()
@@ -213,5 +216,6 @@ impl Agenda {
                 });
             }
         })
+        .a11y_button(row_name)
     }
 }

@@ -1,5 +1,6 @@
 use super::*;
 use crate::store::{Command, Mutation, Reply, Worker};
+use crate::widgets::A11y;
 
 impl Agenda {
     pub(crate) fn prepare_close(&mut self, cx: &mut Context<Self>) -> bool {
@@ -260,7 +261,8 @@ impl Agenda {
                         .on_click(cx.listener(|this, _, _, cx| {
                             this.reload_storage();
                             cx.notify();
-                        })),
+                        }))
+                        .a11y_button("Обновить"),
                 )
             })
             .into_any_element()

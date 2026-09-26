@@ -71,6 +71,8 @@ impl Agenda {
                         this.options_for = None;
                     });
                 })
+                .aria_selected(checked)
+                .a11y_menu_item(label.to_string())
         };
 
         // Right edge of the options button in the titlebar: on Windows it
@@ -232,6 +234,8 @@ impl Agenda {
                     this.run_menu_action(act.clone());
                 });
             })
+            .aria_selected(checked)
+            .a11y_menu_item(label.to_string())
     }
 }
 

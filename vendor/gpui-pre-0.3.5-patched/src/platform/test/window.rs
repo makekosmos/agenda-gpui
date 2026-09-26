@@ -1,5 +1,5 @@
 use crate::{
-    AnyWindowHandle, AtlasKey, AtlasTextureId, AtlasTile, Bounds, DevicePixels,
+    A11yCallbacks, AnyWindowHandle, AtlasKey, AtlasTextureId, AtlasTile, Bounds, DevicePixels,
     DispatchEventResult, GpuSpecs, Pixels, PlatformAtlas, PlatformDisplay,
     PlatformHeadlessRenderer, PlatformInput, PlatformInputHandler, PlatformWindow, Point,
     PromptButton, RequestFrameOptions, Scene, Size, TestPlatform, TextInputConfiguration,
@@ -313,6 +313,14 @@ impl PlatformWindow for TestWindow {
 
     fn on_insets_changed(&self, callback: Box<dyn FnMut(WindowInsets)>) {
         self.0.lock().insets_callback = Some(callback);
+    }
+
+    /// Local patch: a test window has no platform adapter to connect a screen
+    /// reader, so `a11y_init` activates immediately. `Window::sync_active_flag`
+    /// then collects accesskit nodes every frame, making
+    /// [`crate::Window::debug_a11y_tree_json`] usable from `#[gpui::test]`.
+    fn a11y_init(&self, callbacks: A11yCallbacks) {
+        let _ = (callbacks.activation)();
     }
 
     fn show_soft_keyboard(&self) {

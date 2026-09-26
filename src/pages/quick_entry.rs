@@ -54,6 +54,7 @@ impl Agenda {
                     .pr_2()
                     .child(
                         Input::new(&title_state)
+                            .accessibility_id("qe-title")
                             .flex_1()
                             .h(px(48.))
                             .text_size(px(15.))
@@ -79,12 +80,14 @@ impl Agenda {
                                         this.qe_focused = false;
                                     });
                                 }
-                            }),
+                            })
+                            .a11y_button("Закрыть"),
                     ),
             )
             .child(
                 div().pl_4().pr_2().child(
                     Input::new(&notes_state)
+                        .accessibility_id("qe-notes")
                         .w_full()
                         .h(px(36.))
                         .text_size(px(13.))
@@ -101,6 +104,7 @@ impl Agenda {
             .qe_sig
             .map(|s| format!("{}/10", s))
             .unwrap_or_else(|| "Не оценено".to_string());
+        let sig_value = self.qe_sig.unwrap_or(0);
         let fill = self.qe_sig.unwrap_or(5) as f32 / 10.0;
         let sig_card = div()
             .absolute()
@@ -166,7 +170,14 @@ impl Agenda {
                                 this.qe_sig = Some(v);
                             });
                         }
-                    }),
+                    })
+                    .role(gpui::Role::Slider)
+                    .aria_label("Значимость")
+                    .aria_numeric_value(sig_value as f64)
+                    .aria_min_numeric_value(1.0)
+                    .aria_max_numeric_value(10.0)
+                    .aria_value(sig_label.clone())
+                    .accessibility_id("qe-sig-slider"),
             )
             .child(div().text_color(c(MUTED_FG())).child(sig_label));
 

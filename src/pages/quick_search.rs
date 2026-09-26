@@ -64,7 +64,8 @@ impl Agenda {
                                 this.navigate(Route::Task(tid.clone()));
                             });
                         }
-                    }),
+                    })
+                    .a11y_button(t.title.clone()),
             );
             idx += 1;
         }
@@ -111,7 +112,8 @@ impl Agenda {
                                 this.navigate(Route::Project(pid.clone()));
                             });
                         }
-                    }),
+                    })
+                    .a11y_button(p.title.clone()),
             );
             idx += 1;
         }
@@ -183,6 +185,7 @@ impl Agenda {
                     .child(icon("icons/search.svg", 16., c(MUTED_FG())))
                     .child(
                         Input::new(&qs)
+                            .accessibility_id("qs")
                             .flex_1()
                             .text_size(px(14.))
                             .text_color(c(FG()))
