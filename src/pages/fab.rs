@@ -42,7 +42,8 @@ impl Agenda {
                         this.quick_entry_open = true;
                     });
                 }
-            });
+            })
+            .a11y_button("Новая задача");
         div()
             .size_full()
             .absolute()

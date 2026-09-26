@@ -93,6 +93,7 @@ impl Agenda {
         let glyph = rgba(FG(), glyph_alpha);
         let weak = cx.weak_entity();
         let key = SharedString::from(format!("nav-{}", spec.id));
+        let a11y_name = spec.label.clone();
         let mut el = div()
             .id(SharedString::from(format!("sb-{}", spec.id)))
             .debug_selector(|| format!("sb-{}", spec.id))
@@ -152,7 +153,9 @@ impl Agenda {
                 move |_: &ClickEvent, _, cx| {
                     let _ = weak.update(cx, |this, _| this.navigate(route.clone()));
                 }
-            });
+            })
+            .aria_selected(spec.active)
+            .a11y_button(a11y_name);
         if let Some(pid) = spec.ctx_project {
             el = el.on_mouse_down(MouseButton::Right, {
                 let weak = cx.weak_entity();
@@ -450,7 +453,9 @@ impl Agenda {
                             this.reset_hovers(Some("nav-projects-head"));
                         });
                     }
-                });
+                })
+                .aria_expanded(self.kanban_group_open)
+                .a11y_button("Проекты");
             rects.push((
                 "nav-projects-head".into(),
                 SbRect {
@@ -544,7 +549,9 @@ impl Agenda {
                         this.more_open = !this.more_down_was_open;
                         this.more_menu_stamp = Instant::now();
                     });
-                });
+                })
+                .aria_expanded(menu_live)
+                .a11y_button("Другое");
             footer = Some(el);
         }
 
@@ -750,8 +757,19 @@ impl Agenda {
     ) -> impl IntoElement {
         const CLOSE_RED: u32 = 0xe81123;
         let maximized = window.is_maximized();
-        let specs: [(&str, &str, WindowControlArea, bool); 3] = [
-            ("min", "icons/window-min.svg", WindowControlArea::Min, false),
+        let max_name = if maximized {
+            "Восстановить"
+        } else {
+            "Развернуть"
+        };
+        let specs: [(&str, &str, WindowControlArea, bool, &str); 3] = [
+            (
+                "min",
+                "icons/window-min.svg",
+                WindowControlArea::Min,
+                false,
+                "Свернуть",
+            ),
             (
                 "max",
                 if maximized {
@@ -761,16 +779,18 @@ impl Agenda {
                 },
                 WindowControlArea::Max,
                 false,
+                max_name,
             ),
             (
                 "close",
                 "icons/status-x.svg",
                 WindowControlArea::Close,
                 true,
+                "Закрыть",
             ),
         ];
         let mut row = div().flex().flex_none().h_full();
-        for (id, path, area, danger) in specs {
+        for (id, path, area, danger, name) in specs {
             let key = SharedString::from(format!("win-{id}"));
             let t = self.hover_t(window, key.as_ref());
             let glyph = if danger {
@@ -795,6 +815,7 @@ impl Agenda {
                     })
                 })
                 .child(icon(path, 14., glyph))
+                .a11y_button(name)
                 .on_hover(move |hovered, _, cx| {
                     let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
                 });
@@ -833,6 +854,7 @@ impl Agenda {
     ) -> gpui::Stateful<gpui::Div> {
         let t = self.hover_t(window, "sb-toggle");
         let weak = cx.weak_entity();
+        let open = self.sidebar_target > 0.5;
         div()
             .id("sb-toggle")
             .absolute()
@@ -869,7 +891,8 @@ impl Agenda {
                             this.sidebar_target = if this.sidebar_target > 0.5 { 0.0 } else { 1.0 };
                             this.sidebar_stamp = Instant::now();
                         });
-                    }),
+                    })
+                    .a11y_switch("Боковая панель", open),
             )
     }
 
@@ -919,7 +942,9 @@ impl Agenda {
                             Some(key.to_string())
                         };
                     });
-                }),
+                })
+                .aria_expanded(open)
+                .a11y_button("Параметры отображения"),
         )
     }
 
@@ -1008,7 +1033,9 @@ impl Agenda {
                         this.more_open = false;
                         this.navigate(route.clone());
                     });
-                });
+                })
+                .aria_selected(active)
+                .a11y_menu_item(label);
             rows.push(el);
         }
 
@@ -1105,7 +1132,8 @@ impl Agenda {
                                 this.run_menu_action(action.clone());
                             });
                         }
-                    }),
+                    })
+                    .a11y_menu_item(label.clone()),
             );
         }
 

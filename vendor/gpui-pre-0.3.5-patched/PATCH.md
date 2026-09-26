@@ -35,3 +35,19 @@ The same local patch also prevents a duplicate Windows manifest:
   superset of gpui.manifest.xml) from the top-level build script; embedding
   a second RT_MANIFEST id=1 resource fails to link with CVTRES CVT1100 /
   LNK1123.
+
+### TestWindow: activate the a11y pipeline in tests
+
+Test windows create no platform adapter, so `PlatformWindow::a11y_init` was
+never invoked and `Window::debug_a11y_tree_json` always returned `None` in
+`#[gpui::test]` runs. `TestWindow::a11y_init` now fires the `activation`
+callback once — the same thing a screen reader connecting does — which sets
+the shared active flag. `A11y::sync_active_flag` then collects accesskit
+nodes every frame, so snapshot tests can dump and assert the real
+accessibility tree.
+
+Files changed:
+- src/platform/test/window.rs — `impl PlatformWindow for TestWindow` gains an
+  `a11y_init` override that calls `callbacks.activation()` immediately. The
+  file only compiles under `cfg(any(test, feature = "test-support", ...))`,
+  so production windows are untouched.

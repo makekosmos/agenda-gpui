@@ -132,5 +132,6 @@ impl Agenda {
                     });
                 }
             })
+            .a11y_button(label.to_string())
     }
 }

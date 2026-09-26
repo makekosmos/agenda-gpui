@@ -14,7 +14,7 @@ gpui-component = "=0.6.2"
 # src/theme.rs + src/palettes.rs — hex values byte-identical). Its
 # gpui-base = "=0.6.4" pin constrains the transitive resolution for
 # gpui-component 0.6.2 (0.6.5+ broke the inspector API).
-imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "300fe3717cb68f1f653c39310fffb0d0b8b8ba6e" }
+imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "16e83b07df8998fa0580310b733c2ca175442e35" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 image = { version = "0.25.1", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
@@ -23,9 +23,9 @@ serde_json = "1.0.151"
 uuid = { version = "1.26.1", features = ["v4"] }
 ureq = { version = "2.12", default-features = false, features = ["json"] }
 
-# UI autotests: #[gpui::test] + TestAppContext/VisualTestContext live behind
-# gpui's test-support feature (deterministic executors, test platform,
-# debug_bounds). It merges only into test builds.
+# a11y-tree + UI autotests: #[gpui::test] + TestAppContext/VisualTestContext
+# live behind gpui's test-support feature (deterministic executors, test
+# platform, debug_bounds). It merges only into test builds. (KOS-142 / main #6)
 [dev-dependencies]
 gpui = { package = "gpui-kit", version = "=0.6.2", features = ["test-support"] }
 

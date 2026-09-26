@@ -12,6 +12,9 @@ mod theme;
 mod ui_tests;
 mod widgets;
 
+#[cfg(test)]
+mod a11y_tests;
+
 use gpui::{
     px, size, App, AppContext, Bounds, Context, SharedString, Styled, Window, WindowBounds,
     WindowOptions,

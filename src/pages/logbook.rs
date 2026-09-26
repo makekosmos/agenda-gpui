@@ -18,6 +18,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let pid = p.id.to_string();
         let key = SharedString::from(hid.clone());
+        let a11y_name = p.title.clone();
         div()
             .id(SharedString::from(format!("el-{hid}")))
             .min_h(px(36.))
@@ -60,6 +61,7 @@ impl Agenda {
                     });
                 }
             })
+            .a11y_button(a11y_name)
     }
 
     pub(crate) fn logbook_page(

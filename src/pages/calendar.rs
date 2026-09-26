@@ -61,12 +61,15 @@ impl Agenda {
                 .on_click(move |_: &ClickEvent, _, cx| {
                     let _ = weak.update(cx, |this, _| this.cal_mode = mode);
                 })
+                .aria_selected(active)
+                .a11y_button(label.to_string())
         };
         let nav = |app: &mut Self,
                    window: &mut Window,
                    cx: &mut Context<Self>,
                    hid: &str,
                    label: &str,
+                   name: &str,
                    delta: i64| {
             let t = app.hover_t(window, hid);
             let weak = cx.weak_entity();
@@ -104,6 +107,7 @@ impl Agenda {
                         }
                     });
                 })
+                .a11y_button(name.to_string())
         };
 
         let header = div()
@@ -134,9 +138,25 @@ impl Agenda {
                     .items_center()
                     .gap_1()
                     .ml_2()
-                    .child(nav(self, window, cx, "cal-prev", "←", -1))
-                    .child(nav(self, window, cx, "cal-today", "Сегодня", 0))
-                    .child(nav(self, window, cx, "cal-next", "→", 1)),
+                    .child(nav(
+                        self,
+                        window,
+                        cx,
+                        "cal-prev",
+                        "←",
+                        "Предыдущий период",
+                        -1,
+                    ))
+                    .child(nav(self, window, cx, "cal-today", "Сегодня", "Сегодня", 0))
+                    .child(nav(
+                        self,
+                        window,
+                        cx,
+                        "cal-next",
+                        "→",
+                        "Следующий период",
+                        1,
+                    )),
             );
 
         // columns

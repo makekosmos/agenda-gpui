@@ -218,7 +218,8 @@ impl Agenda {
                 move |_: &ClickEvent, _, cx| {
                     let _ = weak.update(cx, |this, _| this.share_open = true);
                 }
-            });
+            })
+            .a11y_button("Поделиться");
 
         let share_overlay = self.statistics_share_overlay(
             today,

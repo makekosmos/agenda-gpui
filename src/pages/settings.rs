@@ -76,7 +76,9 @@ impl Agenda {
                             move |_: &ClickEvent, _, cx| {
                                 let _ = weak.update(cx, |this, _| this.theme_sel = i as u8);
                             }
-                        }),
+                        })
+                        .aria_selected(active)
+                        .a11y_button(*l),
                 );
             }
             col = col.child(row);
@@ -150,7 +152,9 @@ impl Agenda {
                             move |_: &ClickEvent, _, cx| {
                                 let _ = weak.update(cx, |this, _| this.theme_idx = i);
                             }
-                        }),
+                        })
+                        .aria_selected(active)
+                        .a11y_button(def.name),
                 );
             }
 
@@ -201,7 +205,9 @@ impl Agenda {
                             move |_: &ClickEvent, _, cx| {
                                 let _ = weak.update(cx, |this, _| this.sb_material = i as u8);
                             }
-                        }),
+                        })
+                        .aria_selected(active)
+                        .a11y_button(*l),
                 );
             }
             col = col.child(row);

@@ -126,6 +126,7 @@ impl Agenda {
                     });
                 }
             })
+            .a11y_switch(row.title, on)
     }
 
     pub(crate) fn dev_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -266,6 +267,7 @@ impl Agenda {
                             });
                         }
                     })
+                    .a11y_button("Сгенерировать 1000 задач")
             })
             .into_any_element()
     }

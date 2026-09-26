@@ -179,7 +179,8 @@ impl Agenda {
                                         ));
                                     }
                                     let _ = weak_copy.update(cx, |this, _| this.share_open = false);
-                                }),
+                                })
+                                .a11y_button("Скопировать"),
                         ),
                 )
                 .into_any_element(),
