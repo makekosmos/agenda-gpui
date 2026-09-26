@@ -23,6 +23,12 @@ serde_json = "1.0.151"
 uuid = { version = "1.26.1", features = ["v4"] }
 ureq = { version = "2.12", default-features = false, features = ["json"] }
 
+# UI autotests: #[gpui::test] + TestAppContext/VisualTestContext live behind
+# gpui's test-support feature (deterministic executors, test platform,
+# debug_bounds). It merges only into test builds.
+[dev-dependencies]
+gpui = { package = "gpui-kit", version = "=0.6.2", features = ["test-support"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",

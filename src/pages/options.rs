@@ -205,6 +205,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         div()
             .id(SharedString::from(format!("el-{i}-{label}")))
+            .debug_selector(|| format!("dd-{i}"))
             .h(px(28.))
             .w_full()
             .px_2()

@@ -24,6 +24,7 @@ impl Agenda {
 
         let mut row = div()
             .id(("tr", ix))
+            .debug_selector(|| format!("tr-{id}"))
             .min_h(px(36.))
             .w_full()
             .flex()
@@ -40,6 +41,7 @@ impl Agenda {
             .child(
                 div()
                     .id(("trs", ix))
+                    .debug_selector(|| format!("trs-{id}"))
                     .w_5()
                     .h_5()
                     .flex_none()
