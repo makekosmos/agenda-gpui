@@ -237,14 +237,7 @@ impl Agenda {
                         });
                     }
                 })
-                .a11y_switch(
-                    if self.qe_billable {
-                        "Оплачиваемая"
-                    } else {
-                        "Без оплаты"
-                    },
-                    self.qe_billable,
-                ),
+                .a11y_switch("Оплачиваемая", self.qe_billable),
         );
 
         // project pill (right-aligned, white)

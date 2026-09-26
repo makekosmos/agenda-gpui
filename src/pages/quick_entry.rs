@@ -173,7 +173,7 @@ impl Agenda {
                     })
                     .role(gpui::Role::Slider)
                     .aria_label("Значимость")
-                    .aria_numeric_value(sig_value as f64)
+                    .aria_numeric_value(sig_value.max(1) as f64)
                     .aria_min_numeric_value(1.0)
                     .aria_max_numeric_value(10.0)
                     .aria_value(sig_label.clone())
