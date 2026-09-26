@@ -65,6 +65,7 @@ impl Agenda {
                     .child(
                         div()
                             .id("qe-close")
+                            .debug_selector(|| "qe-close".to_string())
                             .w_7()
                             .h_7()
                             .grid()

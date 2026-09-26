@@ -324,11 +324,14 @@ fn initial_route() -> Route {
 
 impl Agenda {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        // `cfg!(test)`: test builds always take the in-memory demo store, so
+        // `start_storage` early-returns and no Engine worker ever spawns.
         let demo = std::env::var("AGENDA_DEMO").as_deref() == Ok("1")
             || std::env::var("AGENDA_DEVTASKS")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .is_some();
+                .is_some()
+            || cfg!(test);
         let mut this = Self {
             demo,
             storage: None,
