@@ -17,6 +17,7 @@ impl Agenda {
         let tid = todo_id.to_string();
         div()
             .id(SharedString::from(format!("chip-{hid}")))
+            .debug_selector(|| format!("chip-{hid}"))
             .h_7()
             .px_2()
             .flex()
@@ -61,6 +62,7 @@ impl Agenda {
         let tid = todo_id.to_string();
         div()
             .id(SharedString::from(format!("chip-{hid}")))
+            .debug_selector(|| format!("chip-{hid}"))
             .h_7()
             .px_2()
             .flex()

@@ -49,6 +49,7 @@ impl Agenda {
                 let id2 = id.to_string();
                 div()
                     .id("tp-more-btn")
+                    .debug_selector(|| "tp-more-btn".to_string())
                     .w_7()
                     .h_7()
                     .grid()

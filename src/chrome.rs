@@ -95,6 +95,7 @@ impl Agenda {
         let key = SharedString::from(format!("nav-{}", spec.id));
         let mut el = div()
             .id(SharedString::from(format!("sb-{}", spec.id)))
+            .debug_selector(|| format!("sb-{}", spec.id))
             .min_h(px(32.))
             .w_full()
             .flex()
@@ -497,6 +498,7 @@ impl Agenda {
             let weak = cx.weak_entity();
             let mut el = div()
                 .id("sb-more")
+                .debug_selector(|| "sb-more".to_string())
                 .h(px(32.))
                 .w_full()
                 .flex_1()
@@ -977,6 +979,7 @@ impl Agenda {
             let key = SharedString::from(format!("more-{id}"));
             let mut el = div()
                 .id(SharedString::from(format!("more-item-{id}")))
+                .debug_selector(|| format!("more-item-{id}"))
                 .min_h(px(32.))
                 .w_full()
                 .flex()
@@ -1083,6 +1086,7 @@ impl Agenda {
             rows.push(
                 div()
                     .id(SharedString::from(format!("ctx-item-{i}")))
+                    .debug_selector(|| format!("ctx-item-{i}"))
                     .h_7()
                     .w_full()
                     .flex()

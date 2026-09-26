@@ -8,6 +8,8 @@ mod pages;
 mod palettes;
 mod store;
 mod theme;
+#[cfg(test)]
+mod ui_tests;
 mod widgets;
 
 use gpui::{
