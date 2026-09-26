@@ -63,7 +63,9 @@ debug-assertions = false
 debug-assertions = false
 opt-level = 0
 
-[target.'cfg(target_os = "windows")'.build-dependencies]
+# Unconditional: the build script itself compiles for the host, so a Linux →
+# MSVC cross build (cargo-xwin) still needs embed-resource on non-Windows hosts.
+[build-dependencies]
 embed-resource = "3.0"
 
 [patch.crates-io]
