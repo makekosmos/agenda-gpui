@@ -129,6 +129,7 @@ impl Agenda {
         let a11y_name = format!("Статус: {label}");
         div()
             .id(("chip", ix))
+            .debug_selector(|| format!("ra-status-{}", t.id))
             .h(px(20.))
             .px_2()
             .flex()
@@ -145,6 +146,9 @@ impl Agenda {
                 }
             })
             .on_click(move |ev: &ClickEvent, _, cx| {
+                // The row's own on_click navigates and drops `dropdown` —
+                // keep the chip press from reaching it.
+                cx.stop_propagation();
                 let pos = ev.position();
                 let tid = tid.clone();
                 let _ = weak.update(cx, |this, _| {

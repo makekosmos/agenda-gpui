@@ -172,7 +172,12 @@ pub fn date_only(value: &Option<String>) -> Option<String> {
     if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(v) {
         return Some(key_of(dt.with_timezone(&Local).date_naive()));
     }
-    v.get(..10).map(str::to_owned)
+    // A ≥10-char prefix is not proof of a date: malformed stamps from other
+    // clients became lexicographic "date" keys, hiding tasks from Inbox and
+    // sorting them into phantom groups. Keep only parseable YYYY-MM-DD.
+    v.get(..10)
+        .filter(|s| parse_key(s).is_some())
+        .map(str::to_owned)
 }
 
 /// taskDate(): deadline wins over scheduled; different dates = conflict.

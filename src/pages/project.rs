@@ -13,12 +13,17 @@ impl Agenda {
             .find(|p| p.id == id)
             .map(|p| p.id.as_str());
         let today = today_key();
+        // `pid == None` (a stale/unknown route id) must match nothing —
+        // comparing against `project_id == None` listed every unprojected
+        // task under the ghost page.
         let items: Vec<usize> = self
             .todos
             .iter()
             .enumerate()
             .filter(|(_, t)| {
-                t.project_id.as_deref() == pid && !t.is_trashed && !is_archived(t, &today)
+                pid.is_some_and(|pid| t.project_id.as_deref() == Some(pid))
+                    && !t.is_trashed
+                    && !is_archived(t, &today)
             })
             .map(|(i, _)| i)
             .collect();

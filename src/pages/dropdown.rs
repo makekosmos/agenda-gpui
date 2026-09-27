@@ -88,13 +88,20 @@ impl Agenda {
             DropKind::Tags => {
                 let cur: Vec<String> = todo.as_ref().map(|t| t.tag_ids.clone()).unwrap_or_default();
                 for (i, tag) in self.tags.clone().iter().enumerate() {
+                    // Checked rows must uncheck: AddTag is a no-op on an
+                    // already-assigned tag, so the row was dead.
+                    let on = cur.contains(&tag.id);
                     rows.push(self.dd_row(
                         window,
                         cx,
                         i,
                         &tag.title,
-                        cur.contains(&tag.id),
-                        MenuAction::AddTag(tid.clone(), tag.id.to_string()),
+                        on,
+                        if on {
+                            MenuAction::RemoveTag(tid.clone(), tag.id.to_string())
+                        } else {
+                            MenuAction::AddTag(tid.clone(), tag.id.to_string())
+                        },
                     ));
                 }
             }
