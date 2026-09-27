@@ -75,10 +75,11 @@ impl Agenda {
                             .child(icon("icons/status-x.svg", 14., c(MUTED_FG())))
                             .on_click({
                                 let weak = weak.clone();
-                                move |_: &ClickEvent, _, cx| {
-                                    let _ = weak.update(cx, |this, _| {
+                                move |_: &ClickEvent, window, cx| {
+                                    let _ = weak.update(cx, |this, cx| {
                                         this.quick_entry_open = false;
                                         this.qe_focused = false;
+                                        this.root_focus.focus(window, cx);
                                     });
                                 }
                             })
@@ -190,10 +191,11 @@ impl Agenda {
             .justify_center()
             .child(div().id("qe-backdrop").absolute().inset_0().on_mouse_down(
                 MouseButton::Left,
-                move |_: &MouseDownEvent, _, cx| {
-                    let _ = weak.update(cx, |this, _| {
+                move |_: &MouseDownEvent, window, cx| {
+                    let _ = weak.update(cx, |this, cx| {
                         this.quick_entry_open = false;
                         this.qe_focused = false;
+                        this.root_focus.focus(window, cx);
                     });
                 },
             ))

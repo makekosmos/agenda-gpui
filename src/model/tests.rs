@@ -31,6 +31,92 @@ fn quick_entry_through_n_days() {
     assert_eq!(clean, "позвонить");
 }
 
+#[test]
+fn quick_entry_ignores_words_that_share_a_weekday_prefix() {
+    // "средний" only shares the stem "сред" with "среда": it is not a date
+    // keyword, so neither a date may be captured nor the word stripped.
+    for title in [
+        "задача средней сложности",
+        "субботник в офисе",
+        "пятничный дайджест",
+        "средство от блёсток",
+    ] {
+        let (clean, date) = parse_quick_entry_capture(title, None);
+        assert_eq!(date, None, "{title} must not produce a date");
+        assert_eq!(clean, title);
+    }
+}
+
+#[test]
+fn quick_entry_accepts_weekday_inflections() {
+    let today = Local::now().date_naive();
+    for (word, wd) in [
+        ("понедельник", 0u32),
+        ("понедельника", 0),
+        ("вторник", 1),
+        ("вторнику", 1),
+        ("среда", 2),
+        ("среду", 2),
+        ("средой", 2),
+        ("четверг", 3),
+        ("четверга", 3),
+        ("пятница", 4),
+        ("пятницу", 4),
+        ("пятницей", 4),
+        ("суббота", 5),
+        ("субботу", 5),
+        ("воскресенье", 6),
+        ("воскресенья", 6),
+    ] {
+        let cur = today.weekday().num_days_from_monday();
+        let delta = (7 + wd - cur) % 7;
+        let expected = key_of(today + Duration::days(if delta == 0 { 7 } else { delta } as i64));
+        let (clean, date) = parse_quick_entry_capture(&format!("сдать отчёт {word}"), None);
+        assert_eq!(date.as_deref(), Some(expected.as_str()), "{word}");
+        assert_eq!(clean, "сдать отчёт", "{word}");
+    }
+}
+
+#[test]
+fn quick_entry_ignores_unrepresentable_offsets() {
+    // Absurd offsets must not panic inside `Duration::days` or the
+    // `NaiveDate + duration` add — an unrepresentable date is not a date.
+    for title in [
+        "позвонить через 99999999999 недель",
+        "позвонить через 4000000000 дней",
+        "позвонить через 2000000000000000000 недель",
+    ] {
+        let (clean, date) = parse_quick_entry_capture(title, None);
+        assert_eq!(date, None, "{title} must not produce a date");
+        assert_eq!(clean, title);
+    }
+}
+
+#[test]
+fn next_recurrence_survives_absurd_rules() {
+    // Engine-fed rules can carry arbitrary intervals; absurd ones must not
+    // panic (or hang on a 4-billion-step month loop) when a task completes.
+    let mut t = new_todo("t", "x");
+    t.status = Status::Todo;
+    t.scheduled_date = Some(today_key());
+    for (frequency, interval, days_of_week) in [
+        (0, u32::MAX, vec![]),
+        (1, u32::MAX, vec![]),
+        (2, u32::MAX, vec![]),
+        (3, u32::MAX, vec![]),
+        // Weekday ids outside 1..=7 can never match — no next occurrence.
+        (1, 1, vec![0]),
+    ] {
+        let rule = RecurrenceRule {
+            frequency,
+            interval,
+            recurrence_type: 0,
+            days_of_week,
+        };
+        assert_eq!(next_recurrence_date(&rule, &t), None);
+    }
+}
+
 fn project(id: &str, title: &str) -> Project {
     Project {
         id: id.into(),
