@@ -22,13 +22,18 @@ impl Agenda {
             return div().flex_1().child(empty_state()).into_any_element();
         };
 
+        // Seed inputs only when they are (re)created for this task. Reseeding
+        // on every render where the field is empty would resurrect the model
+        // value mid-edit, so cleared text reappeared under the user's cursor.
+        let title_fresh = !self.inputs.contains_key("task-title");
         let title_state = self.input_state(window, cx, "task-title", "Название задачи");
-        if title_state.read(cx).value().is_empty() && !t.title.is_empty() {
+        if title_fresh && !t.title.is_empty() {
             let tv = t.title.clone();
             title_state.update(cx, |s, cx| s.set_value(tv, window, cx));
         }
+        let notes_fresh = self.notes_input.is_none();
         let notes_state = self.notes_state(window, cx, "Добавить описание...");
-        if notes_state.read(cx).value().is_empty() {
+        if notes_fresh {
             if let Some(n) = &t.notes {
                 let nv = n.clone();
                 notes_state.update(cx, |s, cx| s.set_value(nv, window, cx));

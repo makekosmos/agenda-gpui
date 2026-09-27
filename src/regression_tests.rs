@@ -3,8 +3,9 @@
 
 use gpui::TestAppContext;
 
+use crate::app::Route;
 use crate::model::day_key;
-use crate::ui_tests::{click, launch, redraw, type_text};
+use crate::ui_tests::{click, launch, redraw, route_of, type_text};
 
 /// A saved quick-entry draft must not survive reopening: the overlay kept the
 /// previous title/notes text, so Enter on a reopened form silently duplicated
@@ -69,5 +70,33 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
         assert_eq!(a.qe_sig, None);
         assert_eq!(a.qe_date, None);
         assert!(!a.qe_billable);
+    });
+}
+
+/// Clearing a task field mid-edit must stick: task_page reseeded the inputs
+/// from the model on every repaint where the field was empty, so deleted text
+/// resurrected and the next keystrokes were appended to it.
+#[gpui::test]
+fn task_fields_stay_empty_after_user_clears_them(cx: &mut TestAppContext) {
+    let (agenda, cx) = launch(cx);
+    agenda.update(cx, |a, _| {
+        a.update_todo("dev-inbox-1", |t| t.notes = Some("заметка".into()));
+    });
+    click(cx, "tr-dev-inbox-1");
+    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
+
+    cx.update(|window, cx| {
+        let title_state = agenda.read(cx).inputs["task-title"].clone();
+        let notes_state = agenda.read(cx).notes_input.clone().unwrap();
+        title_state.update(cx, |s, cx| s.set_value("", window, cx));
+        notes_state.update(cx, |s, cx| s.set_value("", window, cx));
+    });
+    redraw(cx);
+
+    agenda.read_with(cx, |a, cx| {
+        let title = a.inputs["task-title"].read(cx).value().to_string();
+        let notes = a.notes_input.as_ref().unwrap().read(cx).value().to_string();
+        assert!(title.is_empty(), "cleared title refilled with {title:?}");
+        assert!(notes.is_empty(), "cleared notes refilled with {notes:?}");
     });
 }
