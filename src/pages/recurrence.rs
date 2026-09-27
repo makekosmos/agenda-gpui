@@ -8,7 +8,10 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        let freq_label = ["День", "Неделя", "Месяц", "Год"][self.recur_freq as usize];
+        // `recur_freq` is seeded straight from Engine's `frequency` — only the
+        // string form is validated on read, so a numeric value outside 0..=3
+        // would index past the end of this table and panic on editor open.
+        let freq_label = ["День", "Неделя", "Месяц", "Год"][self.recur_freq.min(3) as usize];
         let type_label = if self.recur_type == 1 {
             "после выполнения"
         } else {

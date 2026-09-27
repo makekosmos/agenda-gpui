@@ -90,6 +90,34 @@ pub(crate) fn click(cx: &mut VisualTestContext, selector: &'static str) {
     cx.run_until_parked();
 }
 
+/// Left-click an exact point — used when the meaningful position is a fraction
+/// of an element (e.g. a slider track), not its center.
+pub(crate) fn click_position(cx: &mut VisualTestContext, position: gpui::Point<Pixels>) {
+    let modifiers = Modifiers::default();
+    cx.update(|window, cx| {
+        window.dispatch_event(
+            PlatformInput::MouseDown(MouseDownEvent {
+                position,
+                modifiers,
+                button: MouseButton::Left,
+                click_count: 1,
+                first_mouse: false,
+            }),
+            cx,
+        );
+        window.dispatch_event(
+            PlatformInput::MouseUp(MouseUpEvent {
+                position,
+                modifiers,
+                button: MouseButton::Left,
+                click_count: 1,
+            }),
+            cx,
+        );
+    });
+    cx.run_until_parked();
+}
+
 /// Type text into the focused input. `simulate_input` parses each char via
 /// `Keystroke::parse`, which leaves `key_char` empty, so the input handler
 /// path is skipped entirely — this sets `key_char` explicitly.

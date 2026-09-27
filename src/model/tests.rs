@@ -78,6 +78,16 @@ fn quick_entry_accepts_weekday_inflections() {
 }
 
 #[test]
+fn quick_entry_does_not_treat_sredi_as_wednesday() {
+    // "среди" is a common preposition ("among"), not a declension of "среда":
+    // stem "сред" + suffix "и" accidentally matched, so the word was stripped
+    // from the title and the task silently scheduled for Wednesday.
+    let (clean, date) = parse_quick_entry_capture("обсудить бюджет среди команды", None);
+    assert_eq!(date, None);
+    assert_eq!(clean, "обсудить бюджет среди команды");
+}
+
+#[test]
 fn quick_entry_ignores_unrepresentable_offsets() {
     // Absurd offsets must not panic inside `Duration::days` or the
     // `NaiveDate + duration` add — an unrepresentable date is not a date.

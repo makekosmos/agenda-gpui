@@ -213,6 +213,9 @@ impl Agenda {
             }
         }
 
+        // `drop.x/y` are window coordinates captured from the chip's click
+        // event; this overlay is mounted at the window root (app.rs), so the
+        // panel anchors exactly at the press point.
         let x: f32 = drop.x;
         let y: f32 = drop.y;
         let panel = div()
@@ -222,6 +225,10 @@ impl Agenda {
             .min_w(px(160.))
             .max_h(px(320.))
             .id("dropdown-panel")
+            .debug_selector(|| "dd-panel".to_string())
+            // Keep inside presses off the backdrop (and any overlay below):
+            // row clicks close the dropdown via their own `on_click`.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .overflow_y_scroll()
             .p_1()
             .flex()
@@ -242,6 +249,9 @@ impl Agenda {
         div()
             .absolute()
             .inset_0()
+            // Modal: swallow presses that miss the panel instead of letting
+            // them reach overlays or page content underneath.
+            .occlude()
             .child(
                 div()
                     .id("dd-backdrop")

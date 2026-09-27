@@ -159,6 +159,7 @@ impl Agenda {
         }
 
         let panel = div()
+            .debug_selector(|| "qs-panel".to_string())
             .w(px(640.))
             .flex()
             .flex_col()
@@ -208,12 +209,18 @@ impl Agenda {
                     ),
             )
             .child(div().h_px().w_full().bg(panel_mix(0.10)))
-            .child(body);
+            .child(body)
+            // The panel sits above the inset_0 click-away backdrop: keep
+            // inside clicks from reaching it and dismissing the overlay.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation());
 
         let weak = cx.weak_entity();
         div()
             .absolute()
             .inset_0()
+            // Modal: nothing below the overlay may see this press (e.g. a
+            // task row under the dim area), so occlude everything beneath.
+            .occlude()
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()

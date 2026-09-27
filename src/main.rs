@@ -15,6 +15,8 @@ mod widgets;
 #[cfg(test)]
 mod a11y_tests;
 #[cfg(test)]
+mod kos216_tests;
+#[cfg(test)]
 mod regression_tests;
 
 use gpui::{

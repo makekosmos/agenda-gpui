@@ -1062,6 +1062,9 @@ impl Agenda {
                     .flex_col()
                     .rounded_t_lg()
                     .bg(fg_mix(0.03))
+                    // Keep row/inside presses off the click-away backdrop and
+                    // the sidebar items painted underneath the menu.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .children(rows),
             );
 
@@ -1078,15 +1081,26 @@ impl Agenda {
                     let sidebar_bottom = f32::from(window.viewport_size().height) - 48.;
                     let on_button =
                         ev.position.x < px(SIDEBAR_W) && ev.position.y > px(sidebar_bottom);
-                    let _ = weak.update(cx, |this, _| {
-                        if on_button {
-                            return;
-                        }
-                        if this.more_open {
-                            this.more_menu_stamp = Instant::now();
-                        }
-                        this.more_open = false;
-                    });
+                    let dismissed = weak
+                        .update(cx, |this, _| {
+                            if on_button {
+                                return false;
+                            }
+                            let was_open = this.more_open;
+                            if was_open {
+                                this.more_menu_stamp = Instant::now();
+                            }
+                            this.more_open = false;
+                            was_open
+                        })
+                        .unwrap_or(false);
+                    // Consume the press only when it dismissed an open menu —
+                    // while the menu is animating closed the backdrop must let
+                    // clicks reach the content underneath. Presses on the
+                    // footer button itself always fall through to it.
+                    if dismissed {
+                        cx.stop_propagation();
+                    }
                 },
             ))
             .child(deferred(menu))
@@ -1145,6 +1159,9 @@ impl Agenda {
             .top(y)
             .min_w(px(160.))
             .p_1()
+            // Item presses must not leak through the click-away backdrop to
+            // the content under the menu.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .flex()
             .flex_col()
             .rounded_lg()
@@ -1171,8 +1188,13 @@ impl Agenda {
                         let weak = weak.clone();
                         move |_: &MouseDownEvent, _, cx| {
                             let _ = weak.update(cx, |this, _| this.menu = None);
+                            // Swallow the dismiss press so it cannot also
+                            // activate content under the backdrop.
+                            cx.stop_propagation();
                         }
                     })
+                    // Right presses are left unstopped so a context menu can
+                    // be retargeted onto another row in one gesture.
                     .on_mouse_down(MouseButton::Right, move |_: &MouseDownEvent, _, cx| {
                         let _ = weak.update(cx, |this, _| this.menu = None);
                     }),
