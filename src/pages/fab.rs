@@ -10,6 +10,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let fab = div()
             .id("fab-new")
+            .debug_selector(|| "fab-new".to_string())
             .absolute()
             .right_6()
             .bottom_6()
@@ -37,9 +38,10 @@ impl Agenda {
             })
             .on_click({
                 let weak = cx.weak_entity();
-                move |_: &ClickEvent, _, cx| {
-                    let _ = weak.update(cx, |this, _| {
+                move |_: &ClickEvent, window, cx| {
+                    let _ = weak.update(cx, |this, cx| {
                         this.quick_entry_open = true;
+                        this.reset_quick_entry(window, cx);
                     });
                 }
             })

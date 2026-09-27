@@ -796,6 +796,19 @@ impl Render for Agenda {
                     .unwrap_or(true)
             });
         }
+        // Overlay closes driven by Enter (quick-entry save, quick-search
+        // select) have no Window to restore focus with, so the closed input's
+        // FocusHandle stays focused and swallows the next global hotkey
+        // (Ctrl+N/Ctrl+K do nothing until a click). Reclaim it on the first
+        // frame after such a close; explicit close paths restore eagerly.
+        if self.qe_focused && !self.quick_entry_open {
+            self.qe_focused = false;
+            self.root_focus.focus(window, cx);
+        }
+        if self.qs_focused && !self.quick_open {
+            self.qs_focused = false;
+            self.root_focus.focus(window, cx);
+        }
         let sidebar_p = self.sidebar_progress(window);
 
         // Resolve theme mode ("system" follows the OS appearance) and material.
@@ -987,16 +1000,10 @@ impl Agenda {
             self.quick_entry_open = !self.quick_entry_open;
             self.qe_menu_open = false;
             if self.quick_entry_open {
-                self.qe_billable = false;
-                self.qe_sig = None;
-                self.qe_date = None;
-                self.qe_date_touched = false;
-                self.qe_project = match &self.route {
-                    Route::Project(id) => Some(id.clone()),
-                    _ => None,
-                };
+                self.reset_quick_entry(window, cx);
             } else {
                 self.qe_focused = false;
+                self.root_focus.focus(window, cx);
             }
             return;
         }
@@ -1032,6 +1039,7 @@ impl Agenda {
             if self.quick_entry_open {
                 self.quick_entry_open = false;
                 self.qe_focused = false;
+                self.root_focus.focus(window, cx);
             }
             self.qe_menu_open = false;
             self.recur_open = false;
@@ -1126,6 +1134,28 @@ impl Agenda {
         match &self.route {
             Route::Task(id) => Some(id.clone()),
             _ => None,
+        }
+    }
+
+    /// Clear the quick-entry draft — chips and both text inputs. Every "open"
+    /// entry point (Ctrl+N, FAB) must run this: input entities persist between
+    /// opens, so leftover text or chip state would leak into the next draft
+    /// and Enter would silently save a duplicate.
+    pub(crate) fn reset_quick_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.qe_billable = false;
+        self.qe_sig = None;
+        self.qe_date = None;
+        self.qe_date_touched = false;
+        self.qe_menu_open = false;
+        self.qe_focused = false;
+        self.qe_project = match &self.route {
+            Route::Project(id) => Some(id.clone()),
+            _ => None,
+        };
+        for key in ["qe-title", "qe-notes"] {
+            if let Some(state) = self.inputs.get(key).cloned() {
+                state.update(cx, |s, cx| s.set_value("", window, cx));
+            }
         }
     }
 
@@ -1294,11 +1324,11 @@ impl Agenda {
         todo.is_completed = true;
         todo.is_cancelled = false;
         todo.completed_at = Some(chrono::Utc::now().to_rfc3339());
-        let next = todo.recurrence.as_ref().map(|rule| {
+        let next = todo.recurrence.as_ref().and_then(|rule| {
             let mut next = before.clone();
             next.id = uuid::Uuid::new_v4().to_string();
             next.status = Status::Todo;
-            next.scheduled_date = Some(next_recurrence_date(rule, &todo));
+            next.scheduled_date = Some(next_recurrence_date(rule, &todo)?);
             next.completed_at = None;
             next.is_completed = false;
             next.is_cancelled = false;
@@ -1310,7 +1340,7 @@ impl Agenda {
             next.checklist.clear();
             next.created_at = chrono::Utc::now().to_rfc3339();
             next.sort_order = self.todos.len() as i32;
-            next
+            Some(next)
         });
         self.save_completion(before, todo, next);
     }

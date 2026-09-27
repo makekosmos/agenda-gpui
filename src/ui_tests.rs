@@ -20,7 +20,7 @@ use crate::model::{task_status, Status, Todo};
 /// Builds the same view tree as `main.rs` — Agenda inside AgendaShell inside
 /// `gpui_component::Root` — on the deterministic test platform. The returned
 /// `VisualTestContext` must be shadowed over `cx`.
-fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
+pub(crate) fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
     // Keep the env-based QA hooks identical for every test process.
     for var in [
         "AGENDA_OVERLAY",
@@ -49,7 +49,7 @@ fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
 /// `cx.notify()` (e.g. `on_key` opening quick entry), so nothing marks the
 /// window dirty and the test platform never redraws. Flushing a
 /// `RefreshWindows` effect draws the pending frame synchronously.
-fn redraw(cx: &mut VisualTestContext) {
+pub(crate) fn redraw(cx: &mut VisualTestContext) {
     cx.update(|_, cx| cx.refresh_windows());
 }
 
@@ -60,7 +60,7 @@ fn redraw(cx: &mut VisualTestContext) {
 /// `simulate_click` events would let the post-mousedown redraw drop rows whose
 /// backdrop already closed the menu (ctx menu / property dropdowns), and their
 /// `on_click` would never fire.
-fn click(cx: &mut VisualTestContext, selector: &'static str) {
+pub(crate) fn click(cx: &mut VisualTestContext, selector: &'static str) {
     let bounds: Bounds<Pixels> = cx
         .debug_bounds(selector)
         .unwrap_or_else(|| panic!("'{selector}' has no painted bounds"));
@@ -93,7 +93,7 @@ fn click(cx: &mut VisualTestContext, selector: &'static str) {
 /// Type text into the focused input. `simulate_input` parses each char via
 /// `Keystroke::parse`, which leaves `key_char` empty, so the input handler
 /// path is skipped entirely — this sets `key_char` explicitly.
-fn type_text(cx: &mut VisualTestContext, text: &str) {
+pub(crate) fn type_text(cx: &mut VisualTestContext, text: &str) {
     cx.update(|window, cx| {
         for ch in text.chars() {
             window.dispatch_keystroke(
@@ -109,11 +109,11 @@ fn type_text(cx: &mut VisualTestContext, text: &str) {
     cx.run_until_parked();
 }
 
-fn route_of(cx: &VisualTestContext, agenda: &Entity<Agenda>) -> Route {
+pub(crate) fn route_of(cx: &VisualTestContext, agenda: &Entity<Agenda>) -> Route {
     agenda.read_with(cx, |a, _| a.route.clone())
 }
 
-fn todo_of(cx: &VisualTestContext, agenda: &Entity<Agenda>, id: &str) -> Todo {
+pub(crate) fn todo_of(cx: &VisualTestContext, agenda: &Entity<Agenda>, id: &str) -> Todo {
     agenda.read_with(cx, |a, _| {
         a.todos
             .iter()
