@@ -163,9 +163,15 @@ fn iso_at(offset: i64, h: u32, m: u32) -> String {
     )
 }
 
-/// dateOnly(): accepts "YYYY-MM-DD" or ISO datetime → "YYYY-MM-DD"
+/// dateOnly(): accepts "YYYY-MM-DD" or ISO datetime → "YYYY-MM-DD".
+/// Stamps carrying an explicit offset are instants: interpret them in
+/// local time (dayjs parity) instead of truncating the UTC representation,
+/// which shifts the day for anyone outside UTC around midnight.
 pub fn date_only(value: &Option<String>) -> Option<String> {
     let v = value.as_ref()?;
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(v) {
+        return Some(key_of(dt.with_timezone(&Local).date_naive()));
+    }
     v.get(..10).map(str::to_owned)
 }
 
@@ -735,32 +741,49 @@ pub fn parse_quick_entry_capture(
         }
         if trimmed == "через" {
             if let Some((s2, w2)) = words.get(i + 1) {
-                if let Ok(n) = w2
+                let numeral = w2
                     .trim_matches(|c: char| !c.is_alphanumeric())
                     .parse::<i64>()
-                {
+                    .ok();
+                // A bare unit word reads as n=1 ("через неделю", "через
+                // час"); anything else after «через» is not a capture.
+                let bare = w2.to_lowercase();
+                let parsed = match numeral {
+                    Some(n) => Some((n, i + 2)),
+                    None if through_stem(&bare).is_some() => Some((1, i + 1)),
+                    None => None,
+                };
+                if let Some((n, unit_i)) = parsed {
                     let unit = words
-                        .get(i + 2)
+                        .get(unit_i)
                         .map(|(_, u)| u.to_lowercase())
-                        .unwrap_or_else(|| "дня".to_string());
-                    let days = if unit
-                        .trim_matches(|c: char| !c.is_alphanumeric())
-                        .starts_with("недел")
-                    {
-                        n.checked_mul(7)
-                    } else {
-                        Some(n)
+                        .unwrap_or_default();
+                    let months = |m: i64| {
+                        u32::try_from(m)
+                            .ok()
+                            .and_then(|m| today.checked_add_months(chrono::Months::new(m)))
                     };
-                    // Duration::days and `NaiveDate + duration` panic on
-                    // out-of-range values — an unrepresentable offset is
-                    // simply "no date captured".
-                    if let Some(d) = days
-                        .and_then(Duration::try_days)
-                        .and_then(|d| today.checked_add_signed(d))
-                    {
+                    // The model stores dates only: sub-day units ("через 2
+                    // часа") can only mean today. Month/year units used to
+                    // fall into the days branch and scheduled N days out.
+                    let target = match through_stem(&unit) {
+                        Some(0) => n
+                            .checked_mul(7)
+                            .and_then(Duration::try_days)
+                            .and_then(|d| today.checked_add_signed(d)),
+                        Some(1) => months(n),
+                        Some(2) => n.checked_mul(12).and_then(months),
+                        Some(3) => Some(today),
+                        // день/дня/дней and anything unrecognized after a
+                        // numeral keep the original days fallback.
+                        _ => Duration::try_days(n).and_then(|d| today.checked_add_signed(d)),
+                    };
+                    // `NaiveDate + duration` panics on out-of-range values —
+                    // an unrepresentable offset is simply "no date captured".
+                    if let Some(d) = target {
                         date = Some(d);
                         let e = words
-                            .get(i + 2)
+                            .get(unit_i)
                             .map(|(s, u)| s + u.len())
                             .unwrap_or(s2 + w2.len());
                         remove_range = Some((*start, e));
@@ -797,6 +820,21 @@ pub fn parse_quick_entry_capture(
         },
         Some(key_of(d)),
     )
+}
+
+/// Unit stems after «через»: 0=неделя 1=месяц 2=год/лет 3=час/мин/сек 4=день.
+fn through_stem(unit: &str) -> Option<u8> {
+    let u = unit.trim_matches(|c: char| !c.is_alphanumeric());
+    Some(match u {
+        _ if u.starts_with("недел") => 0,
+        _ if u.starts_with("месяц") => 1,
+        _ if u.starts_with("год") || u.starts_with("лет") => 2,
+        _ if u.starts_with("час") || u.starts_with("мин") || u.starts_with("секунд") => {
+            3
+        }
+        _ if u.starts_with("дн") || u.starts_with("день") => 4,
+        _ => return None,
+    })
 }
 
 /// Next occurrence for a completed recurring task (createNextRecurrence

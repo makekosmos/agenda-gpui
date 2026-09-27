@@ -203,6 +203,7 @@ impl Agenda {
         let weak = cx.weak_entity();
         let share_btn = div()
             .id("el-stat-share")
+            .debug_selector(|| "stat-share".to_string())
             .size(px(32.))
             .flex()
             .items_center()

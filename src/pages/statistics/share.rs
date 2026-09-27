@@ -137,6 +137,10 @@ impl Agenda {
                         .flex_col()
                         .items_center()
                         .justify_center()
+                        // Modal: the dim dismisses on press, but without
+                        // occlusion the same press also reaches the stats
+                        // page beneath (e.g. «Поделиться» re-opens the card).
+                        .occlude()
                         .bg(rgba(0x000000, 0.5))
                         .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                             let _ = weak_close.update(cx, |this, _| this.share_open = false);
