@@ -604,41 +604,51 @@ pub fn describe_recurrence(rule: &Option<RecurrenceRule>) -> String {
 
 /// taskLifecycle.parseProjectMention: find "@<project title>" word-bounded mention.
 pub fn parse_project_mention(title: &str, projects: &[Project]) -> (String, Option<String>) {
-    let lower = title.to_lowercase();
     let mut sorted: Vec<&Project> = projects.iter().collect();
     sorted.sort_by_key(|p| std::cmp::Reverse(p.title.len()));
     for p in sorted {
         let marker = format!("@{}", p.title.to_lowercase());
-        let Some(idx) = lower.find(&marker) else {
-            continue;
-        };
-        let prev_ok = lower[..idx]
-            .chars()
-            .last()
-            .is_none_or(|c| c.is_whitespace());
-        let next_ok = lower[idx + marker.len()..]
-            .chars()
-            .next()
-            .is_none_or(|c| !(c.is_alphanumeric() || c == '_'));
-        if !(prev_ok && next_ok) {
-            continue;
+        // Search in `title`'s own coordinates: a lowercased copy can differ in
+        // byte length ('İ' → "i̇"), which would shift the cut range and corrupt
+        // the remaining text.
+        for (start, _) in title.char_indices() {
+            if !title[..start]
+                .chars()
+                .last()
+                .is_none_or(|c| c.is_whitespace())
+            {
+                continue;
+            }
+            let mut acc = String::new();
+            let mut end = start;
+            for (off, ch) in title[start..].char_indices() {
+                acc.extend(ch.to_lowercase());
+                end = start + off + ch.len_utf8();
+                if acc == marker || !marker.starts_with(acc.as_str()) {
+                    break;
+                }
+            }
+            if acc != marker {
+                continue;
+            }
+            if !title[end..]
+                .chars()
+                .next()
+                .is_none_or(|c| !(c.is_alphanumeric() || c == '_'))
+            {
+                continue;
+            }
+            let clean = format!("{}{}", &title[..start], &title[end..]);
+            let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
+            return (
+                if clean.is_empty() {
+                    title.to_string()
+                } else {
+                    clean
+                },
+                Some(p.id.to_string()),
+            );
         }
-        // Remove the mention at the same byte range in the original string.
-        let byte_idx = title.to_lowercase().find(&marker).unwrap_or(idx);
-        let end = byte_idx + marker.len();
-        if !title.is_char_boundary(byte_idx) || !title.is_char_boundary(end) {
-            return (title.to_string(), Some(p.id.to_string()));
-        }
-        let clean = format!("{}{}", &title[..byte_idx], &title[end..]);
-        let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
-        return (
-            if clean.is_empty() {
-                title.to_string()
-            } else {
-                clean
-            },
-            Some(p.id.to_string()),
-        );
     }
     (title.to_string(), None)
 }
