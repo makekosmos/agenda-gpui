@@ -685,6 +685,11 @@ pub fn parse_quick_entry_capture(
         ("суббот", 5),
         ("воскресень", 6),
     ];
+    // Russian weekday declensions: nominative + case endings accepted after
+    // each stem above (среда/среду/средой, пятницу/пятницей, воскресенья...).
+    const WEEKDAY_SUFFIXES: &[&str] = &[
+        "", "а", "у", "е", "и", "ы", "ю", "я", "ой", "ей", "ом", "ем", "ам", "ям",
+    ];
     for (i, (start, w)) in words.iter().enumerate() {
         let end = *start + w.len();
         let lw = w.to_lowercase();
@@ -696,7 +701,13 @@ pub fn parse_quick_entry_capture(
             _ if trimmed.starts_with("через") || trimmed == "через" => None,
             _ => ru_weekdays
                 .iter()
-                .find(|(name, _)| trimmed.starts_with(name))
+                .find(|(name, _)| {
+                    // Bare prefix matching treats "средний"/"субботник" as
+                    // weekday names; only declension endings may follow a stem.
+                    trimmed
+                        .strip_prefix(name)
+                        .is_some_and(|s| WEEKDAY_SUFFIXES.contains(&s))
+                })
                 .map(|(_, wd)| {
                     let cur = today.weekday().num_days_from_monday();
                     let delta = (7 + wd - cur) % 7;
@@ -722,17 +733,25 @@ pub fn parse_quick_entry_capture(
                         .trim_matches(|c: char| !c.is_alphanumeric())
                         .starts_with("недел")
                     {
-                        n * 7
+                        n.checked_mul(7)
                     } else {
-                        n
+                        Some(n)
                     };
-                    date = Some(today + Duration::days(days));
-                    let e = words
-                        .get(i + 2)
-                        .map(|(s, u)| s + u.len())
-                        .unwrap_or(s2 + w2.len());
-                    remove_range = Some((*start, e));
-                    break;
+                    // Duration::days and `NaiveDate + duration` panic on
+                    // out-of-range values — an unrepresentable offset is
+                    // simply "no date captured".
+                    if let Some(d) = days
+                        .and_then(Duration::try_days)
+                        .and_then(|d| today.checked_add_signed(d))
+                    {
+                        date = Some(d);
+                        let e = words
+                            .get(i + 2)
+                            .map(|(s, u)| s + u.len())
+                            .unwrap_or(s2 + w2.len());
+                        remove_range = Some((*start, e));
+                        break;
+                    }
                 }
             }
         }
@@ -766,46 +785,43 @@ pub fn parse_quick_entry_capture(
     )
 }
 
-/// Next occurrence for a completed recurring task (createNextRecurrence subset).
-pub fn next_recurrence_date(rule: &RecurrenceRule, t: &Todo) -> String {
+/// Next occurrence for a completed recurring task (createNextRecurrence
+/// subset). Rules come from Engine data, so interval/weekday values are
+/// untrusted: checked arithmetic keeps absurd rules from panicking or
+/// looping for billions of months — they simply produce no next occurrence.
+pub fn next_recurrence_date(rule: &RecurrenceRule, t: &Todo) -> Option<String> {
     let base = task_date(t)
         .0
         .and_then(|d| parse_key(&d))
         .unwrap_or_else(|| Local::now().date_naive());
+    let interval = i64::from(rule.interval);
     let next = match rule.frequency {
-        0 => base + Duration::days(rule.interval as i64),
+        0 => Duration::try_days(interval).and_then(|d| base.checked_add_signed(d)),
         1 => {
             if rule.days_of_week.is_empty() {
-                base + Duration::weeks(rule.interval as i64)
+                interval
+                    .checked_mul(7)
+                    .and_then(Duration::try_days)
+                    .and_then(|d| base.checked_add_signed(d))
             } else {
                 // Next selected weekday strictly after base.
-                let mut d = base + Duration::days(1);
+                let mut d = base;
+                let mut found = None;
                 for _ in 0..8 {
+                    d = d.checked_add_signed(Duration::days(1))?;
                     let wd = d.weekday().num_days_from_monday() as u8 + 1;
                     if rule.days_of_week.contains(&wd) {
+                        found = Some(d);
                         break;
                     }
-                    d += Duration::days(1);
                 }
-                d
+                found
             }
         }
-        2 => {
-            let mut d = base;
-            for _ in 0..rule.interval {
-                d = d + chrono::Months::new(1);
-            }
-            d
-        }
-        _ => {
-            let mut d = base;
-            for _ in 0..rule.interval {
-                d = d + chrono::Months::new(12);
-            }
-            d
-        }
+        2 => base.checked_add_months(chrono::Months::new(rule.interval)),
+        _ => base.checked_add_months(chrono::Months::new(rule.interval.checked_mul(12)?)),
     };
-    key_of(next)
+    next.map(key_of)
 }
 
 // ---------------------------------------------------------------------------
