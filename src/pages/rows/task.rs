@@ -51,14 +51,16 @@ impl Agenda {
                     .items_center()
                     .justify_center()
                     .child(status_ring(status))
-                    .on_click({
-                        let weak = cx.weak_entity();
-                        let id2 = id.clone();
-                        move |_: &ClickEvent, _, cx| {
-                            let _ = weak.update(cx, |this, _| {
-                                this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
-                            });
-                        }
+                    .when(!t.is_trashed, |ring| {
+                        ring.on_click({
+                            let weak = cx.weak_entity();
+                            let id2 = id.clone();
+                            move |_: &ClickEvent, _, cx| {
+                                let _ = weak.update(cx, |this, _| {
+                                    this.run_menu_action(MenuAction::CompleteTodo(id2.clone()));
+                                });
+                            }
+                        })
                     })
                     .a11y_checkbox(ring_name, done),
             )

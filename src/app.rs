@@ -1199,11 +1199,10 @@ impl Agenda {
         } else {
             captured.1
         };
-        let (clean_title, parsed_pid) = if self.qe_project.is_some() {
-            (captured.0, None)
-        } else {
-            parse_project_mention(&captured.0, &self.projects)
-        };
+        // The @mention is markup regardless of how qe_project got set (chip,
+        // route default, or this title) — it must always be stripped from the
+        // saved title. Parsed project wins only when no chip was chosen.
+        let (clean_title, parsed_pid) = parse_project_mention(&captured.0, &self.projects);
         let project = self.qe_project.clone().or(parsed_pid);
         let status = if scheduled.is_some() || project.is_some() {
             Status::Todo
@@ -1294,6 +1293,11 @@ impl Agenda {
 
     /// Mutations are sent through the shared Engine persistence path.
     pub(crate) fn set_todo_status(&mut self, id: &str, status: Status) {
+        // Trash rows are read-only: no status transitions on binned tasks
+        // (this also keeps recurring rules from spawning into the trash).
+        if self.todo(id).is_some_and(|t| t.is_trashed) {
+            return;
+        }
         if status == Status::Done {
             self.complete_todo(id);
             return;
@@ -1316,7 +1320,7 @@ impl Agenda {
         let Some(before) = self.todo(id).cloned() else {
             return;
         };
-        if before.is_completed {
+        if before.is_completed || before.is_trashed {
             return;
         }
         let mut todo = before.clone();

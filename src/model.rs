@@ -233,6 +233,17 @@ pub fn completed_on(t: &Todo, today: &str) -> bool {
         && date_only(&t.completed_at).as_deref() == Some(today)
 }
 
+/// The local day a task was completed, for statistics aggregation. Only
+/// genuinely-done tasks count: canceled tasks carry a `completed_at` stamp
+/// (it doubles as "closed at") but are not completions, and trashed tasks
+/// are excluded from every count.
+pub fn completed_day(t: &Todo) -> Option<NaiveDate> {
+    if task_status(t) != Status::Done || t.is_trashed {
+        return None;
+    }
+    date_only(&t.completed_at).and_then(|k| parse_key(&k))
+}
+
 pub fn is_archived(t: &Todo, today: &str) -> bool {
     if task_status(t) != Status::Done || t.is_trashed {
         return false;
@@ -790,10 +801,19 @@ pub fn parse_quick_entry_capture(
 /// untrusted: checked arithmetic keeps absurd rules from panicking or
 /// looping for billions of months — they simply produce no next occurrence.
 pub fn next_recurrence_date(rule: &RecurrenceRule, t: &Todo) -> Option<String> {
-    let base = task_date(t)
-        .0
-        .and_then(|d| parse_key(&d))
-        .unwrap_or_else(|| Local::now().date_naive());
+    // recurrenceType=1 ("после выполнения") counts the interval from the
+    // completion day; type=0 ("по расписанию") chains the fixed schedule
+    // regardless of when the task was actually completed.
+    let base = if rule.recurrence_type == 1 {
+        date_only(&t.completed_at)
+            .and_then(|d| parse_key(&d))
+            .unwrap_or_else(|| Local::now().date_naive())
+    } else {
+        task_date(t)
+            .0
+            .and_then(|d| parse_key(&d))
+            .unwrap_or_else(|| Local::now().date_naive())
+    };
     let interval = i64::from(rule.interval);
     let next = match rule.frequency {
         0 => Duration::try_days(interval).and_then(|d| base.checked_add_signed(d)),

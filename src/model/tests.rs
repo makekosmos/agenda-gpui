@@ -117,6 +117,79 @@ fn next_recurrence_survives_absurd_rules() {
     }
 }
 
+#[test]
+fn after_completion_recurrence_counts_from_completion_day() {
+    // recurrenceType=1 ("после выполнения") repeats relative to the day the
+    // task was completed, not its old scheduled date: a task scheduled 10
+    // days ago but completed today repeats tomorrow, not 9 days ago.
+    let mut t = new_todo("t", "x");
+    t.status = Status::Todo;
+    t.scheduled_date = Some(day_key(-10));
+    t.completed_at = Some(chrono::Utc::now().to_rfc3339());
+    let rule = RecurrenceRule {
+        frequency: 0,
+        interval: 1,
+        recurrence_type: 1,
+        days_of_week: vec![],
+    };
+    assert_eq!(
+        next_recurrence_date(&rule, &t).as_deref(),
+        Some(day_key(1).as_str())
+    );
+}
+
+#[test]
+fn fixed_recurrence_counts_from_schedule() {
+    // recurrenceType=0 ("по расписанию") chains from the scheduled date even
+    // when completion happens later.
+    let mut t = new_todo("t", "x");
+    t.status = Status::Todo;
+    t.scheduled_date = Some(day_key(-10));
+    t.completed_at = Some(chrono::Utc::now().to_rfc3339());
+    let rule = RecurrenceRule {
+        frequency: 0,
+        interval: 1,
+        recurrence_type: 0,
+        days_of_week: vec![],
+    };
+    assert_eq!(
+        next_recurrence_date(&rule, &t).as_deref(),
+        Some(day_key(-9).as_str())
+    );
+}
+
+#[test]
+fn completed_day_counts_only_genuine_completions() {
+    // The statistics heatmap/totals read `completed_day`: canceled tasks
+    // carry a completed_at stamp ("closed at") but are not completions, and
+    // trashed tasks must not count anywhere.
+    let stamp = iso_at(0, 12, 0);
+    let key = today_key();
+
+    let mut done = new_todo("a", "x");
+    done.status = Status::Done;
+    done.is_completed = true;
+    done.completed_at = Some(stamp.clone());
+    assert_eq!(completed_day(&done), parse_key(&key));
+
+    let mut canceled = done.clone();
+    canceled.id = "b".into();
+    canceled.status = Status::Canceled;
+    canceled.is_completed = false;
+    canceled.is_cancelled = true;
+    assert_eq!(completed_day(&canceled), None);
+
+    let mut trashed = done.clone();
+    trashed.id = "c".into();
+    trashed.is_trashed = true;
+    assert_eq!(completed_day(&trashed), None);
+
+    let mut no_stamp = done.clone();
+    no_stamp.id = "d".into();
+    no_stamp.completed_at = None;
+    assert_eq!(completed_day(&no_stamp), None);
+}
+
 fn project(id: &str, title: &str) -> Project {
     Project {
         id: id.into(),
