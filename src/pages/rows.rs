@@ -108,6 +108,7 @@ impl Agenda {
         let key = SharedString::from(hid.to_string());
         div()
             .id(SharedString::from(format!("el-{hid}")))
+            .debug_selector(|| format!("act-{hid}"))
             .h(px(20.))
             .px_2()
             .flex()
@@ -127,6 +128,9 @@ impl Agenda {
             .on_click({
                 let weak = cx.weak_entity();
                 move |_: &ClickEvent, _, cx| {
+                    // The row's on_click navigates to the task page — a hover
+                    // action must run without changing the route.
+                    cx.stop_propagation();
                     let _ = weak.update(cx, |this, _| {
                         this.run_menu_action(action.clone());
                     });

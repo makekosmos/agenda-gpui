@@ -159,6 +159,7 @@ impl Agenda {
             date_chip = date_chip.child(
                 div()
                     .id("qe-date-clear")
+                    .debug_selector(|| "qe-date-clear".to_string())
                     .w_3p5()
                     .h_3p5()
                     .grid()
@@ -168,6 +169,9 @@ impl Agenda {
                     .on_click({
                         let weak = weak.clone();
                         move |_: &ClickEvent, _, cx| {
+                            // The chip's own on_click opens the date picker —
+                            // clearing must not also open it.
+                            cx.stop_propagation();
                             let _ = weak.update(cx, |this, _| {
                                 this.qe_date = None;
                                 this.qe_date_touched = true;

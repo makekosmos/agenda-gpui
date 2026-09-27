@@ -71,6 +71,7 @@ impl Agenda {
             date_chip = date_chip.child(
                 div()
                     .id("tp-date-clear")
+                    .debug_selector(|| "tp-date-clear".to_string())
                     .w_3p5()
                     .h_3p5()
                     .grid()
@@ -82,6 +83,9 @@ impl Agenda {
                         let weak = cx.weak_entity();
                         let id2 = id.to_string();
                         move |_: &ClickEvent, _, cx| {
+                            // The chip's on_click opens the date picker —
+                            // clearing must not also reopen it.
+                            cx.stop_propagation();
                             let _ = weak.update(cx, |this, _| {
                                 this.run_menu_action(MenuAction::SetDate(id2.clone(), None));
                             });
