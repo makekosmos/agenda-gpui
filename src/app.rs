@@ -187,6 +187,7 @@ pub struct Agenda {
     pub(crate) qe_menu_open: bool,
     pub(crate) qe_date: Option<String>,
     pub(crate) qe_date_touched: bool,
+    pub(crate) qe_project_touched: bool,
     pub(crate) qe_sig: Option<u8>,
     pub(crate) kanban_group_open: bool,
     pub(crate) group_open_t: f32,
@@ -374,6 +375,7 @@ impl Agenda {
             qe_menu_open: false,
             qe_date: None,
             qe_date_touched: false,
+            qe_project_touched: false,
             qe_sig: None,
             kanban_group_open: true,
             group_open_t: 1.0,
@@ -912,6 +914,12 @@ impl Render for Agenda {
         if self.quick_open {
             overlays.push(self.render_quick_search(window, cx).into_any_element());
         }
+        // The prop dropdown is window-level: it must paint above the quick
+        // entry/search overlays it can be opened from, and its anchor point
+        // is stored in window coordinates.
+        if let Some(drop) = self.dropdown.clone() {
+            overlays.push(self.render_dropdown(&drop, window, cx).into_any_element());
+        }
         // Dev overlays: 8px design grid (minor every 8px, major every 40px)
         // and the FPS badge. Neither is interactive — no hitboxes are
         // painted, so input passes through to the UI below.
@@ -1146,6 +1154,7 @@ impl Agenda {
         self.qe_sig = None;
         self.qe_date = None;
         self.qe_date_touched = false;
+        self.qe_project_touched = false;
         self.qe_menu_open = false;
         self.qe_focused = false;
         self.qe_project = match &self.route {
@@ -1439,7 +1448,10 @@ impl Agenda {
             MenuAction::RemoveTag(id, tag) => self.update_todo(&id, |t| {
                 t.tag_ids.retain(|x| *x != tag.as_str());
             }),
-            MenuAction::QeSetProject(p) => self.qe_project = p,
+            MenuAction::QeSetProject(p) => {
+                self.qe_project = p;
+                self.qe_project_touched = true;
+            }
             MenuAction::QeSetDate(d) => {
                 self.qe_date = d;
                 self.qe_date_touched = true;

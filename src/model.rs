@@ -715,9 +715,12 @@ pub fn parse_quick_entry_capture(
                 .find(|(name, _)| {
                     // Bare prefix matching treats "средний"/"субботник" as
                     // weekday names; only declension endings may follow a stem.
-                    trimmed
-                        .strip_prefix(name)
-                        .is_some_and(|s| WEEKDAY_SUFFIXES.contains(&s))
+                    // "среди" is the exception: a common preposition, not a
+                    // declension of "среда" — the "и" ending is valid only for
+                    // the other stems.
+                    trimmed.strip_prefix(name).is_some_and(|s| {
+                        WEEKDAY_SUFFIXES.contains(&s) && !(*name == "сред" && s == "и")
+                    })
                 })
                 .map(|(_, wd)| {
                     let cur = today.weekday().num_days_from_monday();

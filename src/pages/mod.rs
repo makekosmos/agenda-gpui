@@ -104,9 +104,6 @@ impl Agenda {
         if self.options_for.is_some() {
             page = page.child(self.render_options_popover(window, cx).into_any_element());
         }
-        if let Some(drop) = self.dropdown.clone() {
-            page = page.child(self.render_dropdown(&drop, window, cx).into_any_element());
-        }
         page.into_any_element()
     }
 

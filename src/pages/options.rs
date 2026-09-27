@@ -175,6 +175,9 @@ impl Agenda {
         div()
             .absolute()
             .inset_0()
+            // Modal: dismiss presses must not also activate page content
+            // underneath the backdrop.
+            .occlude()
             .child(
                 div()
                     .id("opt-backdrop")
@@ -186,7 +189,9 @@ impl Agenda {
                         }
                     }),
             )
-            .child(deferred(panel))
+            .child(deferred(
+                panel.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            ))
             .into_any_element()
     }
 

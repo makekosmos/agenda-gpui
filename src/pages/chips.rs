@@ -253,6 +253,7 @@ impl Agenda {
         chips = chips.child(div().flex_1()).child(
             div()
                 .id("qe-proj")
+                .debug_selector(|| "qe-proj".to_string())
                 .h_7()
                 .px_3()
                 .flex()

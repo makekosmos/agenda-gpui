@@ -10,8 +10,9 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
-        // contextual defaults
-        if self.qe_project.is_none() {
+        // contextual defaults — once the user picks/clears the chip
+        // (`qe_project_touched`), a cleared state must not be re-seeded.
+        if self.qe_project.is_none() && !self.qe_project_touched {
             if let Route::Project(pid) = &self.route {
                 self.qe_project = Some(pid.clone());
             }
@@ -46,6 +47,9 @@ impl Agenda {
                 spread_radius: px(0.),
                 inset: false,
             }])
+            // The panel sits above the inset_0 click-away backdrop: keep
+            // inside clicks from reaching it and dismissing the overlay.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .flex()
@@ -108,6 +112,18 @@ impl Agenda {
             .unwrap_or_else(|| "Не оценено".to_string());
         let sig_value = self.qe_sig.unwrap_or(0);
         let fill = self.qe_sig.unwrap_or(5) as f32 / 10.0;
+        // Canvas records the track's painted bounds so a click's window-x can
+        // be mapped onto the real 120px element at any window size (the card
+        // is anchored to the window's right edge, so its position is not a
+        // compile-time constant).
+        let slider_bounds =
+            std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
+        let bounds_probe = {
+            let slider_bounds = slider_bounds.clone();
+            gpui::canvas(move |b, _, _| slider_bounds.set(Some(b)), |_, _, _, _| {})
+                .absolute()
+                .inset_0()
+        };
         let sig_card = div()
             .absolute()
             .right_6()
@@ -131,13 +147,19 @@ impl Agenda {
             .text_size(px(12.))
             .text_color(c(FG()))
             .child("Значимость")
+            // Same backdrop shielding as the panel — the card is a deferred
+            // sibling, not a descendant of it.
+            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
             .child(
                 div()
                     .id("qe-sig-slider")
+                    .debug_selector(|| "qe-sig-slider".to_string())
+                    .relative()
                     .w(px(120.))
                     .h(px(20.))
                     .flex()
                     .items_center()
+                    .child(bounds_probe)
                     .child(
                         div()
                             .w_full()
@@ -162,14 +184,15 @@ impl Agenda {
                     )
                     .on_click({
                         let weak = weak.clone();
+                        let slider_bounds = slider_bounds.clone();
                         move |ev: &ClickEvent, _, cx| {
                             let x: f32 = ev.position().x.into();
                             let _ = weak.update(cx, |this, _| {
-                                // slider is 120px wide; anchor from window right edge
-                                let v = ((x - (1440. - 24. - 16. - 96. - 120.)) / 120. * 10.)
-                                    .round()
-                                    .clamp(1., 10.) as u8;
-                                this.qe_sig = Some(v);
+                                let Some(b) = slider_bounds.get() else {
+                                    return;
+                                };
+                                let frac = (x - f32::from(b.origin.x)) / f32::from(b.size.width);
+                                this.qe_sig = Some((frac * 10.).round().clamp(1., 10.) as u8);
                             });
                         }
                     })
@@ -186,6 +209,9 @@ impl Agenda {
         div()
             .absolute()
             .inset_0()
+            // Modal: nothing below the overlay may see this press (e.g. a
+            // task row under the dim area), so occlude everything beneath.
+            .occlude()
             .bg(rgba(0x000000, 0.30))
             .flex()
             .justify_center()
