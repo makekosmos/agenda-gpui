@@ -15,7 +15,7 @@ impl Agenda {
         // Per-day completed counts for all history.
         let mut days = std::collections::BTreeMap::<NaiveDate, i64>::new();
         for t in &self.todos {
-            if let Some(d) = date_only(&t.completed_at).and_then(|k| parse_key(&k)) {
+            if let Some(d) = completed_day(t) {
                 *days.entry(d).or_insert(0) += 1;
             }
         }
