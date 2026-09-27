@@ -653,16 +653,17 @@ pub fn parse_quick_entry_capture(
     if selected.is_some() {
         return (title.to_string(), selected);
     }
-    let lower = title.to_lowercase();
     let today = Local::now().date_naive();
-    let words: Vec<(usize, &str)> = lower
-        .split_whitespace()
-        .scan(0usize, |pos, w| {
-            let start = *pos;
-            *pos += w.len() + 1;
-            Some((start, w))
-        })
-        .collect();
+    // Word offsets must index `title` itself: separator runs can be wider than
+    // one byte, and lowercasing may change byte length, so positions derived
+    // from `title.to_lowercase()` do not map back onto `title`.
+    let mut words: Vec<(usize, &str)> = Vec::new();
+    let mut pos = 0usize;
+    for w in title.split_whitespace() {
+        let start = pos + title[pos..].find(w).unwrap_or(0);
+        pos = start + w.len();
+        words.push((start, w));
+    }
     let mut date: Option<NaiveDate> = None;
     let mut remove_range: Option<(usize, usize)> = None;
     let ru_weekdays = [
@@ -676,7 +677,8 @@ pub fn parse_quick_entry_capture(
     ];
     for (i, (start, w)) in words.iter().enumerate() {
         let end = *start + w.len();
-        let trimmed = w.trim_matches(|c: char| !c.is_alphanumeric());
+        let lw = w.to_lowercase();
+        let trimmed = lw.trim_matches(|c: char| !c.is_alphanumeric());
         let d = match trimmed {
             "сегодня" => Some(today),
             "завтра" => Some(today + Duration::days(1)),
@@ -704,9 +706,12 @@ pub fn parse_quick_entry_capture(
                 {
                     let unit = words
                         .get(i + 2)
-                        .map(|(_, u)| u.trim_matches(|c: char| !c.is_alphanumeric()))
-                        .unwrap_or("дня");
-                    let days = if unit.starts_with("недел") {
+                        .map(|(_, u)| u.to_lowercase())
+                        .unwrap_or_else(|| "дня".to_string());
+                    let days = if unit
+                        .trim_matches(|c: char| !c.is_alphanumeric())
+                        .starts_with("недел")
+                    {
                         n * 7
                     } else {
                         n
@@ -1231,3 +1236,6 @@ pub fn seed_events() -> Vec<CalEvent> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests;
