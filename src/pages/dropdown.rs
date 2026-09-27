@@ -142,7 +142,14 @@ impl Agenda {
                 let today = today_key();
                 let tomorrow = day_key(1);
                 let week = day_key(7);
-                let cur = todo.as_ref().and_then(|t| task_date(t).0);
+                let cur = if drop.kind == DropKind::QeDate {
+                    // Quick entry has no owning todo — the draft date lives
+                    // on `qe_date`, otherwise «Без даты» stays checked even
+                    // after the user picks a day.
+                    self.qe_date.clone()
+                } else {
+                    todo.as_ref().and_then(|t| task_date(t).0)
+                };
                 let opts: [(Option<String>, &str); 4] = [
                     (Some(today), "Сегодня"),
                     (Some(tomorrow), "Завтра"),
