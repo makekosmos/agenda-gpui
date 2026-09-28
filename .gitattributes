@@ -1,0 +1,8 @@
+# The a11y snapshot is byte-compared in tests (`actual != expected` against
+# snapshots/a11y-inbox.txt). Pin LF so core.autocrlf does not rewrite it to
+# CRLF on Windows checkouts and fail only there.
+snapshots/** text eol=lf
+
+# Binary payloads must never be EOL-normalized.
+*.png binary
+*.ico binary
