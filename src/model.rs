@@ -219,7 +219,11 @@ pub fn is_inbox(t: &Todo) -> bool {
 }
 
 pub fn is_deferred(t: &Todo) -> bool {
-    (task_status(t) == Status::Deferred || t.is_someday) && !t.is_trashed
+    // The someday flag is only meaningful on a live task: `complete_todo`
+    // leaves it set on the finished copy, and Engine data from other clients
+    // can arrive as Done/Canceled + is_someday — either way a closed task
+    // must not keep a row in «Потом».
+    is_active(t) && (task_status(t) == Status::Deferred || t.is_someday)
 }
 
 pub fn is_overdue(t: &Todo, today: &str) -> bool {
