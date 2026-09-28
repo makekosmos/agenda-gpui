@@ -709,6 +709,9 @@ impl Agenda {
             self.more_open = false;
             self.menu = None;
             self.dropdown = None;
+            // Task-scoped draft state must not leak across pages: the editor
+            // is seeded from one task but applies to the page's current one.
+            self.recur_open = false;
             self.reset_hovers(None);
         }
     }
@@ -1210,9 +1213,15 @@ impl Agenda {
         };
         // The @mention is markup regardless of how qe_project got set (chip,
         // route default, or this title) — it must always be stripped from the
-        // saved title. Parsed project wins only when no chip was chosen.
+        // saved title. Parsed project wins only when no chip was chosen —
+        // and «Входящие» IS a choice: qe_project_touched marks an explicit
+        // pick, so a cleared chip must not be overridden by the mention.
         let (clean_title, parsed_pid) = parse_project_mention(&captured.0, &self.projects);
-        let project = self.qe_project.clone().or(parsed_pid);
+        let project = if self.qe_project_touched {
+            self.qe_project.clone()
+        } else {
+            self.qe_project.clone().or(parsed_pid)
+        };
         let status = if scheduled.is_some() || project.is_some() {
             Status::Todo
         } else {

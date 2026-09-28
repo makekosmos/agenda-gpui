@@ -21,6 +21,8 @@ mod kos232_tests;
 #[cfg(test)]
 mod kos244_tests;
 #[cfg(test)]
+mod kos254_tests;
+#[cfg(test)]
 mod regression_tests;
 
 use gpui::{

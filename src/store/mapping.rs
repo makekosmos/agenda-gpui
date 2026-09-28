@@ -75,6 +75,15 @@ pub fn read(object: &Value) -> Result<Todo, String> {
         json!(props["extensions"]["priority"]
             .as_u64()
             .or_else(|| props["priority"].as_u64())
+            .or_else(|| {
+                // Canonical `priority` is written as a string
+                // ("high"/"medium"/"low"/"none"): clients that keep only the
+                // canonical field would otherwise lose the level on read.
+                ["none", "low", "medium", "high"]
+                    .iter()
+                    .position(|v| props["priority"].as_str() == Some(*v))
+                    .map(|i| i as u64)
+            })
             .unwrap_or(0)
             .min(3)),
     );
