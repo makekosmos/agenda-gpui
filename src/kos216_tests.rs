@@ -11,7 +11,7 @@ use crate::ui_tests::{click, click_position, launch, redraw, route_of};
 
 /// Engine owns the recurrence rule and only string frequencies are validated
 /// on read — a numeric `frequency` outside 0..=3 (e.g. written by another
-/// Kosmos UI) is stored verbatim. The editor's label lookup then indexed
+/// Mundus UI) is stored verbatim. The editor's label lookup then indexed
 /// `["День","Неделя","Месяц","Год"]` with the raw value: merely opening the
 /// recurrence editor panicked the whole app.
 #[gpui::test]

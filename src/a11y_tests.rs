@@ -157,6 +157,27 @@ async fn a11y_tree_has_no_unnamed_interactive_nodes(cx: &mut TestAppContext) {
     assert!(unnamed.is_empty(), "unnamed interactive nodes: {unnamed:?}");
 }
 
+/// Caption buttons drawn by `chrome.rs` on Windows and Linux; macOS uses the
+/// native traffic lights, so they are absent from its a11y tree.
+const WINDOW_CONTROL_NAMES: [&str; 3] = ["Свернуть", "Развернуть", "Закрыть"];
+
+/// The committed snapshot is the Windows/Linux tree. On macOS the same tree
+/// minus the caption-button lines is expected.
+fn expected_for_platform(snapshot: &str) -> String {
+    if !cfg!(target_os = "macos") {
+        return snapshot.to_string();
+    }
+    let caption_lines: Vec<String> = WINDOW_CONTROL_NAMES
+        .iter()
+        .map(|name| format!("Button \"{name}\""))
+        .collect();
+    snapshot
+        .lines()
+        .filter(|line| !caption_lines.iter().any(|c| line.trim() == c))
+        .map(|line| format!("{line}\n"))
+        .collect()
+}
+
 #[gpui::test]
 async fn a11y_tree_inbox_exposes_russian_names(cx: &mut TestAppContext) {
     let (_agenda, cx) = launch(cx);
@@ -173,18 +194,19 @@ async fn a11y_tree_inbox_exposes_russian_names(cx: &mut TestAppContext) {
         .collect();
 
     // Sidebar navigation, window chrome and the FAB — stable Russian names.
-    for expected in [
+    let mut expected_names = vec![
         "Входящие",
         "Сегодня",
         "Календарь",
         "Проекты",
         "Другое",
         "Боковая панель",
-        "Свернуть",
-        "Развернуть",
-        "Закрыть",
         "Новая задача",
-    ] {
+    ];
+    if !cfg!(target_os = "macos") {
+        expected_names.extend(WINDOW_CONTROL_NAMES);
+    }
+    for expected in expected_names {
         assert!(
             labels.contains_key(expected),
             "expected a11y name '{expected}' in the tree; got labels: {:?}",
@@ -192,8 +214,10 @@ async fn a11y_tree_inbox_exposes_russian_names(cx: &mut TestAppContext) {
         );
     }
     // Window controls and nav rows are buttons.
-    assert_eq!(labels["Свернуть"], "Button");
-    assert_eq!(labels["Закрыть"], "Button");
+    if !cfg!(target_os = "macos") {
+        assert_eq!(labels["Свернуть"], "Button");
+        assert_eq!(labels["Закрыть"], "Button");
+    }
     assert_eq!(labels["Входящие"], "Button");
     // Sidebar toggle is a switch with its on/off state.
     assert_eq!(labels["Боковая панель"], "Switch");
@@ -224,6 +248,7 @@ async fn a11y_tree_inbox_matches_snapshot(cx: &mut TestAppContext) {
     }
     let expected = std::fs::read_to_string(path)
         .unwrap_or_else(|_| panic!("missing snapshot {path}; run with A11Y_BLESS=1 to create it"));
+    let expected = expected_for_platform(&expected);
     if actual != expected {
         let expected_lines: Vec<&str> = expected.lines().collect();
         let actual_lines: Vec<&str> = actual.lines().collect();

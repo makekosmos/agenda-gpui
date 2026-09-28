@@ -219,7 +219,7 @@ fn persistence_across_client_processes() {
                 "store::tests::restart_client",
                 "--nocapture",
             ])
-            .env("KOSMOS_DATA_DIR", &directory)
+            .env("MUNDUS_DATA_DIR", &directory)
             .env("AGENDA_TEST_CLIENT", mode)
             .output()
             .unwrap();

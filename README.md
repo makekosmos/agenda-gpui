@@ -67,11 +67,13 @@ Linear в описании PR. Для прямых коммитов указыв
 
 ## Сборка
 
-Обычный запуск читает настоящие задачи через локальный Kosmos Engine API v1.
-Сначала запусти Kosmos Engine с той же папкой данных, что использует Vue Agenda.
-Приложение читает `engine.lock.json` из `%APPDATA%\Kosmos` (Windows),
-`~/Library/Application Support/Kosmos` (macOS) или `$XDG_CONFIG_HOME/Kosmos`
-(`~/.config/Kosmos` по умолчанию на Linux). Для другой папки задай `KOSMOS_DATA_DIR`.
+Обычный запуск читает настоящие задачи через локальный Mundus Engine API v1.
+Сначала запусти Mundus Engine с той же папкой данных, что использует Vue Agenda.
+Приложение читает `engine.lock.json` из `%APPDATA%\Mundus` (Windows),
+`~/Library/Application Support/Mundus` (macOS) или `$XDG_CONFIG_HOME/Mundus`
+(`~/.config/Mundus` по умолчанию на Linux). Для другой папки задай `MUNDUS_DATA_DIR`.
+В переходный период также проверяются старые `KOSMOS_DATA_DIR` и
+`<config>/Kosmos` — первый путь с `engine.lock.json` побеждает.
 Приложение не открывает SQLite и не хранит собственную копию задач на диске.
 
 ### Runbook: Engine → agenda-gpui (одна папка данных)
@@ -85,16 +87,18 @@ sidecar `ark-core-rpc` — в `makekosmos/core` (`crates/ark-core`). Подро�
 #    или из sibling checkout: cargo build --bin ark-core-rpc в core/.
 # 2. Engine (из cortex/):
 cargo build -p kepler-backend
-KOSMOS_DATA_DIR=/path/to/data KOSMOS_HEADLESS=1 \
+MUNDUS_DATA_DIR=/path/to/data MUNDUS_HEADLESS=1 \
   ARK_CORE_RPC_PATH=/path/to/ark-core-rpc \
   target/debug/kepler-backend &
 # 3. Проверь, что появился lock-файл:
 cat /path/to/data/engine.lock.json   # http_port + auth_token
 # 4. agenda-gpui на той же папке:
-KOSMOS_DATA_DIR=/path/to/data cargo run
+MUNDUS_DATA_DIR=/path/to/data cargo run
 ```
 
-Тот же `KOSMOS_DATA_DIR` должен использовать Electron Host / Vue Agenda —
+Engine до ребрендинга (0.9.x) читает те же переменные с префиксом `KOSMOS_` (`KOSMOS_DATA_DIR`, `KOSMOS_HEADLESS`); agenda-gpui их тоже понимает как legacy-фолбэк.
+
+Тот же `MUNDUS_DATA_DIR` должен использовать Electron Host / Vue Agenda —
 тогда обе Agenda видят одни задачи. Если Engine остановлен или lock-файла
 нет, приложение показывает баннер «Engine не запущен…» / «Нет подтверждения
 от Engine» и кнопку «Обновить»; seed-карточки при этом не рисуются.

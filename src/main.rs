@@ -1,7 +1,8 @@
-// Agenda GPUI — task data is owned by Kosmos Engine.
+// Agenda GPUI — task data is owned by Mundus Engine.
 #![windows_subsystem = "windows"]
 mod app;
 mod assets;
+mod brand;
 mod chrome;
 mod model;
 mod pages;
