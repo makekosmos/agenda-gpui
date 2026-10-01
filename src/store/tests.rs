@@ -235,3 +235,42 @@ fn persistence_across_client_processes() {
     server.join().unwrap();
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+/// Error classification keeps the real Engine code and maps to a class.
+#[test]
+fn engine_error_codes_map_to_kinds() {
+    for (raw, kind) in [
+        (
+            "canonical_ingress:invalid_request:canonical_field:/recurrence/dayOfMonth",
+            ErrorKind::InvalidRequest,
+        ),
+        ("invalid-request", ErrorKind::InvalidRequest),
+        ("forbidden", ErrorKind::Forbidden),
+        ("object_conflict:stale_snapshot", ErrorKind::Conflict),
+        ("conflict", ErrorKind::Conflict),
+        ("not-found", ErrorKind::NotFound),
+        ("timeout", ErrorKind::Timeout),
+        ("Engine RPC timed out", ErrorKind::Timeout),
+        ("unavailable", ErrorKind::Unavailable),
+        ("some future engine error", ErrorKind::Unavailable),
+    ] {
+        assert_eq!(ErrorKind::from_engine_code(raw), kind, "{raw}");
+    }
+    for kind in [
+        ErrorKind::NotRunning,
+        ErrorKind::NotCompatible,
+        ErrorKind::Transport,
+        ErrorKind::InvalidRequest,
+        ErrorKind::Forbidden,
+        ErrorKind::Conflict,
+        ErrorKind::NotFound,
+        ErrorKind::Timeout,
+        ErrorKind::Unavailable,
+    ] {
+        let e = EngineError {
+            kind,
+            detail: "x".into(),
+        };
+        assert!(!e.message().is_empty(), "{kind:?} needs user text");
+    }
+}
