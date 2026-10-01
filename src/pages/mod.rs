@@ -30,6 +30,7 @@ pub(crate) use gpui::{
 pub(crate) use gpui_component::input::{Input, Textarea};
 
 pub(crate) use crate::app::{
+    storage::{StorageError, StorageFault},
     Agenda, BoardView, CalMode, CtxMenu, DropKind, DropState, MenuAction, Route,
 };
 pub(crate) use crate::chrome::CAPTION_W;

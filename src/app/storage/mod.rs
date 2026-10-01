@@ -1,44 +1,46 @@
-use super::*;
-use crate::store::{Command, Mutation, Reply, Worker};
-use crate::widgets::A11y;
+mod banner;
+mod save;
 
-impl Agenda {
-    pub(crate) fn prepare_close(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.storage_busy {
-            return false;
+use super::*;
+use crate::store::{Command, EngineError, ErrorKind, Reply, Worker};
+
+/// How long a write-error toast stays on screen. A repeated error restarts
+/// the timer (see `set_storage_error`); × dismisses immediately.
+const TOAST_TTL: std::time::Duration = std::time::Duration::from_secs(7);
+
+/// Which surface a `StorageError` belongs to: load failures block until data
+/// arrives and offer «Обновить»; write failures are transient toasts.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum StorageFault {
+    Load,
+    Write,
+}
+
+pub(crate) struct StorageError {
+    pub fault: StorageFault,
+    /// User-facing Russian text, derived from the Engine error class.
+    pub text: String,
+}
+
+impl StorageError {
+    /// A failure reported by Engine: text comes from the error class, the raw
+    /// code stays in the log (see `fail_write` / the `Loaded(Err)` arm).
+    fn engine(fault: StorageFault, error: &EngineError) -> Self {
+        Self {
+            fault,
+            text: error.message(),
         }
-        let Some(id) = self
-            .current_task_id()
-            .filter(|id| self.input_task.as_ref() == Some(id))
-        else {
-            return true;
-        };
-        let title = self
-            .inputs
-            .get("task-title")
-            .map(|s| s.read(cx).value().trim().to_string());
-        let notes = self
-            .notes_input
-            .as_ref()
-            .map(|s| s.read(cx).value().trim().to_string());
-        let Some(before) = self.todo(&id).cloned() else {
-            return true;
-        };
-        let mut todo = before.clone();
-        if let Some(title) = title.filter(|s| !s.is_empty()) {
-            todo.title = title;
-        }
-        if let Some(notes) = notes {
-            todo.notes = (!notes.is_empty()).then_some(notes);
-        }
-        if todo == before {
-            return true;
-        }
-        self.save_todo(Some(before), todo);
-        cx.notify();
-        self.demo
     }
 
+    pub(crate) fn notice(fault: StorageFault, text: impl Into<String>) -> Self {
+        Self {
+            fault,
+            text: text.into(),
+        }
+    }
+}
+
+impl Agenda {
     pub(crate) fn start_storage(&mut self, cx: &mut Context<Self>) {
         if self.demo {
             return;
@@ -58,8 +60,12 @@ impl Agenda {
                             this.storage = None;
                             this.storage_busy = false;
                             this.storage_ready = false;
-                            this.storage_error = Some(
-                                "Соединение с Engine завершено. Перезапустите приложение.".into(),
+                            this.raise_storage_error(
+                                StorageError::notice(
+                                    StorageFault::Load,
+                                    "Соединение с Engine завершено. Перезапустите приложение.",
+                                ),
+                                cx,
                             );
                             cx.notify();
                             None
@@ -67,46 +73,7 @@ impl Agenda {
                         _ => None,
                     };
                     if let Some(reply) = reply {
-                        this.storage_busy = false;
-                        match reply {
-                            Reply::Loaded(Ok(data)) => {
-                                this.todos = data.todos;
-                                this.projects = data.projects;
-                                this.areas = data.areas;
-                                this.tags = data.tags;
-                                this.headings = data.headings;
-                                this.storage_ready = true;
-                                this.storage_error = None;
-                                this.input_task = None;
-                            }
-                            Reply::Loaded(Err(error)) => this.storage_error = Some(error),
-                            Reply::Saved(mutation, result) => {
-                                if let Err(error) = result {
-                                    this.storage_error = Some(error);
-                                    this.storage_ready = false;
-                                } else {
-                                    this.accept_todo(mutation.todo);
-                                    if let Some(next) = mutation.next {
-                                        this.accept_todo(next);
-                                    }
-                                }
-                            }
-                            Reply::Project(result) => match result {
-                                Ok(project) => {
-                                    if let Some(p) =
-                                        this.projects.iter_mut().find(|p| p.id == project.id)
-                                    {
-                                        *p = project;
-                                    }
-                                }
-                                Err(error) => {
-                                    this.storage_error = Some(error);
-                                    this.storage_ready = false;
-                                }
-                            },
-                        }
-                        this.model_rev += 1;
-                        cx.notify();
+                        this.on_storage_reply(reply, cx);
                     }
                 })
                 .is_err()
@@ -115,6 +82,116 @@ impl Agenda {
             }
         })
         .detach();
+    }
+
+    /// One Engine reply from the worker thread. A failed *write* never drops
+    /// `storage_ready` — the toast is informational and the next save may
+    /// succeed; only a failed *load* (or a dead worker) keeps writes gated.
+    pub(crate) fn on_storage_reply(&mut self, reply: Reply, cx: &mut Context<Self>) {
+        self.storage_busy = false;
+        match reply {
+            Reply::Loaded(Ok(data)) => {
+                self.todos = data.todos;
+                self.projects = data.projects;
+                self.areas = data.areas;
+                self.tags = data.tags;
+                self.headings = data.headings;
+                self.storage_ready = true;
+                if self
+                    .storage_error
+                    .as_ref()
+                    .is_some_and(|e| e.fault == StorageFault::Load)
+                {
+                    self.storage_error = None;
+                }
+                self.input_task = None;
+            }
+            Reply::Loaded(Err(error)) => {
+                eprintln!("[storage] engine error: {error}");
+                self.raise_storage_error(StorageError::engine(StorageFault::Load, &error), cx);
+            }
+            Reply::Saved(mutation, result) => match result {
+                Ok(()) => {
+                    self.accept_todo(mutation.todo);
+                    if let Some(next) = mutation.next {
+                        self.accept_todo(next);
+                    }
+                    // A confirmed write clears any earlier write toast.
+                    if self
+                        .storage_error
+                        .as_ref()
+                        .is_some_and(|e| e.fault == StorageFault::Write)
+                    {
+                        self.storage_error = None;
+                    }
+                }
+                Err(error) => self.fail_write(error, cx),
+            },
+            Reply::Project(result) => match result {
+                Ok(project) => {
+                    if let Some(p) = self.projects.iter_mut().find(|p| p.id == project.id) {
+                        *p = project;
+                    }
+                    if self
+                        .storage_error
+                        .as_ref()
+                        .is_some_and(|e| e.fault == StorageFault::Write)
+                    {
+                        self.storage_error = None;
+                    }
+                }
+                Err(error) => self.fail_write(error, cx),
+            },
+        }
+        self.model_rev += 1;
+        cx.notify();
+    }
+
+    /// A rejected write: toast it (never gate later saves) and, on `conflict`,
+    /// resync from Engine — the local model is stale.
+    fn fail_write(&mut self, error: EngineError, cx: &mut Context<Self>) {
+        eprintln!("[storage] engine error: {error}");
+        if error.kind == ErrorKind::Conflict {
+            self.reload_storage();
+        }
+        self.raise_storage_error(StorageError::engine(StorageFault::Write, &error), cx);
+    }
+
+    /// Set the error and invalidate any pending auto-hide timer. For paths
+    /// without a `Context` — the notice then simply stays until dismissed.
+    pub(crate) fn raise(&mut self, error: StorageError) {
+        self.toast_seq += 1;
+        self.storage_error = Some(error);
+    }
+
+    /// Show an error; for write toasts also arm the auto-hide timer.
+    /// `toast_seq` invalidates stale timers: a repeated error restarts the
+    /// countdown and a manual close (or any newer error) must not be cleared
+    /// by an older timer.
+    fn raise_storage_error(&mut self, error: StorageError, cx: &mut Context<Self>) {
+        let timed = error.fault == StorageFault::Write;
+        self.raise(error);
+        if timed {
+            let seq = self.toast_seq;
+            cx.spawn(async move |this, cx| {
+                cx.background_executor().timer(TOAST_TTL).await;
+                this.update(cx, |this, cx| {
+                    if this.toast_seq == seq {
+                        this.storage_error = None;
+                        cx.notify();
+                    }
+                })
+                .ok();
+            })
+            .detach();
+        }
+    }
+
+    /// Dismiss the toast/banner; bumps the seq so a pending timer can't wipe
+    /// a newer error later.
+    pub(crate) fn dismiss_storage_error(&mut self) {
+        self.toast_seq += 1;
+        self.storage_error = None;
     }
 
     pub(crate) fn reload_storage(&mut self) {
@@ -133,11 +210,12 @@ impl Agenda {
             .is_some_and(|s| s.commands.send(command).is_ok())
         {
             self.storage_busy = true;
-            self.storage_error = None;
             true
         } else {
-            self.storage_error =
-                Some("Соединение с Engine завершено. Перезапустите приложение.".into());
+            self.raise(StorageError::notice(
+                StorageFault::Load,
+                "Соединение с Engine завершено. Перезапустите приложение.",
+            ));
             self.storage_ready = false;
             false
         }
@@ -151,120 +229,14 @@ impl Agenda {
             return false;
         }
         if !self.storage_ready {
-            self.storage_error
-                .get_or_insert_with(|| "Подключитесь к Engine и обновите список.".into());
+            if self.storage_error.is_none() {
+                self.raise(StorageError::notice(
+                    StorageFault::Load,
+                    format!("Подключитесь к {} и обновите список.", crate::brand::NAME),
+                ));
+            }
             return false;
         }
         true
-    }
-
-    pub(crate) fn save_todo(&mut self, before: Option<Todo>, todo: Todo) -> bool {
-        if !self.can_save() {
-            return false;
-        }
-        if before.as_ref() == Some(&todo) {
-            return true;
-        }
-        if let Some(before) = before.as_ref().filter(|t| t.system_kind.is_some()) {
-            let mut allowed = before.clone();
-            allowed.significance = todo.significance;
-            if allowed != todo {
-                self.storage_error =
-                    Some("Эта служебная задача управляется Agenda автоматически.".into());
-                return false;
-            }
-        }
-        if !self.demo {
-            return self.send_storage(Command::Save(Box::new(Mutation {
-                before,
-                todo,
-                next: None,
-            })));
-        }
-        self.accept_todo(todo);
-        true
-    }
-
-    fn accept_todo(&mut self, todo: Todo) {
-        if let Some(stored) = self.todos.iter_mut().find(|t| t.id == todo.id) {
-            *stored = todo;
-        } else {
-            self.todos.push(todo);
-        }
-        self.model_rev += 1;
-    }
-
-    pub(crate) fn save_completion(&mut self, before: Todo, todo: Todo, next: Option<Todo>) {
-        if before.system_kind.is_some() {
-            return;
-        }
-        if !self.can_save() {
-            return;
-        }
-        if !self.demo {
-            self.send_storage(Command::Save(Box::new(Mutation {
-                before: Some(before),
-                todo,
-                next,
-            })));
-        } else {
-            self.accept_todo(todo);
-            if let Some(next) = next {
-                self.accept_todo(next);
-            }
-        }
-    }
-
-    pub(crate) fn set_project_status(&mut self, id: &str, status: u8) {
-        if !self.can_save() {
-            return;
-        }
-        let Some(mut project) = self.projects.iter().find(|p| p.id == id).cloned() else {
-            return;
-        };
-        project.status = status;
-        if self.demo {
-            if let Some(stored) = self.projects.iter_mut().find(|p| p.id == id) {
-                *stored = project;
-            }
-        } else {
-            self.send_storage(Command::Project(project));
-        }
-        self.model_rev += 1;
-    }
-
-    pub(crate) fn storage_banner(&self, cx: &mut Context<Self>) -> AnyElement {
-        let text = if self.storage_busy {
-            "Сохранение / загрузка…".to_string()
-        } else {
-            self.storage_error.clone().unwrap_or_default()
-        };
-        div()
-            .absolute()
-            .bottom_3()
-            .left_3()
-            .right_3()
-            .p_3()
-            .rounded_md()
-            .bg(c(BG()))
-            .text_color(c(FG()))
-            .text_sm()
-            .flex()
-            .gap_3()
-            .child(text)
-            .when(!self.storage_busy, |d| {
-                d.child(
-                    div()
-                        .id("reload-engine")
-                        .cursor_pointer()
-                        .child("Обновить")
-                        .on_click(cx.listener(|this, _, _, cx| {
-                            this.reload_storage();
-                            cx.notify();
-                        }))
-                        .a11y_button("Обновить"),
-                )
-            })
-            .into_any_element()
     }
 }
