@@ -90,8 +90,10 @@ fn emit(name: &str, object: &Value) {
         .unwrap_or_else(|_| panic!("missing fixture {path}; run with AGENDA_EMIT_FIXTURES=1"));
     assert_eq!(
         produced, committed,
-        "{name}: write output drifted from the committed fixture — \
-         regenerate with AGENDA_EMIT_FIXTURES=1 and copy to cortex"
+        "{name}: write output drifted from the committed fixture — regenerate with \
+         `AGENDA_EMIT_FIXTURES=1 cargo test engine_payload_fixtures`, then copy \
+         fixtures/engine/*.json into cortex \
+         core/crates/ark-core/tests/fixtures/agenda/ in the same change"
     );
 }
 
