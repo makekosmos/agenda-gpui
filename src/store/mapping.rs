@@ -1,7 +1,11 @@
-use crate::model::{task_status, Status, Todo};
+use crate::model::{date_only, task_status, Status, Todo};
 use serde_json::{json, Value};
 
 pub const TASK_TYPE: &str = "com.kosmos.task";
+/// com.kosmos.task 1.1.0: `scheduledAt`/`dueAt`/`recurrence.endDate` are
+/// `format: "date"` — a bare `YYYY-MM-DD` day, enforced by the Engine. The
+/// instant fields (`reminderAt`/`completedAt`/`canceledAt`) stay `date-time`.
+pub const TASK_VERSION: &str = "1.1.0";
 
 pub fn read(object: &Value) -> Result<Todo, String> {
     if object["typeId"] != TASK_TYPE || !object["id"].is_string() {
@@ -145,10 +149,20 @@ fn plain_text(value: &Value) -> Option<String> {
 }
 
 /// Patch a fresh Engine object, retaining fields this UI does not understand.
-pub fn write(mut object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Value, String> {
-    let now = chrono::Utc::now().to_rfc3339();
+pub fn write(object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Value, String> {
+    write_at(object, before, todo, &chrono::Utc::now().to_rfc3339())
+}
+
+/// `write` with an explicit clock — Engine payload fixtures must be
+/// deterministic, so `updatedAt`/`canceledAt` come from the caller.
+pub fn write_at(
+    mut object: Value,
+    before: Option<&Todo>,
+    todo: &Todo,
+    now: &str,
+) -> Result<Value, String> {
     if object.is_null() {
-        object = json!({"id":todo.id,"typeId":TASK_TYPE,"typeVersion":"1.0.0",
+        object = json!({"id":todo.id,"typeId":TASK_TYPE,"typeVersion":TASK_VERSION,
             "title":todo.title,"createdAt":todo.created_at,"propsJson":{"extensions":{}},
             "contentJson":{"type":"doc","content":[{"type":"paragraph"}]},"deletedAt":null});
     }
@@ -215,9 +229,16 @@ pub fn write(mut object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Va
     if changed("priority") {
         props["priority"] = json!(["none", "low", "medium", "high"][todo.priority.min(3) as usize]);
     }
+    // Day fields are `format: "date"` under 1.1.0 — normalize through
+    // `date_only` so a stray RFC 3339 stamp read back from older data can
+    // never be re-persisted into the canonical field.
+    if changed("scheduled_date") {
+        props["scheduledAt"] = json!(date_only(&todo.scheduled_date));
+    }
+    if changed("deadline") {
+        props["dueAt"] = json!(date_only(&todo.deadline));
+    }
     for (local, canonical) in [
-        ("scheduled_date", "scheduledAt"),
-        ("deadline", "dueAt"),
         ("reminder_date", "reminderAt"),
         ("completed_at", "completedAt"),
     ] {
@@ -254,5 +275,8 @@ pub fn write(mut object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Va
         };
     }
     object["updatedAt"] = json!(now);
+    // The payload now conforms to the current contract; claim it so the
+    // Engine validates against 1.1.0, not the superseded 1.0.0.
+    object["typeVersion"] = json!(TASK_VERSION);
     Ok(object)
 }
