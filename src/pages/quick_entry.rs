@@ -2,7 +2,7 @@ use super::*;
 
 impl Agenda {
     // ==========================================================================
-    // Quick entry overlay (Ctrl+N) — dark panel top-center + significance card.
+    // Quick entry overlay (Ctrl+N) — dark panel top-center.
     // ==========================================================================
 
     pub(crate) fn render_quick_entry(
@@ -105,107 +105,6 @@ impl Agenda {
             .child(div().h_px().w_full().bg(panel_mix(0.10)))
             .child(chips);
 
-        // significance card (bottom-right white card)
-        let sig_label = self
-            .qe_sig
-            .map(|s| format!("{}/10", s))
-            .unwrap_or_else(|| "Не оценено".to_string());
-        let sig_value = self.qe_sig.unwrap_or(0);
-        let fill = self.qe_sig.unwrap_or(5) as f32 / 10.0;
-        // Canvas records the track's painted bounds so a click's window-x can
-        // be mapped onto the real 120px element at any window size (the card
-        // is anchored to the window's right edge, so its position is not a
-        // compile-time constant).
-        let slider_bounds =
-            std::rc::Rc::new(std::cell::Cell::new(None::<gpui::Bounds<gpui::Pixels>>));
-        let bounds_probe = {
-            let slider_bounds = slider_bounds.clone();
-            gpui::canvas(move |b, _, _| slider_bounds.set(Some(b)), |_, _, _, _| {})
-                .absolute()
-                .inset_0()
-        };
-        let sig_card = div()
-            .absolute()
-            .right_6()
-            .bottom_6()
-            .px_4()
-            .py_3()
-            .rounded_lg()
-            .border_1()
-            .border_color(c(BORDER()))
-            .bg(c(POPOVER()))
-            .shadow(vec![gpui::BoxShadow {
-                color: rgba(0x000000, 0.15),
-                offset: gpui::point(px(0.), px(12.)),
-                blur_radius: px(32.),
-                spread_radius: px(0.),
-                inset: false,
-            }])
-            .flex()
-            .items_center()
-            .gap(px(10.))
-            .text_size(px(12.))
-            .text_color(c(FG()))
-            .child("Значимость")
-            // Same backdrop shielding as the panel — the card is a deferred
-            // sibling, not a descendant of it.
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .child(
-                div()
-                    .id("qe-sig-slider")
-                    .debug_selector(|| "qe-sig-slider".to_string())
-                    .relative()
-                    .w(px(120.))
-                    .h(px(20.))
-                    .flex()
-                    .items_center()
-                    .child(bounds_probe)
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(4.))
-                            .rounded_full()
-                            .bg(c(SECONDARY()))
-                            .child(
-                                div()
-                                    .h_full()
-                                    .w(gpui::DefiniteLength::Fraction(fill))
-                                    .rounded_full()
-                                    .bg(c(ACCENT())),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .ml(px(-8. - 104. * (1.0 - fill)))
-                            .w(px(16.))
-                            .h(px(16.))
-                            .rounded_full()
-                            .bg(c(ACCENT())),
-                    )
-                    .on_click({
-                        let weak = weak.clone();
-                        let slider_bounds = slider_bounds.clone();
-                        move |ev: &ClickEvent, _, cx| {
-                            let x: f32 = ev.position().x.into();
-                            let _ = weak.update(cx, |this, _| {
-                                let Some(b) = slider_bounds.get() else {
-                                    return;
-                                };
-                                let frac = (x - f32::from(b.origin.x)) / f32::from(b.size.width);
-                                this.qe_sig = Some((frac * 10.).round().clamp(1., 10.) as u8);
-                            });
-                        }
-                    })
-                    .role(gpui::Role::Slider)
-                    .aria_label("Значимость")
-                    .aria_numeric_value(sig_value.max(1) as f64)
-                    .aria_min_numeric_value(1.0)
-                    .aria_max_numeric_value(10.0)
-                    .aria_value(sig_label.clone())
-                    .accessibility_id("qe-sig-slider"),
-            )
-            .child(div().text_color(c(MUTED_FG())).child(sig_label));
-
         div()
             .absolute()
             .inset_0()
@@ -226,7 +125,6 @@ impl Agenda {
                 },
             ))
             .child(div().mt(px(136.)).child(deferred(panel)))
-            .child(deferred(sig_card))
             .into_any_element()
     }
 }

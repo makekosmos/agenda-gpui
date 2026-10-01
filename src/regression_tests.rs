@@ -34,7 +34,6 @@ fn quick_entry_reopens_with_empty_draft(cx: &mut TestAppContext) {
         let notes = a.inputs["qe-notes"].read(cx).value().to_string();
         assert!(title.is_empty(), "reopened quick entry kept: {title:?}");
         assert!(notes.is_empty(), "reopened quick entry kept: {notes:?}");
-        assert_eq!(a.qe_sig, None);
         assert_eq!(a.qe_date, None);
         assert!(!a.qe_billable);
     });
@@ -57,7 +56,6 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     agenda.update(cx, |a, _| {
-        a.qe_sig = Some(7);
         a.qe_date = Some(day_key(3));
         a.qe_date_touched = true;
         a.qe_billable = true;
@@ -67,7 +65,6 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
 
     agenda.read_with(cx, |a, _| {
         assert!(a.quick_entry_open);
-        assert_eq!(a.qe_sig, None);
         assert_eq!(a.qe_date, None);
         assert!(!a.qe_billable);
     });
