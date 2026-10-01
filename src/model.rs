@@ -163,14 +163,25 @@ fn iso_at(offset: i64, h: u32, m: u32) -> String {
     )
 }
 
+/// The day an RFC 3339 stamp expresses at `offset` — pure, so tests pin a
+/// zone instead of depending on the machine's `Local`. The local-time rule is
+/// deliberate: old writers emitted `toISOString()` of local midnights, and
+/// ark-core's `canonical_types::normalize` applies the same rule on read.
+pub(crate) fn stamp_day_in(v: &str, offset: chrono::FixedOffset) -> Option<String> {
+    chrono::DateTime::parse_from_rfc3339(v)
+        .ok()
+        .map(|dt| key_of(dt.with_timezone(&offset).date_naive()))
+}
+
 /// dateOnly(): accepts "YYYY-MM-DD" or ISO datetime → "YYYY-MM-DD".
 /// Stamps carrying an explicit offset are instants: interpret them in
 /// local time (dayjs parity) instead of truncating the UTC representation,
 /// which shifts the day for anyone outside UTC around midnight.
 pub fn date_only(value: &Option<String>) -> Option<String> {
     let v = value.as_ref()?;
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(v) {
-        return Some(key_of(dt.with_timezone(&Local).date_naive()));
+    let now = Local::now();
+    if let Some(day) = stamp_day_in(v, *now.offset()) {
+        return Some(day);
     }
     // A ≥10-char prefix is not proof of a date: malformed stamps from other
     // clients became lexicographic "date" keys, hiding tasks from Inbox and
