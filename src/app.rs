@@ -12,7 +12,7 @@ use crate::model::*;
 use crate::theme::*;
 
 const HOVER_MS: f32 = 120.0;
-mod storage;
+pub(crate) mod storage;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -153,7 +153,10 @@ pub struct Agenda {
     pub(crate) storage: Option<crate::store::Worker>,
     pub(crate) storage_ready: bool,
     pub(crate) storage_busy: bool,
-    pub(crate) storage_error: Option<String>,
+    pub(crate) storage_error: Option<storage::StorageError>,
+    /// Generation counter for the storage toast: each raised/dismissed error
+    /// bumps it so a pending auto-hide timer can't clear a newer error.
+    pub(crate) toast_seq: u64,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
     // Seeded model state kept for Agenda parity; not rendered yet.
@@ -188,7 +191,6 @@ pub struct Agenda {
     pub(crate) qe_date: Option<String>,
     pub(crate) qe_date_touched: bool,
     pub(crate) qe_project_touched: bool,
-    pub(crate) qe_sig: Option<u8>,
     pub(crate) kanban_group_open: bool,
     pub(crate) group_open_t: f32,
     pub(crate) group_open_stamp: Instant,
@@ -339,6 +341,7 @@ impl Agenda {
             storage_ready: demo,
             storage_busy: false,
             storage_error: None,
+            toast_seq: 0,
             todos: if demo { seed_todos() } else { vec![] },
             projects: if demo { seed_projects() } else { vec![] },
             areas: if demo { seed_areas() } else { vec![] },
@@ -376,7 +379,6 @@ impl Agenda {
             qe_date: None,
             qe_date_touched: false,
             qe_project_touched: false,
-            qe_sig: None,
             kanban_group_open: true,
             group_open_t: 1.0,
             group_open_stamp: Instant::now(),
@@ -1154,7 +1156,6 @@ impl Agenda {
     /// and Enter would silently save a duplicate.
     pub(crate) fn reset_quick_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.qe_billable = false;
-        self.qe_sig = None;
         self.qe_date = None;
         self.qe_date_touched = false;
         self.qe_project_touched = false;
@@ -1237,7 +1238,6 @@ impl Agenda {
         t.project_id = project;
         t.status = status;
         t.billable = self.qe_billable;
-        t.significance = self.qe_sig;
         t.sort_order = self.todos.len() as i32;
         t.created_at = chrono::Utc::now().to_rfc3339();
         if self.save_todo(None, t) {

@@ -1,10 +1,16 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
+mod error;
 pub mod mapping;
+#[cfg(test)]
+mod schema_tests;
 #[cfg(test)]
 mod tests;
 mod transport;
+#[cfg(test)]
+mod transport_tests;
 
 use crate::model::{Area, Heading, Project, Tag, Todo};
+pub use error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
 use std::sync::mpsc::{self, Receiver, Sender};
 pub use transport::Engine;
@@ -31,9 +37,9 @@ pub enum Command {
 }
 
 pub enum Reply {
-    Loaded(Result<Snapshot, String>),
-    Saved(Box<Mutation>, Result<(), String>),
-    Project(Result<Project, String>),
+    Loaded(Result<Snapshot, EngineError>),
+    Saved(Box<Mutation>, Result<(), EngineError>),
+    Project(Result<Project, EngineError>),
 }
 
 pub struct Worker {
@@ -77,7 +83,7 @@ impl Engine {
         before: Option<&Todo>,
         todo: &Todo,
         next: Option<&Todo>,
-    ) -> Result<(), String> {
+    ) -> Result<(), EngineError> {
         self.save(before, todo)?;
         let Some(next) = next else {
             return Ok(());
@@ -87,7 +93,7 @@ impl Engine {
         }
         // A lost acknowledgement may still mean the next occurrence was saved.
         let stored = self.rpc("get_object", json!({"id":next.id}))?;
-        if !stored.is_null() && mapping::read(&stored)? == *next {
+        if !stored.is_null() && mapping::read(&stored).map_err(Self::mapping_err)? == *next {
             return Ok(());
         }
         if stored.is_null() {
@@ -95,19 +101,33 @@ impl Engine {
                 self.save(Some(todo), before)?;
             }
         }
-        Err("Не удалось сохранить повторение. Обновите список для проверки состояния.".into())
+        Err(EngineError {
+            kind: ErrorKind::Unavailable,
+            detail: "local: save_with_next unconfirmed".into(),
+        })
     }
 
-    pub fn load(&self) -> Result<Snapshot, String> {
+    fn mapping_err(error: String) -> EngineError {
+        EngineError {
+            kind: ErrorKind::InvalidRequest,
+            detail: format!("mapping: {error}"),
+        }
+    }
+
+    pub fn load(&self) -> Result<Snapshot, EngineError> {
         let list = self.rpc(
             "list_objects_by_type",
             json!({"type_id":mapping::TASK_TYPE}),
         )?;
-        let list = list.as_array().ok_or("Некорректный список задач Engine")?;
+        let list = list
+            .as_array()
+            .ok_or_else(|| Self::mapping_err("list not an array".into()))?;
         let mut snapshot = Snapshot::default();
         for object in list {
             if object["typeId"] == mapping::TASK_TYPE {
-                snapshot.todos.push(mapping::read(object)?);
+                snapshot
+                    .todos
+                    .push(mapping::read(object).map_err(Self::mapping_err)?);
             }
         }
         snapshot.todos.sort_by_key(|t| t.sort_order);
@@ -117,7 +137,7 @@ impl Engine {
         }
         let props = &object["propsJson"];
         if props["model_version"] != 1 {
-            return Err("Неизвестная версия справочников Agenda".into());
+            return Err(Self::mapping_err("unknown references model_version".into()));
         }
         snapshot.projects = collection(props, "projects")?;
         snapshot.areas = collection(props, "areas")?;
@@ -126,14 +146,14 @@ impl Engine {
         Ok(snapshot)
     }
 
-    fn references(&self) -> Result<Value, String> {
+    fn references(&self) -> Result<Value, EngineError> {
         let list = self.rpc(
             "list_objects_by_type",
             json!({"type_id":"com.kosmos.agenda.references"}),
         )?;
         let list = list
             .as_array()
-            .ok_or("Некорректный список справочников Engine")?;
+            .ok_or_else(|| Self::mapping_err("references list not an array".into()))?;
         if let Some(object) = list
             .iter()
             .filter(|v| !v["deletedAt"].is_string())
@@ -144,43 +164,62 @@ impl Engine {
         self.rpc("get_object", json!({"id":"agenda:references"}))
     }
 
-    pub fn save(&self, before: Option<&Todo>, todo: &Todo) -> Result<(), String> {
+    pub fn save(&self, before: Option<&Todo>, todo: &Todo) -> Result<(), EngineError> {
         let current = self.rpc("get_object", json!({"id":todo.id}))?;
         if let Some(before) = before {
-            if current.is_null() || mapping::read(&current)? != *before {
-                return Err("Задача изменилась в другом приложении. Обновите список.".into());
+            if current.is_null() || mapping::read(&current).map_err(Self::mapping_err)? != *before {
+                return Err(EngineError {
+                    kind: ErrorKind::Conflict,
+                    detail: "local: precondition failed (stale or missing)".into(),
+                });
             }
         } else if !current.is_null() {
-            return Err("Задача с таким ID уже существует. Обновите список.".into());
+            return Err(EngineError {
+                kind: ErrorKind::Conflict,
+                detail: "local: object already exists".into(),
+            });
         }
-        let object = mapping::write(current, before, todo)?;
+        let object = mapping::write(current, before, todo).map_err(Self::mapping_err)?;
         self.upsert(object)
     }
 
-    fn upsert(&self, object: Value) -> Result<(), String> {
+    fn upsert(&self, object: Value) -> Result<(), EngineError> {
         let result = self.rpc("upsert_object", json!({"object":object}))?;
         if result != true {
-            return Err("Engine не подтвердил сохранение. Обновите список.".into());
+            return Err(EngineError {
+                kind: ErrorKind::Transport,
+                detail: "upsert_object returned non-true data".into(),
+            });
         }
         Ok(())
     }
 
-    fn save_project(&self, project: &Project) -> Result<(), String> {
+    fn save_project(&self, project: &Project) -> Result<(), EngineError> {
         let mut object = self.references()?;
         let projects = object["propsJson"]["projects"]
             .as_array_mut()
-            .ok_or("Нет проектов в Engine")?;
+            .ok_or_else(|| Self::mapping_err("no projects in references".into()))?;
         let stored = projects
             .iter_mut()
             .find(|p| p["id"] == project.id)
-            .ok_or("Проект не найден")?;
+            .ok_or_else(|| EngineError {
+                kind: ErrorKind::NotFound,
+                detail: format!("project {} not in references", project.id),
+            })?;
         stored["status"] = json!(project.status);
         object["updatedAt"] = json!(chrono::Utc::now().to_rfc3339());
         self.upsert(object)
     }
 }
 
-fn collection<T: serde::de::DeserializeOwned>(props: &Value, key: &str) -> Result<Vec<T>, String> {
-    serde_json::from_value(props.get(key).cloned().unwrap_or_else(|| json!([])))
-        .map_err(|_| format!("Некорректный справочник {key}"))
+fn collection<T: serde::de::DeserializeOwned>(
+    props: &Value,
+    key: &str,
+) -> Result<Vec<T>, EngineError> {
+    serde_json::from_value(props.get(key).cloned().unwrap_or_else(|| json!([]))).map_err(|e| {
+        EngineError {
+            kind: ErrorKind::InvalidRequest,
+            detail: format!("references {key}: {e}"),
+        }
+    })
 }

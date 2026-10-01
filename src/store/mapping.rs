@@ -231,6 +231,9 @@ pub fn write(mut object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Va
         props["extensions"]["checklist_items"] = json!([]);
     }
     if changed("recurrence") {
+        // `dayOfMonth` is Engine-owned state that the canonical `recurrence`
+        // schema does not allow (`additionalProperties: false`) — it survives
+        // only inside `extensions.recurrence_rule`, never at the schema level.
         let end_date = props["recurrence"]["endDate"].clone();
         let day_of_month = props["recurrence"]["dayOfMonth"].clone();
         props["extensions"]["recurrence_rule"] = json!(todo.recurrence.as_ref().map(|r| json!({
@@ -240,7 +243,7 @@ pub fn write(mut object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Va
         props["recurrence"] = json!(todo.recurrence.as_ref().map(|r| json!({
             "frequency":(["daily","weekly","monthly","yearly"][r.frequency.min(3) as usize]),
             "interval":r.interval,"recurrenceType":if r.recurrence_type == 1 {"afterCompletion"} else {"fixed"},
-            "daysOfWeek":r.days_of_week,"endDate":end_date,"dayOfMonth":day_of_month
+            "daysOfWeek":r.days_of_week,"endDate":end_date
         })));
     }
     if changed("is_trashed") {

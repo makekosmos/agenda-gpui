@@ -247,7 +247,10 @@ impl Agenda {
                         move |_: &ClickEvent, _, cx| {
                             let _ = weak.update(cx, |this, cx| {
                                 if !this.demo {
-                                    this.storage_error = Some("Генератор доступен только с AGENDA_DEMO=1".into());
+                                    this.raise(StorageError::notice(
+                                        StorageFault::Write,
+                                        "Генератор доступен только с AGENDA_DEMO=1",
+                                    ));
                                     cx.notify();
                                     return;
                                 }

@@ -1,6 +1,7 @@
 //! Regression tests for KOS-216: recurrence-editor panic on out-of-range
-//! Engine data, overlay click-through/dismissal leaks, the detached dropdown
-//! anchor, and the significance slider's hardcoded window geometry.
+//! Engine data, overlay click-through/dismissal leaks, and the detached
+//! dropdown anchor. (The quick-entry significance slider whose geometry this
+//! suite also covered was removed in KOS-295.)
 //! Reuses the headless helpers from `ui_tests`.
 
 use gpui::{px, TestAppContext};
@@ -118,37 +119,6 @@ fn quick_entry_project_chip_stays_cleared_on_project_route(cx: &mut TestAppConte
         assert_eq!(
             a.qe_project, None,
             "«Входящие» pick must survive the next render"
-        );
-    });
-}
-
-/// The significance slider mapped a click's window-x onto the track via a
-/// hardcoded `1440.` window width. On any other size — including maximized —
-/// the fraction lands outside the 120px track and clamps to the extremes:
-/// on this 1920px test window every on-track click stored 10.
-#[gpui::test]
-fn quick_entry_significance_slider_maps_click_position(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-    cx.simulate_keystrokes("ctrl-n");
-    redraw(cx);
-
-    let bounds = cx
-        .debug_bounds("qe-sig-slider")
-        .expect("qe-sig-slider must paint");
-    click_position(
-        cx,
-        gpui::point(bounds.origin.x + bounds.size.width * 0.2, bounds.center().y),
-    );
-
-    agenda.read_with(cx, |a, _| {
-        assert_eq!(
-            a.qe_sig,
-            Some(2),
-            "click at 20% of the track must set significance 2"
-        );
-        assert!(
-            a.quick_entry_open,
-            "clicking the slider dismissed the whole overlay"
         );
     });
 }
