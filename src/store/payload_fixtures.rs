@@ -1,5 +1,6 @@
 use super::*;
 use crate::model::{new_todo, parse_key, RecurrenceRule, Status, Todo};
+use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Engine contract fixtures (KOS-297).
@@ -14,7 +15,12 @@ use crate::model::{new_todo, parse_key, RecurrenceRule, Status, Todo};
 // ---------------------------------------------------------------------------
 
 const NOW: &str = "2026-05-15T10:00:00.000Z";
-const FIXTURE_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "\\fixtures\\engine");
+
+fn fixture_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures")
+        .join("engine")
+}
 
 fn cases() -> Vec<(&'static str, Todo)> {
     let base = || {
@@ -80,14 +86,18 @@ fn cases() -> Vec<(&'static str, Todo)> {
 
 fn emit(name: &str, object: &Value) {
     let produced = format!("{}\n", serde_json::to_string_pretty(object).unwrap());
-    let path = format!("{FIXTURE_DIR}\\{name}.json");
+    let path = fixture_dir().join(format!("{name}.json"));
     if std::env::var_os("AGENDA_EMIT_FIXTURES").is_some() {
-        std::fs::create_dir_all(FIXTURE_DIR).unwrap();
+        std::fs::create_dir_all(fixture_dir()).unwrap();
         std::fs::write(&path, &produced).unwrap();
         return;
     }
-    let committed = std::fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("missing fixture {path}; run with AGENDA_EMIT_FIXTURES=1"));
+    let committed = std::fs::read_to_string(&path).unwrap_or_else(|_| {
+        panic!(
+            "missing fixture {}; run with AGENDA_EMIT_FIXTURES=1",
+            path.display()
+        )
+    });
     assert_eq!(
         produced, committed,
         "{name}: write output drifted from the committed fixture — regenerate with \
