@@ -14,17 +14,26 @@ use crate::model::*;
 use crate::theme::*;
 use crate::widgets::*;
 
+#[cfg(test)]
+#[path = "chrome_tests.rs"]
+mod chrome_tests;
+
 pub const SIDEBAR_W: f32 = 240.0;
 pub const TITLEBAR_H: f32 = 40.0;
 
-/// Left inset for the floating sidebar toggle. On macOS it must additionally
-/// clear the traffic-light buttons (drawn by the OS inside the window).
-#[cfg(target_os = "macos")]
-const TOGGLE_LEFT: f32 = 84.0;
-#[cfg(not(target_os = "macos"))]
-const TOGGLE_LEFT: f32 = 12.0;
-/// Window-drag areas start here so the floating toggle stays clickable.
-const DRAG_INSET: f32 = TOGGLE_LEFT + 40.0;
+/// Clear native macOS traffic lights, reclaiming their space in fullscreen
+/// just as Zeron's top-left control cluster does.
+fn toggle_left(is_macos: bool, fullscreen: bool) -> f32 {
+    if is_macos && !fullscreen {
+        88.0
+    } else {
+        12.0
+    }
+}
+
+fn drag_inset(window: &Window) -> f32 {
+    toggle_left(cfg!(target_os = "macos"), window.is_fullscreen()) + 40.0
+}
 /// Left-edge grid line shared by the titlebar page icon and the task-row
 /// status ring: row px_2 (8) + (w_5 cell 20 − ring 14) / 2.
 const CONTENT_GRID_X: f32 = 11.0;
@@ -226,6 +235,14 @@ impl Agenda {
     /// Advance the projects-folder icon swap (350ms emphasized); returns
     /// eased 0..1 (0 = closed, 1 = open).
     fn group_open_tick(&mut self, window: &mut Window) -> f32 {
+        // Empty (including archived-only) groups have nothing to reveal. Snap
+        // closed without animating the folder icon or scheduling more frames.
+        if !self.projects.iter().any(|project| project.status == 0) {
+            self.kanban_group_open = false;
+            self.group_open_t = 0.0;
+            self.group_open_stamp = Instant::now();
+            return 0.0;
+        }
         let now = Instant::now();
         let dt = now.duration_since(self.group_open_stamp).as_secs_f32() * 1000.0;
         self.group_open_stamp = now;
@@ -401,6 +418,7 @@ impl Agenda {
             let weak = cx.weak_entity();
             let header = div()
                 .id("sb-projects-head")
+                .debug_selector(|| "sb-projects-head".to_string())
                 .h(px(32.))
                 .flex()
                 .items_center()
@@ -445,12 +463,16 @@ impl Agenda {
                 .on_click({
                     let weak = weak.clone();
                     move |_: &ClickEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
+                        let _ = weak.update(cx, |this, cx| {
+                            if !this.projects.iter().any(|project| project.status == 0) {
+                                return;
+                            }
                             this.kanban_group_open = !this.kanban_group_open;
                             this.group_open_stamp = Instant::now();
                             // The header itself stays mounted and hovered —
                             // keep its hover target so its bg/icons don't dim.
                             this.reset_hovers(Some("nav-projects-head"));
+                            cx.notify();
                         });
                     }
                 })
@@ -645,7 +667,7 @@ impl Agenda {
                     .id("sb-top-drag")
                     .absolute()
                     .top_0()
-                    .left(px(DRAG_INSET))
+                    .left(px(drag_inset(window)))
                     .right_0()
                     .h(px(TITLEBAR_H))
                     .window_control_area(WindowControlArea::Drag),
@@ -685,7 +707,8 @@ impl Agenda {
         cx: &mut Context<Self>,
     ) -> impl IntoElement {
         let p = ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
-        let pl = DRAG_INSET + (CONTENT_GRID_X - DRAG_INSET) * p;
+        let closed_inset = drag_inset(window);
+        let pl = closed_inset + (CONTENT_GRID_X - closed_inset) * p;
         let (title, icon_path) = self.page_title();
         #[allow(unused_mut)]
         let mut drag = div()
@@ -845,8 +868,8 @@ impl Agenda {
     }
 
     /// Sidebar toggle button: floating overlay at the top-left, inside the
-    /// titlebar strip. Drag hitboxes start at DRAG_INSET so it stays
-    /// clickable; on macOS TOGGLE_LEFT clears the traffic lights.
+    /// titlebar strip. Drag hitboxes start beyond the toggle so it stays
+    /// clickable; on macOS the inset clears traffic lights outside fullscreen.
     pub(crate) fn render_sidebar_toggle(
         &mut self,
         window: &mut Window,
@@ -859,7 +882,10 @@ impl Agenda {
             .id("sb-toggle")
             .absolute()
             .top_0()
-            .left(px(TOGGLE_LEFT))
+            .left(px(toggle_left(
+                cfg!(target_os = "macos"),
+                window.is_fullscreen(),
+            )))
             .h(px(TITLEBAR_H))
             .flex()
             .items_center()
