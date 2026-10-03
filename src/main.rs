@@ -29,10 +29,7 @@ mod kos295_tests;
 #[cfg(test)]
 mod regression_tests;
 
-use gpui::{
-    px, size, App, AppContext, Bounds, Context, SharedString, Styled, Window, WindowBounds,
-    WindowOptions,
-};
+use gpui::{px, size, App, AppContext, Bounds, SharedString, Styled, WindowBounds, WindowOptions};
 
 /// `AGENDA_OFFSCREEN=1` parks the window far outside the desktop so automated
 /// soak runs (FPS/scroll benchmarks) don't pop a window on the user's screen.
