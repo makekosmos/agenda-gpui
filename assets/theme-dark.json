@@ -1,6 +1,6 @@
 {
   "$meta": {
-    "source": "makekosmos/imago theme/css-variables.css (.dark + root tokens used by it)",
+    "source": "makekosmos/imago crates/imago-gpui/src/palettes.rs + theme.rs (dark-pair tokens; the CSS file was removed under KOS-319)",
     "extracted": "2026-09-18",
     "note": "hex = oklch->sRGB(D65) computed; alpha kept separately. Not wired into the app yet — reference data for the future dark theme."
   },

@@ -3358,7 +3358,7 @@ checksum = "09e54e57b4c48b40f7aec75635392b12b3421fa26fe8b4332e63138ed278459c"
 [[package]]
 name = "imago-gpui"
 version = "0.1.0"
-source = "git+https://github.com/makekosmos/imago.git?rev=16e83b07df8998fa0580310b733c2ca175442e35#16e83b07df8998fa0580310b733c2ca175442e35"
+source = "git+https://github.com/makekosmos/imago.git?rev=96858d899c4a6dd4af37704427cc91fcb1fcc52d#96858d899c4a6dd4af37704427cc91fcb1fcc52d"
 dependencies = [
  "gpui-base",
  "gpui-component",
