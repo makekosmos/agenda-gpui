@@ -101,7 +101,3 @@ fn main() {
         }
     });
 }
-
-// Silence unused warnings for Context/Window in docs-only signature helpers.
-#[allow(dead_code)]
-fn _sig(_: &mut Window, _: &mut Context<Agenda>) {}

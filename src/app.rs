@@ -70,8 +70,6 @@ pub(crate) struct HoverAnim {
 #[derive(Clone)]
 pub enum MenuAction {
     TrashTodo(String),
-    #[allow(dead_code)]
-    OpenTask(String),
     RestoreProject(String),
     ArchiveProject(String),
     DeleteProject(String),
@@ -85,8 +83,6 @@ pub enum MenuAction {
     SetDate(String, Option<String>),
     RestoreTodo(String),
     MoveToToday(String),
-    #[allow(dead_code)]
-    DeferTodo(String),
     CompleteTodo(String),
     RemoveTag(String, String),
     QeSetProject(Option<String>),
@@ -205,8 +201,6 @@ pub struct Agenda {
     pub(crate) recur_interval: u32,
     pub(crate) recur_type: u8,
     pub(crate) recur_days: Vec<u8>,
-    #[allow(dead_code)]
-    pub(crate) recur_day_of_month: Option<u8>,
 
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) theme_idx: usize,
@@ -251,8 +245,6 @@ pub struct Agenda {
     pub(crate) cal_mode: CalMode,
     pub(crate) cal_anchor: String,
 
-    #[allow(dead_code)]
-    pub(crate) stat_metric: u8, // 0 count 1 significance 2 fuel (selector hidden for now)
     /// Share-card overlay on the statistics page.
     pub(crate) share_open: bool,
 
@@ -300,12 +292,7 @@ pub struct Agenda {
     pub(crate) sidebar_view: Entity<SidebarView>,
     pub(crate) content_view: Entity<ContentView>,
 
-    #[allow(dead_code)]
-    pub(crate) stat_day: Option<String>,
-
     pub(crate) root_focus: FocusHandle,
-    #[allow(dead_code)]
-    pub(crate) quick_focus: FocusHandle,
     pub(crate) focused_once: bool,
     pub(crate) qs_focused: bool,
     pub(crate) qe_focused: bool,
@@ -407,7 +394,6 @@ impl Agenda {
             recur_interval: 1,
             recur_type: 0,
             recur_days: vec![],
-            recur_day_of_month: None,
             theme_sel: local_mode,
             theme_idx: local_theme,
             sb_material: local_material,
@@ -445,7 +431,6 @@ impl Agenda {
             quick_sel: 0,
             cal_mode: CalMode::Week,
             cal_anchor: today_key(),
-            stat_metric: 0,
             share_open: false,
             dev_grid: false,
             dev_fps: std::env::var("AGENDA_FPS").is_ok(),
@@ -468,7 +453,6 @@ impl Agenda {
             fps_load: 0.0,
             fps_busy_ns: 0,
             fps_busy_t0: Instant::now(),
-            stat_day: None,
             fps_view: {
                 let agenda = cx.weak_entity();
                 cx.new(|_| FpsOverlay {
@@ -486,7 +470,6 @@ impl Agenda {
                 cx.new(|cx| ContentView::new(agenda, cx))
             },
             root_focus: cx.focus_handle(),
-            quick_focus: cx.focus_handle(),
             focused_once: false,
             qs_focused: false,
             qe_focused: false,
@@ -1519,7 +1502,6 @@ impl Agenda {
     pub(crate) fn run_menu_action(&mut self, action: MenuAction) {
         match action {
             MenuAction::TrashTodo(id) => self.update_todo(&id, |t| t.is_trashed = true),
-            MenuAction::OpenTask(id) => self.navigate(Route::Task(id)),
             MenuAction::RestoreProject(id) => {
                 self.set_project_status(&id, 0);
             }
@@ -1563,7 +1545,6 @@ impl Agenda {
             }),
             MenuAction::RestoreTodo(id) => self.update_todo(&id, |t| t.is_trashed = false),
             MenuAction::MoveToToday(id) => self.move_to_today(&id),
-            MenuAction::DeferTodo(id) => self.set_todo_status(&id, Status::Deferred),
             MenuAction::CompleteTodo(id) => {
                 let done = self
                     .todo(&id)
