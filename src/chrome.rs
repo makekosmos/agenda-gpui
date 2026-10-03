@@ -37,6 +37,9 @@ fn drag_inset(window: &Window) -> f32 {
 /// Left-edge grid line shared by the titlebar page icon and the task-row
 /// status ring: row px_2 (8) + (w_5 cell 20 − ring 14) / 2.
 const CONTENT_GRID_X: f32 = 11.0;
+/// Native caption button width (Windows convention).
+pub(crate) const CAPTION_W: f32 = 46.0;
+
 struct SbRect {
     y: f32,
     h: f32,

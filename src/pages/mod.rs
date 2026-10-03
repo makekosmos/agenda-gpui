@@ -33,6 +33,7 @@ pub(crate) use crate::app::{
     storage::{StorageError, StorageFault},
     Agenda, BoardView, CalMode, CtxMenu, DropKind, DropState, MenuAction, Route,
 };
+pub(crate) use crate::chrome::CAPTION_W;
 pub(crate) use crate::model::*;
 pub(crate) use crate::theme::*;
 pub(crate) use crate::widgets::*;
