@@ -22,24 +22,34 @@ impl Agenda {
         if fuel {
             col = col.child(
                 div()
-                    .text_size(px(15.))
+                    .text_size(crate::theme::text_px(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Мыслетопливо"),
             );
             col = col.child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(MUTED_FG()))
                     .child(
                         "Мыслетопливо оценивает стоимость задач в процентах. Оценивайте задачи от 1 до 10 на странице задачи.",
                     ),
             );
         } else {
+            if self.inherited_appearance() {
+                return col.child(
+                    div()
+                        .id("appearance-inherited")
+                        .pt_3()
+                        .text_size(text_px(13.))
+                        .text_color(c(MUTED_FG()))
+                        .child("Оформление задаётся в Mundus Manager. Отключите «Следовать приложениям» там, чтобы снова менять оформление Agenda."),
+                ).into_any_element();
+            }
             // --- Mode ---
             col = col.child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Режим"),
@@ -60,7 +70,7 @@ impl Agenda {
                         .flex()
                         .items_center()
                         .rounded_md()
-                        .text_size(px(13.))
+                        .text_size(crate::theme::text_px(13.))
                         .text_color(if active { c(ACCENT_FG()) } else { c(FG()) })
                         .bg(if active {
                             c(ACCENT())
@@ -74,7 +84,10 @@ impl Agenda {
                         .on_click({
                             let weak = cx.weak_entity();
                             move |_: &ClickEvent, _, cx| {
-                                let _ = weak.update(cx, |this, _| this.theme_sel = i as u8);
+                                let _ = weak.update(cx, |this, _| {
+                                    this.theme_sel = i as u8;
+                                    this.persist_local_appearance();
+                                });
                             }
                         })
                         .aria_selected(active)
@@ -87,7 +100,7 @@ impl Agenda {
             col = col.child(
                 div()
                     .pt_3()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Тема"),
@@ -135,10 +148,15 @@ impl Agenda {
                                 .flex()
                                 .flex_col()
                                 .gap_0p5()
-                                .child(div().text_size(px(13.)).text_color(c(FG())).child(def.name))
                                 .child(
                                     div()
-                                        .text_size(px(11.))
+                                        .text_size(crate::theme::text_px(13.))
+                                        .text_color(c(FG()))
+                                        .child(def.name),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(crate::theme::text_px(11.))
                                         .text_color(c(MUTED_FG()))
                                         .child(def.desc),
                                 ),
@@ -150,7 +168,10 @@ impl Agenda {
                         .on_click({
                             let weak = cx.weak_entity();
                             move |_: &ClickEvent, _, cx| {
-                                let _ = weak.update(cx, |this, _| this.theme_idx = i);
+                                let _ = weak.update(cx, |this, _| {
+                                    this.theme_idx = i;
+                                    this.persist_local_appearance();
+                                });
                             }
                         })
                         .aria_selected(active)
@@ -162,7 +183,7 @@ impl Agenda {
             col = col.child(
                 div()
                     .pt_3()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Сайдбар"),
@@ -189,7 +210,7 @@ impl Agenda {
                         .flex()
                         .items_center()
                         .rounded_md()
-                        .text_size(px(13.))
+                        .text_size(crate::theme::text_px(13.))
                         .text_color(if active { c(ACCENT_FG()) } else { c(FG()) })
                         .bg(if active {
                             c(ACCENT())
@@ -203,7 +224,10 @@ impl Agenda {
                         .on_click({
                             let weak = cx.weak_entity();
                             move |_: &ClickEvent, _, cx| {
-                                let _ = weak.update(cx, |this, _| this.sb_material = i as u8);
+                                let _ = weak.update(cx, |this, _| {
+                                    this.sb_material = i as u8;
+                                    this.persist_local_appearance();
+                                });
                             }
                         })
                         .aria_selected(active)
@@ -226,14 +250,14 @@ impl Agenda {
             .gap_2()
             .child(
                 div()
-                    .text_size(px(20.))
+                    .text_size(crate::theme::text_px(20.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Agenda"),
             )
             .child(
                 div()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(MUTED_FG()))
                     .child(concat!(
                         "Версия ",

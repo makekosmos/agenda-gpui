@@ -129,7 +129,7 @@ impl Agenda {
                         .gap(px(5.))
                         .rounded_full()
                         .bg(fg_mix(0.06))
-                        .text_size(px(12.))
+                        .text_size(crate::theme::text_px(12.))
                         .text_color(c(FG()))
                         .child(div().w(px(7.)).h(px(7.)).rounded_full().bg(c(dot)))
                         .child(tag.title.clone())
@@ -224,7 +224,7 @@ impl Agenda {
                     .px_2()
                     .flex()
                     .items_center()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(MUTED_FG()))
                     .child(format!("~{}%", f)),
             );

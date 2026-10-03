@@ -33,7 +33,6 @@ pub(crate) use crate::app::{
     storage::{StorageError, StorageFault},
     Agenda, BoardView, CalMode, CtxMenu, DropKind, DropState, MenuAction, Route,
 };
-pub(crate) use crate::chrome::CAPTION_W;
 pub(crate) use crate::model::*;
 pub(crate) use crate::theme::*;
 pub(crate) use crate::widgets::*;
@@ -137,7 +136,7 @@ impl Agenda {
             .items_center()
             .rounded(px(5.))
             .bg(c(SECONDARY()))
-            .text_size(px(12.))
+            .text_size(crate::theme::text_px(12.))
             .text_color(mix(FG(), 0.7 + 0.3 * ht, BG()))
             .child(label)
             .on_hover({
@@ -180,14 +179,14 @@ fn empty_state() -> gpui::Div {
         .gap_1()
         .child(
             div()
-                .text_size(px(14.))
+                .text_size(crate::theme::text_px(14.))
                 .font_weight(gpui::FontWeight::MEDIUM)
                 .text_color(c(MUTED_FG()))
                 .child("Ничего не найдено"),
         )
         .child(
             div()
-                .text_size(px(12.))
+                .text_size(crate::theme::text_px(12.))
                 .text_color(muted_fg_mix(0.8))
                 .child("Здесь появятся задачи"),
         )

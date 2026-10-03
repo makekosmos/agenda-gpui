@@ -61,7 +61,7 @@ impl Agenda {
                             .accessibility_id("qe-title")
                             .flex_1()
                             .h(px(48.))
-                            .text_size(px(15.))
+                            .text_size(crate::theme::text_px(15.))
                             .text_color(c(FG()))
                             .appearance(false)
                             .bordered(false),
@@ -96,7 +96,7 @@ impl Agenda {
                         .accessibility_id("qe-notes")
                         .w_full()
                         .h(px(36.))
-                        .text_size(px(13.))
+                        .text_size(crate::theme::text_px(13.))
                         .text_color(c(FG()))
                         .appearance(false)
                         .bordered(false),

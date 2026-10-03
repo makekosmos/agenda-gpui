@@ -26,7 +26,7 @@ impl Agenda {
             .pt_4()
             .gap_3()
             .max_w(px(720.))
-            .child(div().text_size(px(15.)).font_weight(gpui::FontWeight::SEMIBOLD)
+            .child(div().text_size(crate::theme::text_px(15.)).font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(c(FG())).child("Энергосбережение"))
             .child(self.dev_row(
                 DevRow {
@@ -39,7 +39,7 @@ impl Agenda {
                 cx,
                 |this| this.vsync_enabled = !this.vsync_enabled,
             ))
-            .child(div().text_size(px(13.)).text_color(c(MUTED_FG()))
+            .child(div().text_size(crate::theme::text_px(13.)).text_color(c(MUTED_FG()))
                 .child("Без взаимодействия в простое и в фоне — 1 FPS. Ввод возвращает рабочую частоту даже без фокуса; через секунду после завершения взаимодействия частота снова снижается."))
             .into_any_element()
     }
@@ -88,13 +88,13 @@ impl Agenda {
                     .gap_0p5()
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .text_color(c(FG()))
                             .child(row.title),
                     )
                     .child(
                         div()
-                            .text_size(px(11.))
+                            .text_size(crate::theme::text_px(11.))
                             .text_color(c(MUTED_FG()))
                             .child(row.desc),
                     ),
@@ -133,7 +133,7 @@ impl Agenda {
         let section = |title: &'static str| {
             div()
                 .pt_3()
-                .text_size(px(13.))
+                .text_size(crate::theme::text_px(13.))
                 .font_weight(gpui::FontWeight::SEMIBOLD)
                 .text_color(c(FG()))
                 .child(title)
@@ -153,7 +153,7 @@ impl Agenda {
             .max_w(px(720.))
             .child(
                 div()
-                    .text_size(px(15.))
+                    .text_size(crate::theme::text_px(15.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Для разработчиков"),
@@ -213,13 +213,13 @@ impl Agenda {
                             .gap_0p5()
                             .child(
                                 div()
-                                    .text_size(px(13.))
+                                    .text_size(crate::theme::text_px(13.))
                                     .text_color(c(FG()))
                                     .child("Сгенерировать 1000 задач"),
                             )
                             .child(
                                 div()
-                                    .text_size(px(11.))
+                                    .text_size(crate::theme::text_px(11.))
                                     .text_color(c(MUTED_FG()))
                                     .child(format!(
                                         "Случайные названия и поля; ~55% завершённых за последний год. Сейчас задач: {}",
@@ -234,7 +234,7 @@ impl Agenda {
                             .flex()
                             .items_center()
                             .rounded_md()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .text_color(c(ACCENT_FG()))
                             .bg(c(ACCENT()))
                             .child("Создать"),

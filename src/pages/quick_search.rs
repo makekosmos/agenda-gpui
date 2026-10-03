@@ -37,7 +37,7 @@ impl Agenda {
                     .flex()
                     .items_center()
                     .gap_2p5()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(FG()))
                     .bg(panel_mix(if sel { 0.10 } else { 0.06 * ht }))
                     .child(status_ring(task_status(t)))
@@ -85,7 +85,7 @@ impl Agenda {
                     .flex()
                     .items_center()
                     .gap_2p5()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(FG()))
                     .bg(panel_mix(if sel { 0.10 } else { 0.06 * ht }))
                     .child(icon("icons/folder.svg", 14., c(MUTED_FG())))
@@ -127,7 +127,7 @@ impl Agenda {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(MUTED_FG()))
                     .child("Начните вводить для поиска"),
             );
@@ -143,13 +143,13 @@ impl Agenda {
                     .gap_1()
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .text_color(c(FG()))
                             .child("Ничего не найдено"),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::text_px(12.))
                             .text_color(c(MUTED_FG()))
                             .child(format!("По запросу «{}» совпадений нет", query.trim())),
                     ),
@@ -188,7 +188,7 @@ impl Agenda {
                         Input::new(&qs)
                             .accessibility_id("qs")
                             .flex_1()
-                            .text_size(px(14.))
+                            .text_size(crate::theme::text_px(14.))
                             .text_color(c(FG()))
                             .appearance(false)
                             .bordered(false)
@@ -203,7 +203,7 @@ impl Agenda {
                             .rounded(px(4.))
                             .border_1()
                             .border_color(panel_mix(0.22))
-                            .text_size(px(10.))
+                            .text_size(crate::theme::text_px(10.))
                             .text_color(c(MUTED_FG()))
                             .child("esc"),
                     ),

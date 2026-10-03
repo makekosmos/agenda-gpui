@@ -52,13 +52,13 @@ impl Agenda {
                         .gap_0p5()
                         .child(
                             div()
-                                .text_size(px(16.))
+                                .text_size(crate::theme::text_px(16.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .child(value),
                         )
                         .child(
                             div()
-                                .text_size(px(11.))
+                                .text_size(crate::theme::text_px(11.))
                                 .text_color(c(MUTED_FG()))
                                 .child(label),
                         ),
@@ -106,7 +106,7 @@ impl Agenda {
                         .child(
                             div().ml_3().flex().flex_col().child(
                                 div()
-                                    .text_size(px(15.))
+                                    .text_size(crate::theme::text_px(15.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child("Имя Фамилия"),
                             ),
@@ -114,7 +114,7 @@ impl Agenda {
                         .child(div().flex_1())
                         .child(
                             div()
-                                .text_size(px(14.))
+                                .text_size(crate::theme::text_px(14.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .text_color(c(MUTED_FG()))
                                 .child("Agenda"),
@@ -147,7 +147,7 @@ impl Agenda {
                         })
                         .child(
                             div()
-                                .text_size(px(15.))
+                                .text_size(crate::theme::text_px(15.))
                                 .font_weight(gpui::FontWeight::SEMIBOLD)
                                 .mb_4()
                                 .child("Поделиться активностью"),
@@ -164,7 +164,7 @@ impl Agenda {
                                 .rounded_full()
                                 .bg(c(FG()))
                                 .text_color(c(BG()))
-                                .text_size(px(13.))
+                                .text_size(crate::theme::text_px(13.))
                                 .font_weight(gpui::FontWeight::MEDIUM)
                                 .child("Скопировать")
                                 .on_mouse_down(MouseButton::Left, |_, _, cx| {

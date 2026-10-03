@@ -1,6 +1,7 @@
 // Agenda GPUI — task data is owned by Mundus Engine.
 #![windows_subsystem = "windows"]
 mod app;
+mod appearance;
 mod assets;
 mod brand;
 mod chrome;

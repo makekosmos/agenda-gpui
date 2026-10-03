@@ -80,14 +80,14 @@ impl Agenda {
                     .gap_0p5()
                     .child(
                         div()
-                            .text_size(px(16.))
+                            .text_size(crate::theme::text_px(16.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(c(FG()))
                             .child(value),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::text_px(12.))
                             .text_color(c(MUTED_FG()))
                             .child(label),
                     ),
@@ -159,7 +159,7 @@ impl Agenda {
                 div()
                     .w(px(CELL))
                     .flex_none()
-                    .text_size(px(10.))
+                    .text_size(crate::theme::text_px(10.))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(c(MUTED_FG()))
                     .whitespace_nowrap()
@@ -247,7 +247,7 @@ impl Agenda {
             .child(
                 div()
                     .mt_3()
-                    .text_size(px(20.))
+                    .text_size(crate::theme::text_px(20.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .child("Имя Фамилия"),
@@ -281,7 +281,7 @@ impl Agenda {
                             .child(
                                 div()
                                     .mt_6()
-                                    .text_size(px(15.))
+                                    .text_size(crate::theme::text_px(15.))
                                     .font_weight(gpui::FontWeight::SEMIBOLD)
                                     .child("Активность"),
                             )

@@ -35,8 +35,8 @@ impl Agenda {
             .px_2()
             .border_b_1()
             .border_color(border_mix(0.55))
-            .text_size(px(13.))
-            .line_height(px(15.))
+            .text_size(crate::theme::text_px(13.))
+            .line_height(crate::theme::text_px(15.))
             .text_color(c(FG()))
             .bg(fg_mix(0.04 * t_h))
             // status button (20px grid)
@@ -124,7 +124,7 @@ impl Agenda {
                 .flex()
                 .items_center()
                 .gap_2()
-                .text_size(px(12.))
+                .text_size(crate::theme::text_px(12.))
                 .text_color(c(MUTED_FG()));
             if total > 0 {
                 let d = t.checklist.iter().filter(|i| i.is_completed).count();
@@ -142,7 +142,7 @@ impl Agenda {
                             .gap(px(5.))
                             .rounded_full()
                             .bg(fg_mix(0.06))
-                            .text_size(px(11.))
+                            .text_size(crate::theme::text_px(11.))
                             .text_color(c(FG()))
                             .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(c(dot)))
                             .child(tag.title.clone()),

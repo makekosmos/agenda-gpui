@@ -22,7 +22,7 @@ impl Agenda {
             .rounded_lg()
             .bg(lerp(ACCENT(), ACCENT_DIM(), t * 0.5))
             .text_color(c(ACCENT_FG()))
-            .text_size(px(14.))
+            .text_size(crate::theme::text_px(14.))
             .font_weight(gpui::FontWeight::MEDIUM)
             .shadow(vec![gpui::BoxShadow {
                 color: rgba(0x000000, 0.15),

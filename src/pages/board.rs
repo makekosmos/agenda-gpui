@@ -183,7 +183,7 @@ impl Agenda {
                     div()
                         .mb_2()
                         .px_2()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::text_px(12.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(c(MUTED_FG()))
                         .child(format!("{} · {}", label, col_items.len())),
@@ -203,7 +203,7 @@ impl Agenda {
                     .bg(c(CARD()))
                     .p_3()
                     .text_left()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .child(
                         div()
                             .font_weight(gpui::FontWeight::MEDIUM)
@@ -213,7 +213,7 @@ impl Agenda {
                     card = card.child(
                         div()
                             .mt_1()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::text_px(12.))
                             .text_color(c(MUTED_FG()))
                             .overflow_hidden()
                             .whitespace_nowrap()

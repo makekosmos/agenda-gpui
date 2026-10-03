@@ -26,7 +26,7 @@ impl Agenda {
 
         // .calendar-day: min-h-40 rounded-lg border bg-secondary/20 p-3; today → border-accent
         let mut head = div()
-            .text_size(px(13.))
+            .text_size(crate::theme::text_px(13.))
             .font_weight(gpui::FontWeight::SEMIBOLD)
             .text_color(c(FG()))
             .flex()
@@ -35,7 +35,7 @@ impl Agenda {
         if is_today {
             head = head.child(
                 div()
-                    .text_size(px(11.))
+                    .text_size(crate::theme::text_px(11.))
                     .text_color(c(ACCENT()))
                     .child("Сегодня"),
             );
@@ -56,7 +56,7 @@ impl Agenda {
         if day_events.is_empty() && day_todos.is_empty() {
             col = col.child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::text_px(12.))
                     .text_color(c(MUTED_FG()))
                     .child("Нет задач"),
             );
@@ -73,7 +73,7 @@ impl Agenda {
                 .flex_col()
                 .child(
                     div()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::text_px(12.))
                         .text_color(c(ACCENT()))
                         .child(format!(
                             "{}–{}",
@@ -83,7 +83,7 @@ impl Agenda {
                 )
                 .child(
                     div()
-                        .text_size(px(13.))
+                        .text_size(crate::theme::text_px(13.))
                         .font_weight(gpui::FontWeight::SEMIBOLD)
                         .text_color(c(FG()))
                         .child(e.title),
@@ -91,7 +91,7 @@ impl Agenda {
             let loc = e.location.unwrap_or("PseudoCalendar");
             card = card.child(
                 div()
-                    .text_size(px(12.))
+                    .text_size(crate::theme::text_px(12.))
                     .text_color(c(MUTED_FG()))
                     .child(format!("{} · PseudoCalendar", loc)),
             );
@@ -123,14 +123,14 @@ impl Agenda {
                     .flex_col()
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(c(FG()))
                             .child(t.title.clone()),
                     )
                     .child(
                         div()
-                            .text_size(px(12.))
+                            .text_size(crate::theme::text_px(12.))
                             .text_color(c(MUTED_FG()))
                             .child(format!("{} · Agenda", st_label)),
                     )

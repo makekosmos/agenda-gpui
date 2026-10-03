@@ -37,9 +37,6 @@ fn drag_inset(window: &Window) -> f32 {
 /// Left-edge grid line shared by the titlebar page icon and the task-row
 /// status ring: row px_2 (8) + (w_5 cell 20 − ring 14) / 2.
 const CONTENT_GRID_X: f32 = 11.0;
-/// Native caption button width (Windows convention).
-pub(crate) const CAPTION_W: f32 = 46.0;
-
 struct SbRect {
     y: f32,
     h: f32,
@@ -113,8 +110,8 @@ impl Agenda {
             .gap_1p5()
             .pl(px(10.))
             .pr_2()
-            .text_size(px(13.))
-            .line_height(px(15.));
+            .text_size(crate::theme::text_px(13.))
+            .line_height(crate::theme::text_px(15.));
         el = match spec.icon {
             Some(path) => el.child(icon(path, 16., glyph)),
             None => el.child(
@@ -142,7 +139,11 @@ impl Agenda {
             el = el.rounded_lg();
         }
         if spec.active {
-            el = el.bg(rgba(FG(), 0.12));
+            el = el.bg(if accent_override_active() {
+                rgba(ACCENT(), 0.18)
+            } else {
+                rgba(FG(), 0.12)
+            });
         } else {
             // Paint-time hover truth (like CSS :hover in zeron): the bg is
             // resolved from the current hitbox each frame, so it can never
@@ -434,7 +435,7 @@ impl Agenda {
                         .flex()
                         .items_center()
                         .gap_1p5()
-                        .text_size(px(12.))
+                        .text_size(crate::theme::text_px(12.))
                         .font_weight(gpui::FontWeight::MEDIUM)
                         .text_color(rgba(FG(), head_alpha))
                         .child(folder_icons)
@@ -534,8 +535,8 @@ impl Agenda {
                 .gap_1p5()
                 .pl(px(10.))
                 .pr_2()
-                .text_size(px(13.))
-                .line_height(px(15.))
+                .text_size(crate::theme::text_px(13.))
+                .line_height(crate::theme::text_px(15.))
                 .child(icon("icons/more-circle.svg", 16., glyph))
                 .child(div().text_color(glyph).child("Другое"));
             if menu_live {
@@ -658,7 +659,11 @@ impl Agenda {
                     .top(px(self.sb_highlight.y))
                     .h(px(self.sb_highlight.hh))
                     .rounded_lg()
-                    .bg(rgba(FG(), 0.06 * self.sb_highlight.opacity)),
+                    .bg(if accent_override_active() {
+                        rgba(ACCENT(), 0.10 * self.sb_highlight.opacity)
+                    } else {
+                        rgba(FG(), 0.06 * self.sb_highlight.opacity)
+                    }),
             )
             .child(
                 // top strip doubles as a window drag area; the left inset
@@ -723,8 +728,8 @@ impl Agenda {
             .child(icon(icon_path, 18., rgba(FG(), 0.82)))
             .child(
                 div()
-                    .text_size(px(13.))
-                    .line_height(px(15.))
+                    .text_size(crate::theme::text_px(13.))
+                    .line_height(crate::theme::text_px(15.))
                     .font_weight(gpui::FontWeight::MEDIUM)
                     .text_color(c(FG()))
                     .whitespace_nowrap()
@@ -1038,8 +1043,8 @@ impl Agenda {
                 .gap_1p5()
                 .pl(px(10.))
                 .pr_2()
-                .text_size(px(13.))
-                .line_height(px(15.))
+                .text_size(crate::theme::text_px(13.))
+                .line_height(crate::theme::text_px(15.))
                 .child(icon(ic, 16., glyph))
                 .child(div().text_color(glyph).child(label));
             if active {
@@ -1160,7 +1165,7 @@ impl Agenda {
                     .items_center()
                     .px_2()
                     .rounded(px(5.))
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(color)
                     .hover(|s| s.bg(fg_mix(0.06)))
                     .child(label.clone())

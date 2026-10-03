@@ -49,20 +49,20 @@ impl Agenda {
                     .bg(fg_mix(0.02 * ht))
                     .child(
                         div()
-                            .text_size(px(15.))
+                            .text_size(crate::theme::text_px(15.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(c(FG()))
                             .child(t.title.clone()),
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .text_color(c(MUTED_FG()))
                             .child(describe_recurrence(&t.recurrence)),
                     )
                     .child(
                         div()
-                            .text_size(px(13.))
+                            .text_size(crate::theme::text_px(13.))
                             .text_color(c(MUTED_FG()))
                             .child(format!(
                                 "Следующий срок: {}",

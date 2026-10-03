@@ -8,6 +8,9 @@ use gpui::{
 };
 use gpui_component::input::{InputState, TextareaState};
 
+use crate::appearance::{
+    LocalAppearance, LocalWriter, Poller as AppearancePoller, Response as AppearanceResponse,
+};
 use crate::model::*;
 use crate::theme::*;
 
@@ -208,12 +211,17 @@ pub struct Agenda {
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) theme_idx: usize,
     pub(crate) sb_material: u8, // 0 solid 1 acrylic 2 mica
+    pub(crate) appearance: Option<AppearanceResponse>,
+    pub(crate) appearance_poller: Option<AppearancePoller>,
+    pub(crate) local_appearance: Option<(u8, usize, u8)>,
+    pub(crate) local_writer: Option<LocalWriter>,
+    pub(crate) resolved_font: Option<(String, String)>,
     pub(crate) vsync_enabled: bool,
     pub(crate) applied_material: Option<u8>,
     pub(crate) applied_theme_sel: Option<u8>,
     /// (theme_idx, resolved dark) last pushed into gpui-component via
     /// `imago_gpui::theme::apply` — re-applies only on real changes.
-    pub(crate) applied_palette: Option<(usize, bool)>,
+    pub(crate) applied_palette: Option<(usize, bool, Option<u32>, f32, String)>,
     pub(crate) delete_blocked: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
@@ -335,6 +343,16 @@ impl Agenda {
                 .and_then(|v| v.parse::<usize>().ok())
                 .is_some()
             || cfg!(test);
+        let local_path = if demo {
+            None
+        } else {
+            crate::appearance::local_path()
+        };
+        let (local_mode, local_theme, local_material) = local_path
+            .as_deref()
+            .and_then(LocalAppearance::load)
+            .map(|saved| saved.selection())
+            .unwrap_or((1, 0, 0));
         let mut this = Self {
             demo,
             storage: None,
@@ -390,9 +408,14 @@ impl Agenda {
             recur_type: 0,
             recur_days: vec![],
             recur_day_of_month: None,
-            theme_sel: 1,
-            theme_idx: 0,
-            sb_material: 0,
+            theme_sel: local_mode,
+            theme_idx: local_theme,
+            sb_material: local_material,
+            appearance: None,
+            appearance_poller: None,
+            local_appearance: None,
+            local_writer: local_path.map(LocalWriter::start),
+            resolved_font: None,
             vsync_enabled: std::env::var("AGENDA_VSYNC").as_deref() != Ok("0"),
             applied_material: None,
             applied_theme_sel: None,
@@ -482,7 +505,74 @@ impl Agenda {
             this.model_rev += 1;
         }
         this.start_storage(cx);
+        this.start_appearance(cx);
         this
+    }
+
+    fn start_appearance(&mut self, cx: &mut Context<Self>) {
+        if self.demo {
+            return;
+        }
+        self.appearance_poller = Some(AppearancePoller::start());
+        cx.spawn(async move |this, cx| loop {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(200))
+                .await;
+            if this
+                .update(cx, |this, cx| {
+                    let latest = this.appearance_poller.as_ref().and_then(|poller| {
+                        let mut last = None;
+                        while let Ok(reply) = poller.replies.try_recv() {
+                            last = Some(reply);
+                        }
+                        last
+                    });
+                    if let Some(reply) = latest {
+                        if this.appearance.as_ref() != Some(&reply) {
+                            this.receive_appearance(reply);
+                            cx.notify();
+                        }
+                    }
+                })
+                .is_err()
+            {
+                break;
+            }
+        })
+        .detach();
+    }
+
+    fn receive_appearance(&mut self, response: AppearanceResponse) {
+        if response.settings.follow_apps {
+            if self.local_appearance.is_none() {
+                self.local_appearance = Some((self.theme_sel, self.theme_idx, self.sb_material));
+            }
+            self.theme_sel = match response.settings.mode {
+                crate::appearance::Mode::Light => 0,
+                crate::appearance::Mode::Dark => 1,
+                crate::appearance::Mode::System => 2,
+            };
+            self.sb_material = response.material();
+        } else if let Some((mode, theme, material)) = self.local_appearance.take() {
+            self.theme_sel = mode;
+            self.theme_idx = theme;
+            self.sb_material = material;
+        }
+        self.appearance = Some(response);
+    }
+
+    pub(crate) fn inherited_appearance(&self) -> bool {
+        self.appearance
+            .as_ref()
+            .is_some_and(|r| r.settings.follow_apps)
+    }
+
+    pub(crate) fn persist_local_appearance(&self) {
+        if !self.inherited_appearance() {
+            if let Some(writer) = &self.local_writer {
+                writer.save((self.theme_sel, self.theme_idx, self.sb_material));
+            }
+        }
     }
 
     // ------------------------------------------------------------------
@@ -828,14 +918,44 @@ impl Render for Agenda {
             2 => sys_dark,
             _ => true,
         };
+        if self.inherited_appearance() {
+            self.theme_idx = self.appearance.as_ref().unwrap().theme_index(dark);
+        }
+        let accent = self
+            .appearance
+            .as_ref()
+            .filter(|r| r.settings.follow_apps)
+            .and_then(|r| r.accent());
+        let font_size = self
+            .appearance
+            .as_ref()
+            .filter(|r| r.settings.follow_apps)
+            .map_or(13.0, |r| r.settings.font_size);
+        let requested_font = self
+            .appearance
+            .as_ref()
+            .filter(|r| r.settings.follow_apps)
+            .map_or("Inter", |r| r.settings.font_family.as_str())
+            .to_owned();
+        if self.resolved_font.as_ref().map(|(requested, _)| requested) != Some(&requested_font) {
+            let resolved = crate::appearance::resolve_font_family(&requested_font, cx);
+            self.resolved_font = Some((requested_font, resolved));
+        }
+        let font_family = self.resolved_font.as_ref().unwrap().1.clone();
         set_mode(dark);
         set_theme(self.theme_idx);
+        set_accent_override(accent);
+        set_font_size(font_size);
         // Push the imago palette into gpui-component (Inputs, tooltips,
         // scrollbars) when the selected theme or resolved mode changed.
-        let palette_key = (self.theme_idx, dark);
-        if self.applied_palette != Some(palette_key) {
+        let palette_key = (self.theme_idx, dark, accent, font_size, font_family.clone());
+        if self.applied_palette.as_ref() != Some(&palette_key) {
             self.applied_palette = Some(palette_key);
             imago_gpui::theme::apply(cx);
+            apply_component_accent(cx);
+            let component_theme = gpui_component::theme::Theme::global_mut(cx);
+            component_theme.font_family = font_family.clone().into();
+            component_theme.font_size = gpui::px(16.0 * font_size / 13.0);
         }
         if self.applied_material != Some(self.sb_material) {
             self.applied_material = Some(self.sb_material);
@@ -878,7 +998,7 @@ impl Render for Agenda {
             .overflow_hidden()
             .when(!self.backdrop_active(), |d| d.bg(c(BG())))
             .text_color(c(FG()))
-            .font_family("Inter")
+            .font_family(font_family)
             .on_key_down({
                 let weak = weak.clone();
                 move |ev: &KeyDownEvent, window, cx| {
@@ -1678,7 +1798,7 @@ impl gpui::Render for FpsOverlay {
                     .flex_col()
                     .child(
                         div()
-                            .text_size(gpui::px(12.))
+                            .text_size(crate::theme::text_px(12.))
                             .font_weight(gpui::FontWeight::SEMIBOLD)
                             .text_color(c(FG()))
                             .child(if warming {
@@ -1689,7 +1809,7 @@ impl gpui::Render for FpsOverlay {
                     )
                     .child(
                         div()
-                            .text_size(gpui::px(9.))
+                            .text_size(crate::theme::text_px(9.))
                             .text_color(c(MUTED_FG()))
                             .child(if warming {
                                 "замер начнётся после загрузки".to_string()
@@ -1760,5 +1880,43 @@ impl gpui::Render for ContentView {
                 .child(a.render_titlebar(window, cx))
                 .child(a.render_page(window, cx))
         })
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    use gpui::TestAppContext;
+    use serde_json::json;
+
+    #[gpui::test]
+    fn follow_off_restores_local_mode_theme_and_material(cx: &mut TestAppContext) {
+        let (agenda, cx) = crate::ui_tests::launch(cx);
+        let path = std::env::temp_dir()
+            .join(format!("agenda-follow-local-{}", uuid::Uuid::new_v4()))
+            .join("appearance.json");
+        agenda.update(cx, |a, _| {
+            a.theme_sel = 0;
+            a.theme_idx = 4;
+            a.sb_material = 2;
+            a.local_writer = Some(LocalWriter::start(path.clone()));
+            a.persist_local_appearance();
+            let response = |follow| AppearanceResponse::parse(json!({
+                "settings":{"schema_version":1,"mode":"dark","light_theme":"default","dark_theme":"claude","accent_source":"custom","accent_color":"#123ABC","follow_apps":follow,"material":"frosted","font_family":"Inter","font_size":15,"revision":1},
+                "capabilities":{"materials":["default","frosted"],"wallpaper_accent":false},
+                "wallpaper_accent":null
+            })).unwrap();
+            a.receive_appearance(response(true));
+            assert!(a.inherited_appearance());
+            assert_eq!((a.theme_sel, a.sb_material), (1, 1));
+            assert_eq!(a.local_appearance, Some((0, 4, 2)));
+            a.receive_appearance(response(false));
+            assert!(!a.inherited_appearance());
+            assert_eq!((a.theme_sel, a.theme_idx, a.sb_material), (0, 4, 2));
+            assert!(a.local_appearance.is_none());
+            drop(a.local_writer.take());
+            assert_eq!(LocalAppearance::load(&path).unwrap().selection(), (0, 4, 2));
+        });
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 }

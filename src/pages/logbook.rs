@@ -29,7 +29,7 @@ impl Agenda {
             .px_2()
             .border_b_1()
             .border_color(border_mix(0.55))
-            .text_size(px(13.))
+            .text_size(crate::theme::text_px(13.))
             .bg(fg_mix(0.04 * t))
             .child(icon("icons/folder.svg", 16., c(MUTED_FG())))
             .child(div().flex_1().text_color(c(FG())).child(p.title.clone()))

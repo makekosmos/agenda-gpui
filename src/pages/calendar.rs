@@ -44,7 +44,7 @@ impl Agenda {
                 .flex()
                 .items_center()
                 .rounded_md()
-                .text_size(px(12.))
+                .text_size(crate::theme::text_px(12.))
                 .text_color(if active { c(FG()) } else { c(MUTED_FG()) })
                 .bg(if active {
                     fg_mix(0.10)
@@ -81,7 +81,7 @@ impl Agenda {
                 .flex()
                 .items_center()
                 .rounded_md()
-                .text_size(px(12.))
+                .text_size(crate::theme::text_px(12.))
                 .text_color(mix(FG(), 0.65 + 0.35 * t, BG()))
                 .bg(fg_mix(0.05 + 0.03 * t))
                 .child(label.to_string())
@@ -120,7 +120,7 @@ impl Agenda {
             .child(
                 div()
                     .flex_1()
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(MUTED_FG()))
                     .child(period),
             )

@@ -23,17 +23,21 @@ pub struct Engine {
 
 impl Default for Engine {
     fn default() -> Self {
-        Self {
-            data_dir: None,
-            agent: ureq::AgentBuilder::new()
-                .timeout(Duration::from_secs(15))
-                .redirects(0)
-                .build(),
-        }
+        Self::with_timeout(Duration::from_secs(15))
     }
 }
 
 impl Engine {
+    pub fn with_timeout(timeout: Duration) -> Self {
+        Self {
+            data_dir: None,
+            agent: ureq::AgentBuilder::new()
+                .timeout(timeout)
+                .redirects(0)
+                .build(),
+        }
+    }
+
     pub fn rpc(&self, operation: &str, mut params: Value) -> Result<Value, EngineError> {
         let directory = self
             .data_dir

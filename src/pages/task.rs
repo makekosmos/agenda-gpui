@@ -108,7 +108,7 @@ impl Agenda {
             .child(
                 Input::new(&title_state)
                     .accessibility_id("task-title")
-                    .text_size(px(22.))
+                    .text_size(crate::theme::text_px(22.))
                     .font_weight(gpui::FontWeight::SEMIBOLD)
                     .text_color(c(FG()))
                     .p_0()
@@ -120,7 +120,7 @@ impl Agenda {
             .child(
                 Textarea::new(&notes_state)
                     .accessibility_id("task-notes")
-                    .text_size(px(13.))
+                    .text_size(crate::theme::text_px(13.))
                     .text_color(c(FG()))
                     .p_0()
                     .appearance(false)
