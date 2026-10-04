@@ -77,6 +77,6 @@ embed-resource = "3.0"
 # See crates/gpui-pre/PATCH.md in that rev. Same imago rev as the
 # imago-gpui / mundus-gpui-kit deps is not required — this pin follows the
 # gpui patch, not the kit.
-gpui-pre = { git = "https://github.com/makekosmos/imago.git", rev = "a0d6ee3feb0e35935483df050fe0df9be7f2fa5f" }
-gpui-pre-windows = { git = "https://github.com/makekosmos/imago.git", rev = "a0d6ee3feb0e35935483df050fe0df9be7f2fa5f" }
+gpui-pre = { git = "https://github.com/makekosmos/imago.git", rev = "ebae2b15faac87917ff55622a4912c797c27f551" }
+gpui-pre-windows = { git = "https://github.com/makekosmos/imago.git", rev = "ebae2b15faac87917ff55622a4912c797c27f551" }
 
