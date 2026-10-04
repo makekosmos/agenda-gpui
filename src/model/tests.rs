@@ -231,3 +231,41 @@ fn project_mention_handles_lowercase_expansion() {
     assert_eq!(pid.as_deref(), Some("p1"));
     assert_eq!(clean, "İX");
 }
+
+#[test]
+fn logbook_sorts_completed_instants_not_strings() {
+    // RFC 3339 instants with different offsets do not sort like the wall clock
+    // as raw strings: "+03:00" compares above "Z" suffixes even though it marks
+    // an *earlier* instant. The Logbook must order by the parsed instant.
+    let mut earlier = new_todo("a", "done earlier (larger local clock)");
+    earlier.is_completed = true;
+    earlier.status = Status::Done;
+    earlier.completed_at = Some("2020-01-10T23:30:00+03:00".into()); // 20:30Z
+    let mut later = new_todo("b", "done later (smaller local clock)");
+    later.is_completed = true;
+    later.status = Status::Done;
+    later.completed_at = Some("2020-01-10T21:00:00Z".into());
+
+    let got: Vec<String> = filter_todos(SmartList::Logbook, &[earlier.clone(), later.clone()])
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    assert_eq!(
+        got,
+        ["b", "a"],
+        "filter_todos must order Logbook by instant"
+    );
+    let got: Vec<usize> = filter_idx(SmartList::Logbook, &[earlier.clone(), later.clone()]);
+    assert_eq!(got, [1, 0], "filter_idx must order Logbook by instant");
+}
+
+#[test]
+fn fmt_time_survives_non_ascii_stamp() {
+    // `iso[11..16]` panics when byte 11 sits inside a multi-byte char, even
+    // though the length check passed. A malformed stamp must degrade to "".
+    assert_eq!(fmt_time("2026-10-04T10:30"), "10:30");
+    assert_eq!(fmt_time("2026-10-04"), "");
+    // 10 ASCII bytes + 'Я' (2 UTF-8 bytes) + tail: total 18 bytes ≥ 16, but
+    // index 11 is mid-char.
+    assert_eq!(fmt_time("2026-10-04Я9:00:00"), "");
+}
