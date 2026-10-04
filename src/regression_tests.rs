@@ -5,7 +5,7 @@ use gpui::TestAppContext;
 
 use crate::app::Route;
 use crate::model::{day_key, RecurrenceRule, Status};
-use crate::ui_tests::{click, launch, redraw, route_of, type_text};
+use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
 
 /// A saved quick-entry draft must not survive reopening: the overlay kept the
 /// previous title/notes text, so Enter on a reopened form silently duplicated
@@ -178,4 +178,27 @@ fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
             "completing a trashed recurring task spawned a next occurrence"
         );
     });
+}
+
+/// bug-hunt 2026-10-04: canceling a task stamped `completed_at` as
+/// `"{today}T12:00:00"` — no UTC offset — and `mapping::write` copied it
+/// verbatim into canonical `completedAt`, which the com.kosmos.task 1.1.0
+/// schema declares `format: "date-time"` (the offset is mandatory). Engine
+/// validation rejects the upsert, so the cancel silently failed to persist.
+/// It must be a real RFC 3339 instant like `complete_todo` produces.
+#[gpui::test]
+fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
+    let (agenda, cx) = launch(cx);
+    agenda.update(cx, |a, _| a.set_todo_status("dev-inbox-1", Status::Canceled));
+    let t = todo_of(cx, &agenda, "dev-inbox-1");
+    assert_eq!(t.status, Status::Canceled);
+
+    let object = crate::store::mapping::write(serde_json::Value::Null, None, &t).unwrap();
+    let stamp = object["propsJson"]["completedAt"]
+        .as_str()
+        .expect("cancel must stamp completedAt");
+    assert!(
+        chrono::DateTime::parse_from_rfc3339(stamp).is_ok(),
+        "completedAt must be RFC 3339 date-time, got {stamp:?}"
+    );
 }

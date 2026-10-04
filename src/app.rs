@@ -1427,7 +1427,10 @@ impl Agenda {
             t.status = status;
             t.is_completed = false;
             t.completed_at = if status == Status::Canceled {
-                Some(format!("{}T12:00:00", today_key()))
+                // `completedAt` is a `date-time` instant under task 1.1.0 —
+                // a naive "{day}T12:00:00" stamp has no offset and the Engine
+                // rejects the upsert.
+                Some(chrono::Utc::now().to_rfc3339())
             } else {
                 None
             };
