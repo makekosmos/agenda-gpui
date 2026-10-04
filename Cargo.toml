@@ -69,3 +69,14 @@ opt-level = 0
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = "3.0"
 
+
+[patch.crates-io]
+# One patched gpui revision shared by all three GPUI apps (KOS-328): the
+# local patches (WM_NCHITTEST hit-testing, frame instrumentation, a11y
+# TestWindow, manifest no-op) live in imago at crates/gpui-pre{,-windows}.
+# See crates/gpui-pre/PATCH.md in that rev. Same imago rev as the
+# imago-gpui / mundus-gpui-kit deps is not required — this pin follows the
+# gpui patch, not the kit.
+gpui-pre = { git = "https://github.com/makekosmos/imago.git", rev = "a0d6ee3feb0e35935483df050fe0df9be7f2fa5f" }
+gpui-pre-windows = { git = "https://github.com/makekosmos/imago.git", rev = "a0d6ee3feb0e35935483df050fe0df9be7f2fa5f" }
+
