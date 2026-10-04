@@ -572,15 +572,6 @@ pub fn fmt_week_period(first: &str, last: &str) -> String {
     }
 }
 
-/// "dd.mm.yyyy" for statistics day labels
-#[allow(dead_code)]
-pub fn fmt_dot_date(key: &str) -> String {
-    match parse_key(key) {
-        Some(d) => format!("{:02}.{:02}.{}", d.day(), d.month(), d.year()),
-        None => key.to_string(),
-    }
-}
-
 /// iso "YYYY-MM-DDTHH:MM" → "HH:MM"
 pub fn fmt_time(iso: &str) -> String {
     if iso.len() >= 16 {
