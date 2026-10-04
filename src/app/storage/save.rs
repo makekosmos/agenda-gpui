@@ -4,6 +4,9 @@ use crate::store::Mutation;
 impl Agenda {
     pub(crate) fn prepare_close(&mut self, cx: &mut Context<Self>) -> bool {
         if self.storage_busy {
+            // A round-trip is already in flight — queue the close so the
+            // reply handler can finish it instead of dropping the click.
+            self.close_pending = true;
             return false;
         }
         let Some(id) = self
@@ -33,9 +36,17 @@ impl Agenda {
         if todo == before {
             return true;
         }
-        self.save_todo(Some(before), todo);
+        let flushed = self.save_todo(Some(before), todo);
         cx.notify();
-        self.demo
+        if flushed && !self.demo {
+            // The write is in flight — veto this close and let the Saved(Ok)
+            // reply re-trigger it (see on_storage_reply). When Engine is
+            // unreachable there is nothing to wait for: close anyway rather
+            // than wedging the window on an edited field.
+            self.close_pending = true;
+            return false;
+        }
+        true
     }
 
     pub(crate) fn save_todo(&mut self, before: Option<Todo>, todo: Todo) -> bool {

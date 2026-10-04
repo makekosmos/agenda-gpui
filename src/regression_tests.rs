@@ -1,10 +1,13 @@
 //! Regression tests for KOS-171 fixes: quick-entry draft lifecycle and
 //! task-page input ownership. Reuses the headless helpers from `ui_tests`.
 
+use std::sync::mpsc;
+
 use gpui::TestAppContext;
 
 use crate::app::Route;
-use crate::model::{day_key, RecurrenceRule, Status};
+use crate::model::{day_key, new_todo, RecurrenceRule, Status};
+use crate::store::{Command, Mutation, Reply, Worker};
 use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
 
 /// A saved quick-entry draft must not survive reopening: the overlay kept the
@@ -189,7 +192,9 @@ fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
 #[gpui::test]
 fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.set_todo_status("dev-inbox-1", Status::Canceled));
+    agenda.update(cx, |a, _| {
+        a.set_todo_status("dev-inbox-1", Status::Canceled)
+    });
     let t = todo_of(cx, &agenda, "dev-inbox-1");
     assert_eq!(t.status, Status::Canceled);
 
@@ -200,5 +205,63 @@ fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     assert!(
         chrono::DateTime::parse_from_rfc3339(stamp).is_ok(),
         "completedAt must be RFC 3339 date-time, got {stamp:?}"
+    );
+}
+
+/// An inert worker channel pair (same stub as `kos295_tests`): commands are
+/// accepted and inspectable, nothing ever replies.
+fn stub_worker() -> (Worker, mpsc::Receiver<Command>) {
+    let (commands, rx) = mpsc::channel();
+    let (_tx, replies) = mpsc::channel();
+    (Worker { commands, replies }, rx)
+}
+
+/// bug-hunt 2026-10-04: `prepare_close` flushed unsaved title/notes edits
+/// into a Save and returned `self.demo`, vetoing the close — but nothing
+/// ever retried it. In production the first X did nothing, and with Engine
+/// unreachable an edited field made the window unclosable. The veto now arms
+/// `close_pending`, and a successful reply removes the window.
+#[gpui::test]
+fn close_completes_after_pending_write(cx: &mut TestAppContext) {
+    let (agenda, cx) = launch(cx);
+    let (worker, commands) = stub_worker();
+    agenda.update(cx, |a, _| {
+        a.demo = false;
+        a.storage = Some(worker);
+        a.storage_ready = true;
+    });
+    click(cx, "tr-dev-inbox-1");
+    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
+    cx.update(|window, cx| {
+        let title = agenda.read(cx).inputs["task-title"].clone();
+        title.update(cx, |s, cx| s.set_value("Переименовано", window, cx));
+    });
+
+    let vetoed = agenda.update(cx, |a, cx| a.prepare_close(cx));
+    assert!(!vetoed, "an in-flight flush must veto the close");
+    assert!(
+        matches!(commands.try_recv(), Ok(Command::Save(_))),
+        "the field flush must be dispatched to Engine"
+    );
+    agenda.read_with(cx, |a, _| assert!(a.close_pending));
+
+    let todo = new_todo("dev-inbox-1", "Переименовано");
+    agenda.update(cx, |a, cx| {
+        a.on_storage_reply(
+            Reply::Saved(
+                Box::new(Mutation {
+                    before: None,
+                    todo,
+                    next: None,
+                }),
+                Ok(()),
+            ),
+            cx,
+        )
+    });
+    agenda.read_with(cx, |a, _| assert!(!a.close_pending));
+    assert!(
+        cx.windows().is_empty(),
+        "the vetoed close must complete once the flush write lands"
     );
 }

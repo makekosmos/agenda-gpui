@@ -156,6 +156,9 @@ pub struct Agenda {
     /// Generation counter for the storage toast: each raised/dismissed error
     /// bumps it so a pending auto-hide timer can't clear a newer error.
     pub(crate) toast_seq: u64,
+    /// `prepare_close` vetoed a close because a write was (or had to be) in
+    /// flight; the next successful storage reply removes the window.
+    pub(crate) close_pending: bool,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
     // Seeded model state kept for Agenda parity; not rendered yet.
@@ -347,6 +350,7 @@ impl Agenda {
             storage_busy: false,
             storage_error: None,
             toast_seq: 0,
+            close_pending: false,
             todos: if demo { seed_todos() } else { vec![] },
             projects: if demo { seed_projects() } else { vec![] },
             areas: if demo { seed_areas() } else { vec![] },

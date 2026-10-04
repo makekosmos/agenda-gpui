@@ -89,6 +89,10 @@ impl Agenda {
     /// succeed; only a failed *load* (or a dead worker) keeps writes gated.
     pub(crate) fn on_storage_reply(&mut self, reply: Reply, cx: &mut Context<Self>) {
         self.storage_busy = false;
+        let succeeded = matches!(
+            &reply,
+            Reply::Loaded(Ok(_)) | Reply::Saved(_, Ok(())) | Reply::Project(Ok(_))
+        );
         match reply {
             Reply::Loaded(Ok(data)) => {
                 self.todos = data.todos;
@@ -144,6 +148,18 @@ impl Agenda {
             },
         }
         self.model_rev += 1;
+        if self.close_pending {
+            // A close was vetoed while this round-trip was in flight. It can
+            // complete now that the reply landed — unless it failed, in which
+            // case the toast explains why the write did not go through and
+            // the user decides whether to retry or close anyway.
+            self.close_pending = false;
+            if succeeded {
+                for w in cx.windows() {
+                    let _ = w.update(cx, |_, window, _| window.remove_window());
+                }
+            }
+        }
         cx.notify();
     }
 
