@@ -595,12 +595,10 @@ pub fn fmt_week_period(first: &str, last: &str) -> String {
 }
 
 /// iso "YYYY-MM-DDTHH:MM" → "HH:MM"
+/// `get` over a byte slice: a ≥16-byte stamp whose index 11 sits inside a
+/// multi-byte char degrades to "" instead of panicking.
 pub fn fmt_time(iso: &str) -> String {
-    if iso.len() >= 16 {
-        iso[11..16].to_string()
-    } else {
-        String::new()
-    }
+    iso.get(11..16).unwrap_or_default().to_string()
 }
 
 // ---------------------------------------------------------------------------

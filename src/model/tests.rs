@@ -259,3 +259,13 @@ fn logbook_sorts_completed_instants_not_strings() {
     assert_eq!(got, [1, 0], "filter_idx must order Logbook by instant");
 }
 
+#[test]
+fn fmt_time_survives_non_ascii_stamp() {
+    // `iso[11..16]` panics when byte 11 sits inside a multi-byte char, even
+    // though the length check passed. A malformed stamp must degrade to "".
+    assert_eq!(fmt_time("2026-10-04T10:30"), "10:30");
+    assert_eq!(fmt_time("2026-10-04"), "");
+    // 10 ASCII bytes + 'Я' (2 UTF-8 bytes) + tail: total 18 bytes ≥ 16, but
+    // index 11 is mid-char.
+    assert_eq!(fmt_time("2026-10-04Я9:00:00"), "");
+}
