@@ -280,6 +280,17 @@ pub fn is_archived(t: &Todo, today: &str) -> bool {
     }
 }
 
+/// Ordering key for RFC 3339 instants. Raw strings do not sort correctly when
+/// offsets differ ("+03:00" compares above "Z" although it marks an earlier
+/// instant), so Logbook/Trash order by the parsed instant; unparseable values
+/// sink to the bottom.
+fn instant_key(value: Option<&str>) -> i64 {
+    value
+        .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+        .map(|d| d.timestamp_micros())
+        .unwrap_or(i64::MIN)
+}
+
 pub fn overdue_todos(todos: &[Todo], today: &str) -> Vec<Todo> {
     let mut v: Vec<Todo> = todos
         .iter()
@@ -355,11 +366,11 @@ pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
             v.sort_by_cached_key(|&i| task_date(&todos[i]).0.unwrap_or_else(|| "\u{ffff}".into()))
         }
         SmartList::Logbook => v.sort_by_cached_key(|&i| {
-            std::cmp::Reverse(todos[i].completed_at.clone().unwrap_or_default())
+            std::cmp::Reverse(instant_key(todos[i].completed_at.as_deref()))
         }),
-        SmartList::Trash => {
-            v.sort_by_cached_key(|&i| std::cmp::Reverse(todos[i].created_at.clone()))
-        }
+        SmartList::Trash => v.sort_by_cached_key(|&i| {
+            std::cmp::Reverse(instant_key(Some(todos[i].created_at.as_str())))
+        }),
         _ => v.sort_by_key(|&i| todos[i].sort_order),
     }
     v
@@ -428,11 +439,11 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
             da.cmp(&db)
         }
         SmartList::Logbook => {
-            let da = a.completed_at.clone().unwrap_or_default();
-            let db = b.completed_at.clone().unwrap_or_default();
-            db.cmp(&da)
+            instant_key(b.completed_at.as_deref()).cmp(&instant_key(a.completed_at.as_deref()))
         }
-        SmartList::Trash => b.created_at.cmp(&a.created_at),
+        SmartList::Trash => {
+            instant_key(Some(b.created_at.as_str())).cmp(&instant_key(Some(a.created_at.as_str())))
+        }
         _ => a.sort_order.cmp(&b.sort_order),
     });
     v
