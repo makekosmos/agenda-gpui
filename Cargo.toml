@@ -38,13 +38,16 @@ windows = { version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
-# Dev builds: keep debug info but optimize — unoptimized taffy/cosmic-text/
-# gpui (and our own render path) make even modest UIs run at ~20fps.
+# Dev builds: own code compiles fast (opt-level 1, line-table debuginfo);
+# dependencies stay fully optimized without debuginfo — unoptimized
+# taffy/cosmic-text/gpui makes even modest UIs run at ~20fps (KOS-328).
 [profile.dev]
-opt-level = 3
+opt-level = 1
+debug = "line-tables-only"
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 debug-assertions = false
 overflow-checks = false
 
@@ -66,11 +69,14 @@ opt-level = 0
 [target.'cfg(target_os = "windows")'.build-dependencies]
 embed-resource = "3.0"
 
+
 [patch.crates-io]
-# Local patches carried over from vendor/gpui-0.2.2-patched: WM_NCHITTEST
-# resolves window-control hitboxes at the cursor position carried by the
-# message instead of the one-event-stale Window::mouse_hit_test. See
-# vendor/gpui-pre-windows-0.3.5-patched/PATCH.md.
-gpui-pre = { path = "vendor/gpui-pre-0.3.5-patched" }
-gpui-pre-windows = { path = "vendor/gpui-pre-windows-0.3.5-patched" }
+# One patched gpui revision shared by all three GPUI apps (KOS-328): the
+# local patches (WM_NCHITTEST hit-testing, frame instrumentation, a11y
+# TestWindow, manifest no-op) live in imago at crates/gpui-pre{,-windows}.
+# See crates/gpui-pre/PATCH.md in that rev. Same imago rev as the
+# imago-gpui / mundus-gpui-kit deps is not required — this pin follows the
+# gpui patch, not the kit.
+gpui-pre = { git = "https://github.com/makekosmos/imago.git", rev = "ebae2b15faac87917ff55622a4912c797c27f551" }
+gpui-pre-windows = { git = "https://github.com/makekosmos/imago.git", rev = "ebae2b15faac87917ff55622a4912c797c27f551" }
 
