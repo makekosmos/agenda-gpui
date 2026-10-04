@@ -243,7 +243,19 @@ pub fn write_at(
         ("completed_at", "completedAt"),
     ] {
         if changed(local) {
-            props[canonical] = next[local].clone();
+            let value = next[local].clone();
+            // These canonical fields are `date-time` instants: a bare day or
+            // other non-instant string copied verbatim fails Engine
+            // validation and rejects the whole upsert. Keep the stored
+            // canonical value then; the local value still lands in
+            // `extensions` via the loop above.
+            if value.is_null()
+                || value
+                    .as_str()
+                    .is_some_and(|s| chrono::DateTime::parse_from_rfc3339(s).is_ok())
+            {
+                props[canonical] = value;
+            }
         }
     }
     // Existing checklist IDs/titles and recurrence end conditions belong to Engine.
