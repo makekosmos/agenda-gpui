@@ -1,5 +1,4 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
-mod error;
 pub mod mapping;
 #[cfg(test)]
 mod payload_fixtures;
@@ -10,7 +9,7 @@ mod transport;
 mod transport_tests;
 
 use crate::model::{Area, Heading, Project, Tag, Todo};
-pub use error::{EngineError, ErrorKind};
+pub use mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
 use std::sync::mpsc::{self, Receiver, Sender};
 pub use transport::Engine;

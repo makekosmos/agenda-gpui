@@ -250,9 +250,9 @@ fn engine_error_codes_map_to_kinds() {
         ("conflict", ErrorKind::Conflict),
         ("not-found", ErrorKind::NotFound),
         ("timeout", ErrorKind::Timeout),
-        ("Engine RPC timed out", ErrorKind::Timeout),
+        ("Engine RPC timed out", ErrorKind::Unknown),
         ("unavailable", ErrorKind::Unavailable),
-        ("some future engine error", ErrorKind::Unavailable),
+        ("some future engine error", ErrorKind::Unknown),
     ] {
         assert_eq!(ErrorKind::from_engine_code(raw), kind, "{raw}");
     }
@@ -266,6 +266,8 @@ fn engine_error_codes_map_to_kinds() {
         ErrorKind::NotFound,
         ErrorKind::Timeout,
         ErrorKind::Unavailable,
+        ErrorKind::Malformed,
+        ErrorKind::Unknown,
     ] {
         let e = EngineError {
             kind,

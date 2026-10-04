@@ -1,4 +1,4 @@
-use super::error::{EngineError, ErrorKind};
+use super::{EngineError, ErrorKind};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::{path::PathBuf, time::Duration};
