@@ -49,6 +49,33 @@ fn date_only_interprets_offset_stamps_in_local_time() {
     );
 }
 
+/// The day a stamp expresses is the day in the reader's zone — shared vectors
+/// with ark-core `canonical_types::normalize::tests`. Fixed offsets keep this
+/// deterministic on any machine.
+#[test]
+fn stamp_day_matches_the_engine_rule() {
+    use crate::model::stamp_day_in;
+    let at = |secs: i32| chrono::FixedOffset::east_opt(secs).unwrap();
+    let cases: &[(&str, i32, &str)] = &[
+        ("2026-05-15T21:00:00Z", 3 * 3600, "2026-05-16"),
+        ("2026-05-15T21:00:00Z", -5 * 3600, "2026-05-15"),
+        ("2026-05-15T23:30:00+03:00", 3 * 3600, "2026-05-15"),
+        ("2026-05-15T23:30:00+03:00", -5 * 3600, "2026-05-15"),
+        ("2026-05-16T00:30:00-05:00", -5 * 3600, "2026-05-16"),
+        ("2026-05-16T00:30:00-05:00", 14 * 3600, "2026-05-16"),
+    ];
+    for (stamp, secs, expected) in cases {
+        assert_eq!(
+            stamp_day_in(stamp, at(*secs)).as_deref(),
+            Some(*expected),
+            "{stamp} at offset {secs}"
+        );
+    }
+    for bad in ["soon", "2026-13-40", "2026-05-15T25:00:00Z"] {
+        assert!(stamp_day_in(bad, at(0)).is_none(), "{bad}");
+    }
+}
+
 #[test]
 fn quick_entry_through_time_units_stay_today() {
     // The model stores dates only, so "через N часов/минут" must land on

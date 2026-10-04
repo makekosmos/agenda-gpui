@@ -6,3 +6,7 @@ snapshots/** text eol=lf
 # Binary payloads must never be EOL-normalized.
 *.png binary
 *.ico binary
+
+# The Engine payload fixtures are a byte-exact contract compared against
+# mapping::write output and copied verbatim into cortex — pin LF.
+fixtures/**/*.json text eol=lf

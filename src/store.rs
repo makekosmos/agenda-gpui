@@ -2,7 +2,7 @@
 mod error;
 pub mod mapping;
 #[cfg(test)]
-mod schema_tests;
+mod payload_fixtures;
 #[cfg(test)]
 mod tests;
 mod transport;
