@@ -9,6 +9,9 @@ Window ""
   Button "Дом и быт" selected=false
   Button "Другое"
   Button "Параметры отображения"
+  Button "Свернуть"
+  Button "Развернуть"
+  Button "Закрыть"
   Button "Перечитать бриф по лендингу"
     CheckBox "Перечитать бриф по лендингу" toggled=False
   Button "Записаться к стоматологу"
