@@ -75,7 +75,7 @@ impl Agenda {
         true
     }
 
-    pub(super) fn accept_todo(&mut self, todo: Todo) {
+    pub(crate) fn accept_todo(&mut self, todo: Todo) {
         if let Some(stored) = self.todos.iter_mut().find(|t| t.id == todo.id) {
             *stored = todo;
         } else {

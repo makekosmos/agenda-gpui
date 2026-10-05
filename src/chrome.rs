@@ -202,6 +202,11 @@ impl Agenda {
                                     false,
                                     MenuAction::ArchiveProject(pid.clone()),
                                 ),
+                                (
+                                    "Удалить".into(),
+                                    true,
+                                    MenuAction::DeleteProject(pid.clone()),
+                                ),
                             ],
                         });
                     });

@@ -16,6 +16,7 @@ use crate::theme::*;
 use serde_json::Value;
 
 const HOVER_MS: f32 = 120.0;
+mod projects;
 pub(crate) mod storage;
 
 gpui::actions!(agenda_app, [ToggleSidebar]);
@@ -198,7 +199,6 @@ pub struct Agenda {
     /// (theme_idx, resolved dark) last pushed into gpui-component via
     /// `imago_gpui::theme::apply` — re-applies only on real changes.
     pub(crate) applied_palette: Option<(usize, bool, Option<u32>, f32, String)>,
-    pub(crate) delete_blocked: bool,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
     /// Persistent uniform-list scroll handles (keep last_item_size and
@@ -217,6 +217,11 @@ pub struct Agenda {
     /// Quick-entry/panel title — multi-line so long names wrap like a page
     /// heading; `submit_on_enter` keeps Enter = save.
     pub(crate) qe_title: Option<Entity<TextareaState>>,
+    /// Project page heading editor and the project it is seeded from.
+    pub(crate) project_title: Option<Entity<TextareaState>>,
+    pub(crate) project_title_for: Option<String>,
+    /// Focus and select the heading on the next project page render.
+    pub(crate) project_title_focus: bool,
     /// Task currently edited in the right panel — `None` = create mode.
     pub(crate) qe_task: Option<String>,
     pub(crate) input_task: Option<String>,
@@ -386,7 +391,6 @@ impl Agenda {
             applied_material: None,
             applied_theme_sel: None,
             applied_palette: None,
-            delete_blocked: false,
             scrolls: HashMap::new(),
             list_scrolls: HashMap::new(),
             row_cache: None,
@@ -395,6 +399,9 @@ impl Agenda {
 
             qe_notes: None,
             qe_title: None,
+            project_title: None,
+            project_title_for: None,
+            project_title_focus: false,
             qe_task: None,
             input_task: None,
             _subs: vec![],
@@ -1283,7 +1290,15 @@ impl Agenda {
             ("qs", InputEvent::Change) => {
                 self.quick_sel = 0;
             }
-            ("qe-title", InputEvent::PressEnter { .. }) => {
+            // Notes are multi-line: plain Enter is a newline there, Cmd+Enter
+            // submits from either field.
+            ("qe-title", InputEvent::PressEnter { .. })
+            | (
+                "qe-notes",
+                InputEvent::PressEnter {
+                    secondary: true, ..
+                },
+            ) => {
                 if self.qe_task.is_some() {
                     self.panel_persist(cx);
                 } else {
@@ -1339,6 +1354,7 @@ impl Agenda {
     /// and Enter would silently save a duplicate.
     pub(crate) fn reset_quick_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.qe_someday = false;
+        self.qe_week = false;
         self.qe_date = None;
         self.qe_date_touched = false;
         self.qe_project_touched = false;
@@ -1379,12 +1395,12 @@ impl Agenda {
             area_id: None,
         };
         if !self.demo {
-            self.send_storage(crate::store::Command::CreateProject(project.clone()));
+            self.send_storage(crate::store::Command::Project(project.clone()));
         }
         self.projects.push(project.clone());
         self.kanban_group_open = true;
         self.model_rev += 1;
-        self.navigate(Route::Project(project.id));
+        self.edit_project_title(project.id);
     }
 
     /// Quick-entry save: title/notes from inputs, date/project/billable/sig from state.
@@ -1420,7 +1436,8 @@ impl Agenda {
         } else {
             self.qe_project.clone().or(parsed_pid)
         };
-        let status = if scheduled.is_some() || project.is_some() {
+        // «Эта неделя» is a commitment too: an Inbox task never shows in Week.
+        let status = if scheduled.is_some() || project.is_some() || self.qe_week {
             Status::Todo
         } else {
             Status::Inbox
@@ -1690,11 +1707,8 @@ impl Agenda {
                     self.navigate(Route::Inbox);
                 }
             }
-            MenuAction::DeleteProject(_id) => {
-                // Vue: удаление проектов заблокировано (ARK resolvability).
-                self.delete_blocked = true;
-            }
-            MenuAction::RenameProject(id) => self.navigate(Route::Project(id)),
+            MenuAction::DeleteProject(id) => self.delete_project(&id),
+            MenuAction::RenameProject(id) => self.edit_project_title(id),
             MenuAction::SetProject(id, pid) => {
                 let p: Option<String> = pid.as_deref().and_then(|p| {
                     self.projects

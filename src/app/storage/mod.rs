@@ -91,7 +91,10 @@ impl Agenda {
         self.storage_busy = false;
         let succeeded = matches!(
             &reply,
-            Reply::Loaded(Ok(_)) | Reply::Saved(_, Ok(())) | Reply::Project(Ok(_))
+            Reply::Loaded(Ok(_))
+                | Reply::Saved(_, Ok(()))
+                | Reply::Project(Ok(_))
+                | Reply::ProjectDeleted(Ok(_))
         );
         match reply {
             Reply::Loaded(Ok(data)) => {
@@ -145,6 +148,30 @@ impl Agenda {
                     }
                 }
                 Err(error) => self.fail_write(error, cx),
+            },
+            Reply::ProjectDeleted(result) => match result {
+                Ok((id, moved)) => {
+                    self.projects.retain(|p| p.id != id);
+                    for todo in moved {
+                        self.accept_todo(todo);
+                    }
+                    if self
+                        .storage_error
+                        .as_ref()
+                        .is_some_and(|e| e.fault == StorageFault::Write)
+                    {
+                        self.storage_error = None;
+                    }
+                }
+                Err(error) => {
+                    // Some tasks may already have moved — resync from Engine.
+                    let conflict = error.kind == ErrorKind::Conflict;
+                    self.fail_write(error, cx);
+                    // A conflict already reloads inside `fail_write`.
+                    if !conflict {
+                        self.send_storage(Command::Load);
+                    }
+                }
             },
         }
         self.model_rev += 1;

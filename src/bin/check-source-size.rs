@@ -18,6 +18,7 @@ const SOURCE_EXTENSIONS: &[&str] = &[
 const IGNORED: &[&str] = &[
     ".agent",
     ".agents",
+    ".claude",
     ".dev",
     ".git",
     ".tmp",

@@ -4,6 +4,7 @@ pub mod mapping;
 mod mapping_tests;
 #[cfg(test)]
 mod payload_fixtures;
+mod projects;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -33,13 +34,19 @@ pub enum Command {
     Load,
     Save(Box<Mutation>),
     Project(Project),
-    CreateProject(Project),
+    /// Deletes the project after moving its tasks (`todos`, already edited)
+    /// back to Inbox — no task is left pointing at a deleted project.
+    DeleteProject {
+        project: Project,
+        todos: Vec<(Todo, Todo)>,
+    },
 }
 
 pub enum Reply {
     Loaded(Result<Snapshot, EngineError>),
     Saved(Box<Mutation>, Result<(), EngineError>),
     Project(Result<Project, EngineError>),
+    ProjectDeleted(Result<(String, Vec<Todo>), EngineError>),
 }
 
 pub struct Worker {
@@ -67,8 +74,8 @@ impl Worker {
                     Command::Project(project) => {
                         Reply::Project(engine.save_project(&project).map(|()| project))
                     }
-                    Command::CreateProject(project) => {
-                        Reply::Project(engine.create_project(&project).map(|()| project))
+                    Command::DeleteProject { project, todos } => {
+                        Reply::ProjectDeleted(engine.delete_project(&project, todos))
                     }
                 };
                 if results.send(reply).is_err() {
@@ -134,15 +141,27 @@ impl Engine {
             }
         }
         snapshot.todos.sort_by_key(|t| t.sort_order);
+        let (live, known) = self.projects()?;
+        snapshot.projects = live;
         let object = self.references()?;
         if object.is_null() {
+            snapshot.projects.sort_by_key(|p| p.sort_order);
             return Ok(snapshot);
         }
         let props = &object["propsJson"];
         if props["model_version"] != 1 {
             return Err(Self::mapping_err("unknown references model_version".into()));
         }
-        snapshot.projects = collection(props, "projects")?;
+        // Legacy references-only projects stay visible until their next save
+        // writes them as canonical objects.
+        for legacy in collection::<Project>(props, "projects")? {
+            // `known` includes soft-deleted canonical projects: their stale
+            // references entry must not bring them back.
+            if !known.contains(&legacy.id) {
+                snapshot.projects.push(legacy);
+            }
+        }
+        snapshot.projects.sort_by_key(|p| p.sort_order);
         snapshot.tags = collection(props, "tags")?;
         Ok(snapshot)
     }
@@ -193,40 +212,6 @@ impl Engine {
             });
         }
         Ok(())
-    }
-
-    fn create_project(&self, project: &Project) -> Result<(), EngineError> {
-        let mut object = self.references()?;
-        let projects = object["propsJson"]["projects"]
-            .as_array_mut()
-            .ok_or_else(|| Self::mapping_err("no projects in references".into()))?;
-        projects.push(json!({
-            "id": project.id,
-            "title": project.title,
-            "status": project.status,
-            "deadline": project.deadline,
-            "sortOrder": project.sort_order,
-            "areaId": project.area_id,
-        }));
-        object["updatedAt"] = json!(chrono::Utc::now().to_rfc3339());
-        self.upsert(object)
-    }
-
-    fn save_project(&self, project: &Project) -> Result<(), EngineError> {
-        let mut object = self.references()?;
-        let projects = object["propsJson"]["projects"]
-            .as_array_mut()
-            .ok_or_else(|| Self::mapping_err("no projects in references".into()))?;
-        let stored = projects
-            .iter_mut()
-            .find(|p| p["id"] == project.id)
-            .ok_or_else(|| EngineError {
-                kind: ErrorKind::NotFound,
-                detail: format!("project {} not in references", project.id),
-            })?;
-        stored["status"] = json!(project.status);
-        object["updatedAt"] = json!(chrono::Utc::now().to_rfc3339());
-        self.upsert(object)
     }
 }
 
