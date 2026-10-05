@@ -17,50 +17,6 @@ impl Agenda {
 
         let todo = self.todos.iter().find(|t| t.id == tid).cloned();
         match drop.kind {
-            DropKind::Status => {
-                let cur = todo.as_ref().map(task_status);
-                for (i, (s, l)) in [
-                    (Status::Inbox, "Входящие"),
-                    (Status::Todo, "Сделать"),
-                    (Status::Started, "В работе"),
-                    (Status::Deferred, "Потом"),
-                    (Status::Done, "Готово"),
-                    (Status::Canceled, "Отменено"),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        i,
-                        l,
-                        cur == Some(*s),
-                        MenuAction::SetStatus(tid.clone(), *s),
-                    ));
-                }
-            }
-            DropKind::Priority => {
-                let cur = todo.as_ref().map(|t| t.priority).unwrap_or(0);
-                for (i, (p, l)) in [
-                    (0u8, "Без приоритета"),
-                    (1, "Низкий"),
-                    (2, "Средний"),
-                    (3, "Высокий"),
-                ]
-                .iter()
-                .enumerate()
-                {
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        i,
-                        l,
-                        cur == *p,
-                        MenuAction::SetPriority(tid.clone(), *p),
-                    ));
-                }
-            }
             DropKind::Project => {
                 let cur = todo.as_ref().and_then(|t| t.project_id.as_deref());
                 rows.push(self.dd_row(
@@ -85,99 +41,81 @@ impl Agenda {
                     ));
                 }
             }
-            DropKind::Tags => {
-                let cur: Vec<String> = todo.as_ref().map(|t| t.tag_ids.clone()).unwrap_or_default();
-                for (i, tag) in self.tags.clone().iter().enumerate() {
-                    // Checked rows must uncheck: AddTag is a no-op on an
-                    // already-assigned tag, so the row was dead.
-                    let on = cur.contains(&tag.id);
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        i,
-                        &tag.title,
-                        on,
-                        if on {
-                            MenuAction::RemoveTag(tid.clone(), tag.id.to_string())
-                        } else {
-                            MenuAction::AddTag(tid.clone(), tag.id.to_string())
-                        },
-                    ));
-                }
-            }
-            DropKind::Significance => {
-                let cur = todo.as_ref().and_then(|t| t.significance);
+            DropKind::Date => {
+                // Dorofeev weeks — «эта неделя» is a flag, «следующая» is a
+                // real Monday so the task can surface in «Планы».
+                let today = today_key();
+                let next_mon = next_monday_key(&today);
+                let cur = todo.as_ref().and_then(|t| task_date(t).0);
+                let this_week = todo.as_ref().is_some_and(|t| t.is_today) && cur.is_none();
                 rows.push(self.dd_row(
                     window,
                     cx,
                     0,
-                    "Не оценено",
-                    cur.is_none(),
-                    MenuAction::SetSignificance(tid.clone(), None),
-                ));
-                for v in 1..=10u8 {
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        v as usize,
-                        &format!("{}/10", v),
-                        cur == Some(v),
-                        MenuAction::SetSignificance(tid.clone(), Some(v)),
-                    ));
-                }
-            }
-            DropKind::Billable => {
-                let cur = todo.as_ref().map(|t| t.billable).unwrap_or(false);
-                rows.push(self.dd_row(
-                    window,
-                    cx,
-                    0,
-                    "Без оплаты",
-                    !cur,
-                    MenuAction::SetBillable(tid.clone(), false),
+                    "Эта неделя",
+                    this_week,
+                    MenuAction::MoveToWeek(tid.clone()),
                 ));
                 rows.push(self.dd_row(
                     window,
                     cx,
                     1,
-                    "Оплачиваемая",
-                    cur,
-                    MenuAction::SetBillable(tid.clone(), true),
+                    "Следующая неделя",
+                    cur == next_mon,
+                    MenuAction::SetDate(tid.clone(), next_mon),
+                ));
+                rows.push(self.dd_row(
+                    window,
+                    cx,
+                    2,
+                    "Без даты",
+                    cur.is_none() && !this_week,
+                    MenuAction::SetDate(tid.clone(), None),
                 ));
             }
-            DropKind::Date | DropKind::QeDate => {
-                let today = today_key();
-                let tomorrow = day_key(1);
-                let week = day_key(7);
-                let cur = if drop.kind == DropKind::QeDate {
-                    // Quick entry has no owning todo — the draft date lives
-                    // on `qe_date`, otherwise «Без даты» stays checked even
-                    // after the user picks a day.
-                    self.qe_date.clone()
-                } else {
-                    todo.as_ref().and_then(|t| task_date(t).0)
-                };
-                let opts: [(Option<String>, &str); 4] = [
-                    (Some(today), "Сегодня"),
-                    (Some(tomorrow), "Завтра"),
-                    (Some(week), "Через неделю"),
-                    (None, "Без даты"),
-                ];
-                for (i, (d, l)) in opts.iter().enumerate() {
-                    let act = if drop.kind == DropKind::QeDate {
-                        MenuAction::QeSetDate(d.clone())
-                    } else {
-                        MenuAction::SetDate(tid.clone(), d.clone())
-                    };
-                    rows.push(self.dd_row(window, cx, i, l, cur == *d, act));
-                }
+            DropKind::QeDate => {
+                // Quick entry has no owning todo — the draft date lives on
+                // `qe_date`/`qe_someday`. «Потом» defers to the someday list,
+                // not a calendar date.
+                rows.push(self.dd_row(
+                    window,
+                    cx,
+                    0,
+                    "Эта неделя",
+                    self.qe_week,
+                    MenuAction::QeSetWeek,
+                ));
+                rows.push(self.dd_row(
+                    window,
+                    cx,
+                    1,
+                    "Следующая неделя",
+                    self.qe_date.is_some() && self.qe_date == next_monday_key(&today_key()),
+                    MenuAction::QeSetDate(next_monday_key(&today_key())),
+                ));
+                rows.push(self.dd_row(
+                    window,
+                    cx,
+                    2,
+                    "Потом",
+                    self.qe_someday,
+                    MenuAction::QeSetSomeday,
+                ));
+                rows.push(self.dd_row(
+                    window,
+                    cx,
+                    3,
+                    "Без даты",
+                    !self.qe_someday && !self.qe_week && self.qe_date.is_none(),
+                    MenuAction::QeSetDate(None),
+                ));
             }
             DropKind::QeProject => {
                 rows.push(self.dd_row(
                     window,
                     cx,
                     0,
-                    "Входящие",
+                    "Без проекта",
                     self.qe_project.is_none(),
                     MenuAction::QeSetProject(None),
                 ));
@@ -195,47 +133,22 @@ impl Agenda {
                     ));
                 }
             }
-            DropKind::RecurFreq => {
-                for (i, (v, l)) in [(0u8, "День"), (1, "Неделя"), (2, "Месяц"), (3, "Год")]
-                    .iter()
-                    .enumerate()
-                {
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        i,
-                        l,
-                        self.recur_freq == *v,
-                        MenuAction::RecurSetFreq(*v),
-                    ));
-                }
-            }
-            DropKind::RecurType => {
-                for (i, (v, l)) in [(0u8, "по расписанию"), (1u8, "после выполнения")]
-                    .iter()
-                    .enumerate()
-                {
-                    rows.push(self.dd_row(
-                        window,
-                        cx,
-                        i,
-                        l,
-                        self.recur_type == *v,
-                        MenuAction::RecurSetType(*v),
-                    ));
-                }
-            }
         }
 
         // `drop.x/y` are window coordinates captured from the chip's click
         // event; this overlay is mounted at the window root (app.rs), so the
-        // panel anchors exactly at the press point.
-        let x: f32 = drop.x;
-        let y: f32 = drop.y;
+        // panel anchors at the press point — unless that would spill it off
+        // the window, in which case it clamps back inside (the quick-entry
+        // chips now live in the right-docked panel, so a naive anchor would
+        // push the dropdown past the right edge).
+        let vw = f32::from(window.viewport_size().width);
+        let vh = f32::from(window.viewport_size().height);
+        let x = drop.x.min((vw - 168.0).max(8.0));
+        let y = (drop.y + 4.0).min((vh - 320.0 - 8.0).max(8.0));
         let panel = div()
             .absolute()
             .left(px(x))
-            .top(px(y + 4.))
+            .top(px(y))
             .min_w(px(160.))
             .max_h(px(320.))
             .id("dropdown-panel")

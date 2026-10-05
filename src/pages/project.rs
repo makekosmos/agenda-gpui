@@ -37,7 +37,12 @@ impl Agenda {
             .flex()
             .flex_col()
             .child(if rows.is_empty() {
-                empty_state().into_any_element()
+                empty_state(
+                    "icons/folder-open.svg",
+                    "Проект пуст",
+                    "Добавь задачу в этот проект",
+                )
+                .into_any_element()
             } else {
                 self.task_list(
                     "list-project".to_string(),

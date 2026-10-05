@@ -66,16 +66,6 @@ impl Agenda {
             )
             .child(
                 div()
-                    .w_4()
-                    .h_4()
-                    .flex_none()
-                    .grid()
-                    .items_center()
-                    .justify_center()
-                    .child(priority_bars(t.priority)),
-            )
-            .child(
-                div()
                     .flex_1()
                     .min_w_0()
                     .overflow_hidden()
@@ -85,9 +75,9 @@ impl Agenda {
                     .child(t.title.clone()),
             );
 
-        // hover actions: "На сегодня" (overdue) + status chips (not done);
-        // the container itself is skipped when empty — one less element/row.
-        if editable && !t.is_trashed && (overdue || !done) {
+        // Hover actions: "На неделю" on overdue rows; the status chip is
+        // gone — status lives in the side panel now.
+        if editable && !t.is_trashed && overdue {
             let mut actions = div()
                 .flex_none()
                 .flex()
@@ -96,16 +86,13 @@ impl Agenda {
                 .opacity(t_h);
             if overdue {
                 actions = actions.child(self.row_action(
-                    &format!("ra-today-{}", t.id),
-                    "На сегодня",
-                    MenuAction::MoveToToday(id.clone()),
+                    &format!("ra-week-{}", t.id),
+                    "На неделю",
+                    MenuAction::MoveToWeek(id.clone()),
                     t_h,
                     window,
                     cx,
                 ));
-            }
-            if !done {
-                actions = actions.child(self.row_status_chip(t, ix, status, window, cx));
             }
             row = row.child(actions);
         }
@@ -191,7 +178,7 @@ impl Agenda {
             let weak = weak.clone();
             let id = t.id.to_string();
             move |_: &ClickEvent, _, cx| {
-                let _ = weak.update(cx, |this, _| this.navigate(Route::Task(id.clone())));
+                let _ = weak.update(cx, |this, cx| this.open_task_panel(&id, cx));
             }
         })
         .on_mouse_down(MouseButton::Right, {

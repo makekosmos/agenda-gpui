@@ -24,11 +24,23 @@ pub const TITLEBAR_H: f32 = 40.0;
 /// Clear native macOS traffic lights, reclaiming their space in fullscreen
 /// just as Zeron's top-left control cluster does.
 fn toggle_left(is_macos: bool, fullscreen: bool) -> f32 {
+    // Zeron's titlebar_cluster_start: clear the native traffic lights.
     if is_macos && !fullscreen {
         88.0
     } else {
         12.0
     }
+}
+
+// Zeron: shell.rs titlebar_island_vertical_geometry/render_titlebar_cluster
+// and window_control_button. The 38px row's 4px top padding centers at y=21.
+const CLUSTER_CENTER_Y: f32 = (38.0 + 4.0) / 2.0;
+const CLUSTER_BUTTON_SIZE: f32 = 24.0;
+const CLUSTER_ICON_SIZE: f32 = 16.0;
+
+fn cluster_vertical_geometry(progress: f32) -> (f32, f32) {
+    let height = 28.0 + 4.0 * progress.clamp(0.0, 1.0);
+    (CLUSTER_CENTER_Y - height / 2.0, height)
 }
 
 fn drag_inset(window: &Window) -> f32 {
@@ -354,23 +366,16 @@ impl Agenda {
             ));
             rects.push(("nav-about".into(), SbRect { y, h: 32. }));
         } else {
-            let items: [(&str, &'static str, &str, Route); 6] = [
+            let items: [(&str, &'static str, &str, Route); 4] = [
                 ("inbox", "icons/inbox.svg", "Входящие", Route::Inbox),
-                ("today", "icons/calendar-01.svg", "Сегодня", Route::Today),
-                ("plans", "icons/calendar-02.svg", "Планы", Route::Plans),
+                ("week", "icons/calendar-01.svg", "Эта неделя", Route::Week),
                 (
-                    "calendar",
+                    "next-week",
                     "icons/calendar-02.svg",
-                    "Календарь",
-                    Route::Calendar,
+                    "Следующая неделя",
+                    Route::NextWeek,
                 ),
                 ("someday", "icons/clock-01.svg", "Потом", Route::Someday),
-                (
-                    "recurring",
-                    "icons/repeat.svg",
-                    "Повторяющиеся",
-                    Route::Recurring,
-                ),
             ];
             for (id, ic, label, route) in items {
                 let active = self.route == route;
@@ -446,12 +451,22 @@ impl Agenda {
                 )
                 .child(
                     div()
+                        .id("sb-projects-add")
+                        .debug_selector(|| "sb-projects-add".to_string())
                         .w(px(32.))
                         .h_full()
                         .grid()
                         .items_center()
                         .justify_center()
-                        .child(icon("icons/plus.svg", 16., rgba(FG(), head_alpha))),
+                        .child(icon("icons/plus.svg", 16., rgba(FG(), head_alpha)))
+                        .on_click({
+                            let weak = weak.clone();
+                            move |_: &ClickEvent, _, cx| {
+                                cx.stop_propagation();
+                                let _ = weak.update(cx, |this, _| this.create_project());
+                            }
+                        })
+                        .a11y_button("Новый проект"),
                 )
                 .on_hover({
                     let weak = weak.clone();
@@ -717,7 +732,11 @@ impl Agenda {
         let p = ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
         let closed_inset = drag_inset(window);
         let pl = closed_inset + (CONTENT_GRID_X - closed_inset) * p;
-        let (title, icon_path) = self.page_title();
+        let settings_like = matches!(
+            self.route,
+            Route::Settings | Route::SettingsFuel | Route::SettingsEnergy
+        );
+        let (title, title_icon) = self.page_title();
         #[allow(unused_mut)]
         let mut drag = div()
             .id("titlebar-drag")
@@ -728,18 +747,15 @@ impl Agenda {
             .items_center()
             .gap_1p5()
             .window_control_area(WindowControlArea::Drag)
-            .child(icon(icon_path, 18., rgba(FG(), 0.82)))
-            .child(
-                div()
-                    .text_size(crate::theme::text_px(13.))
-                    .line_height(crate::theme::text_px(15.))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(c(FG()))
-                    .whitespace_nowrap()
-                    .overflow_hidden()
-                    .text_ellipsis()
-                    .child(title),
-            );
+            .when(!settings_like, |el| {
+                el.child(icon(title_icon, 15., c(MUTED_FG()))).child(
+                    div()
+                        .text_size(crate::theme::text_px(13.))
+                        .font_weight(gpui::FontWeight::MEDIUM)
+                        .text_color(c(FG()))
+                        .child(title.clone()),
+                )
+            });
         #[cfg(target_os = "macos")]
         {
             drag = drag.on_double_click(|_, window, _| window.titlebar_double_click());
@@ -878,6 +894,29 @@ impl Agenda {
     /// Sidebar toggle button: floating overlay at the top-left, inside the
     /// titlebar strip. Drag hitboxes start beyond the toggle so it stays
     /// clickable; on macOS the inset clears traffic lights outside fullscreen.
+    /// Zeron-style top-left cluster: while the sidebar is closed the native
+    /// traffic lights and the sidebar trigger sit inside one rounded slab
+    /// (`render` layers this under the toggle). Fades out as the panel opens.
+    pub(crate) fn render_cluster_slab(&mut self, window: &Window) -> gpui::Div {
+        let hidden = 1.0 - ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
+        let (top, height) = cluster_vertical_geometry(hidden);
+        // Zeron's 6px island inset, 24px control, and 10px trailing row pad.
+        let w = toggle_left(cfg!(target_os = "macos"), window.is_fullscreen())
+            + CLUSTER_BUTTON_SIZE
+            + 10.0
+            - 6.0;
+        div()
+            .absolute()
+            .left(px(6.))
+            .top(px(top))
+            .w(px(w))
+            .h(px(height))
+            .rounded(px(BASE_RADIUS))
+            .bg(rgba(CARD(), hidden))
+            .border_1()
+            .border_color(rgba(FG(), 0.06 * hidden))
+    }
+
     pub(crate) fn render_sidebar_toggle(
         &mut self,
         window: &mut Window,
@@ -889,27 +928,26 @@ impl Agenda {
         div()
             .id("sb-toggle")
             .absolute()
-            .top_0()
+            .top(px(CLUSTER_CENTER_Y - CLUSTER_BUTTON_SIZE / 2.0))
             .left(px(toggle_left(
                 cfg!(target_os = "macos"),
                 window.is_fullscreen(),
             )))
-            .h(px(TITLEBAR_H))
+            .h(px(CLUSTER_BUTTON_SIZE))
             .flex()
             .items_center()
             .child(
                 div()
                     .id("sb-toggle-btn")
-                    .w_7()
-                    .h_7()
+                    .size(px(CLUSTER_BUTTON_SIZE))
                     .grid()
                     .items_center()
                     .justify_center()
-                    .rounded_md()
+                    .rounded(px(6.))
                     .hover(|s| s.bg(rgba(FG(), 0.08)))
                     .child(icon(
                         "icons/sidebar-left.svg",
-                        18.,
+                        CLUSTER_ICON_SIZE,
                         rgba(FG(), 0.6 + 0.4 * t),
                     ))
                     .on_hover({
@@ -921,10 +959,7 @@ impl Agenda {
                         }
                     })
                     .on_click(move |_: &ClickEvent, _, cx| {
-                        let _ = weak.update(cx, |this, _| {
-                            this.sidebar_target = if this.sidebar_target > 0.5 { 0.0 } else { 1.0 };
-                            this.sidebar_stamp = Instant::now();
-                        });
+                        let _ = weak.update(cx, |this, cx| this.toggle_sidebar(cx));
                     })
                     .a11y_switch("Боковая панель", open),
             )
@@ -951,7 +986,7 @@ impl Agenda {
                 .grid()
                 .items_center()
                 .justify_center()
-                .rounded_md()
+                .rounded(px(BASE_RADIUS))
                 .hover(|s| s.bg(rgba(FG(), 0.08)))
                 .when(open, |el| el.bg(rgba(FG(), 0.10)))
                 .child(icon(

@@ -91,7 +91,7 @@ impl Agenda {
             .flex()
             .flex_col()
             .child(if rows.is_empty() {
-                empty_state().into_any_element()
+                empty_state_for(SmartList::Logbook).into_any_element()
             } else {
                 self.task_list(
                     "list-logbook".to_string(),

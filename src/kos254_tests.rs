@@ -4,10 +4,9 @@
 use gpui::TestAppContext;
 use serde_json::json;
 
-use crate::app::Route;
 use crate::model::{filter_idx, is_deferred, task_status, SmartList, Status};
 use crate::store::mapping;
-use crate::ui_tests::{click, launch, redraw, route_of, type_text};
+use crate::ui_tests::{click, launch, redraw, type_text};
 
 /// «Входящие» is an explicit project choice, not "no choice": the
 /// `qe_project_touched` flag distinguishes the two, but `quick_entry_save`
@@ -50,31 +49,6 @@ fn quick_entry_inbox_choice_beats_mention(cx: &mut TestAppContext) {
 /// `navigate` never closed it: opening the editor on task A and routing to
 /// task B left the panel mounted on B's page with A's values — «Применить»
 /// would then write that draft into B.
-#[gpui::test]
-fn recurrence_editor_closes_when_leaving_task(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-    click(cx, "tr-dev-inbox-1");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
-
-    click(cx, "chip-tp-recur");
-    redraw(cx);
-    agenda.update(cx, |a, _| a.recur_freq = 3); // «Год», as picked in the editor
-    assert!(agenda.read_with(cx, |a, _| a.recur_open));
-
-    click(cx, "sb-inbox");
-    redraw(cx);
-    click(cx, "tr-dev-inbox-2");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-2".into()));
-    redraw(cx);
-
-    agenda.read_with(cx, |a, _| {
-        assert!(
-            !a.recur_open,
-            "editor stayed open with task A's draft on task B's page"
-        );
-    });
-}
-
 /// Completing a «Потом» task must remove it from the deferred list: the ring
 /// path (`complete_todo`) left `is_someday` set, so `is_deferred` stayed true
 /// and the done task kept a row in «Потом» forever — right next to its

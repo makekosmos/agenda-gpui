@@ -7,40 +7,19 @@
 use gpui::TestAppContext;
 
 use crate::app::Route;
-use crate::model::{date_only, today_key};
-use crate::ui_tests::{click, launch, redraw, route_of};
+use crate::model::date_only;
+use crate::ui_tests::{click, launch, redraw};
 
 /// The status chip on a task row did open its dropdown — but the click then
-/// bubbled into the row's own `on_click`, which navigates to the task page,
-/// and `navigate` clears `dropdown`. The menu was created and destroyed
-/// inside a single click, so the row-level status picker could never appear.
-#[gpui::test]
-fn row_status_chip_opens_dropdown(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-    click(cx, "ra-status-dev-inbox-1");
-    redraw(cx);
-    agenda.read_with(cx, |a, _| {
-        assert!(
-            matches!(a.route, Route::Inbox),
-            "status chip click navigated to {:?}",
-            a.route
-        );
-        assert!(
-            a.dropdown.is_some(),
-            "row navigation destroyed the status dropdown"
-        );
-    });
-}
-
-/// «На сегодня» reschedules the task — but the bubbled click also fired the
+/// «На неделю» moves the task into the week list — but the bubbled click also fired the
 /// row's `on_click` and teleported the user into the task page. A hover
 /// action must not change the route.
 #[gpui::test]
 fn row_action_does_not_navigate(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.navigate(Route::Today));
+    agenda.update(cx, |a, _| a.navigate(Route::Week));
     redraw(cx);
-    click(cx, "act-ra-today-dev-overdue-1");
+    click(cx, "act-ra-week-dev-overdue-1");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
         let t = a
@@ -50,11 +29,18 @@ fn row_action_does_not_navigate(cx: &mut TestAppContext) {
             .expect("dev-overdue-1 missing");
         assert_eq!(
             t.scheduled_date.as_deref(),
-            Some(today_key().as_str()),
-            "«На сегодня» must schedule the task for today"
+            None,
+            "«На неделю» clears the precise date"
         );
         assert!(
-            matches!(a.route, Route::Today),
+            a.todos
+                .iter()
+                .find(|t| t.id == "dev-overdue-1")
+                .is_some_and(|t| t.is_today),
+            "«На неделю» must flag the task for this week"
+        );
+        assert!(
+            matches!(a.route, Route::Week),
             "row action navigated to {:?}",
             a.route
         );
@@ -66,15 +52,17 @@ fn row_action_does_not_navigate(cx: &mut TestAppContext) {
 #[gpui::test]
 fn qe_date_clear_does_not_open_dropdown(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.navigate(Route::Today));
+    agenda.update(cx, |a, _| a.navigate(Route::Week));
     cx.simulate_keystrokes("ctrl-n");
     redraw(cx);
-    assert!(agenda.read_with(cx, |a, _| a.qe_date.is_some()));
+    // On the week route the draft seeds the «Неделя» flag, not a date.
+    assert!(agenda.read_with(cx, |a, _| a.qe_week));
 
     click(cx, "qe-date-clear");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
         assert_eq!(a.qe_date, None, "× must clear the draft date");
+        assert!(!a.qe_week, "× must clear the week flag");
         assert!(a.qe_date_touched);
         assert!(
             a.dropdown.is_none(),
@@ -88,12 +76,21 @@ fn qe_date_clear_does_not_open_dropdown(cx: &mut TestAppContext) {
 #[gpui::test]
 fn task_date_clear_does_not_reopen_dropdown(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.navigate(Route::Today));
+    agenda.update(cx, |a, _| a.navigate(Route::Week));
     redraw(cx);
     click(cx, "tr-dev-today-2");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-today-2".into()));
+    agenda.read_with(cx, |a, _| {
+        assert!(
+            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-today-2"),
+            "row click must open the task in the right panel"
+        );
+    });
 
-    click(cx, "tp-date-clear");
+    // Edit panel has no × on the date row — clear via the dropdown's
+    // «Без даты» row instead.
+    click(cx, "qe-date");
+    redraw(cx);
+    click(cx, "dd-2");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
         let t = a
@@ -105,33 +102,6 @@ fn task_date_clear_does_not_reopen_dropdown(cx: &mut TestAppContext) {
         assert!(
             a.dropdown.is_none(),
             "clearing the date must not reopen the picker"
-        );
-    });
-}
-
-/// The tags dropdown paints a check on assigned tags, but every row emitted
-/// `AddTag` — a no-op for checked rows — so a tag could never be removed
-/// from the dropdown. Clicking a checked row must uncheck it.
-#[gpui::test]
-fn tags_dropdown_unchecks_assigned_tag(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.navigate(Route::Today));
-    redraw(cx);
-    click(cx, "tr-dev-today-1");
-    click(cx, "chip-tp-tags");
-    redraw(cx);
-    click(cx, "dd-0"); // «Срочно» — assigned to dev-today-1
-    redraw(cx);
-    agenda.read_with(cx, |a, _| {
-        let t = a
-            .todos
-            .iter()
-            .find(|t| t.id == "dev-today-1")
-            .expect("dev-today-1 missing");
-        assert_eq!(
-            t.tag_ids,
-            vec!["dev-tag-focus".to_string()],
-            "clicking a checked tag row must remove the tag"
         );
     });
 }

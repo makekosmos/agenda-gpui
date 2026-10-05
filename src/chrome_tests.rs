@@ -1,4 +1,4 @@
-use super::toggle_left;
+use super::{cluster_vertical_geometry, toggle_left, CLUSTER_BUTTON_SIZE, CLUSTER_ICON_SIZE};
 use crate::ui_tests::{click, launch, redraw};
 use gpui::TestAppContext;
 
@@ -8,6 +8,17 @@ fn macos_toggle_clears_traffic_lights_and_reclaims_fullscreen_space() {
     assert_eq!(toggle_left(true, true), 12.0);
     assert_eq!(toggle_left(false, false), 12.0);
     assert_eq!(toggle_left(false, true), 12.0);
+}
+
+#[test]
+fn cluster_matches_zeron_geometry() {
+    assert_eq!(CLUSTER_BUTTON_SIZE, 24.0);
+    assert_eq!(CLUSTER_ICON_SIZE, 16.0);
+    for step in 0..=20 {
+        let (top, height) = cluster_vertical_geometry(step as f32 / 20.0);
+        assert_eq!(top + height / 2.0, 21.0);
+    }
+    assert_eq!(cluster_vertical_geometry(1.0), (5.0, 32.0));
 }
 
 #[gpui::test]

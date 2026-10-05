@@ -9,23 +9,24 @@ use gpui::{
 use gpui_component::input::{InputState, TextareaState};
 
 use crate::appearance::{
-    LocalAppearance, LocalWriter, Poller as AppearancePoller, Response as AppearanceResponse,
+    Poller as AppearancePoller, Response as AppearanceResponse, Writer as AppearanceWriter,
 };
 use crate::model::*;
 use crate::theme::*;
+use serde_json::Value;
 
 const HOVER_MS: f32 = 120.0;
 pub(crate) mod storage;
 
+gpui::actions!(agenda_app, [ToggleSidebar]);
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
     Inbox,
-    Today,
-    Plans,
-    Calendar,
+    Week,
+    NextWeek,
     Someday,
     Statistics,
-    Recurring,
     Logbook,
     Trash,
     Settings,
@@ -34,7 +35,6 @@ pub enum Route {
     Dev,
     About,
     Project(String),
-    Task(String),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -74,21 +74,16 @@ pub enum MenuAction {
     ArchiveProject(String),
     DeleteProject(String),
     RenameProject(String),
-    SetStatus(String, Status),
-    SetPriority(String, u8),
     SetProject(String, Option<String>),
-    AddTag(String, String),
-    SetSignificance(String, Option<u8>),
-    SetBillable(String, bool),
     SetDate(String, Option<String>),
     RestoreTodo(String),
-    MoveToToday(String),
+    MoveToWeek(String),
     CompleteTodo(String),
-    RemoveTag(String, String),
     QeSetProject(Option<String>),
     QeSetDate(Option<String>),
-    RecurSetFreq(u8),
-    RecurSetType(u8),
+    QeSetSomeday,
+    QeSetWeek,
+
     Noop,
 }
 
@@ -119,17 +114,10 @@ pub struct CtxMenu {
 
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum DropKind {
-    Status,
-    Priority,
     Project,
-    Tags,
-    Significance,
-    Billable,
     Date,
     QeProject,
     QeDate,
-    RecurFreq,
-    RecurType,
 }
 
 /// Open prop-dropdown panel state: kind + anchor point + owning todo.
@@ -139,12 +127,6 @@ pub(crate) struct DropState {
     pub x: f32,
     pub y: f32,
     pub todo_id: Option<String>,
-}
-
-#[derive(Clone, Copy, PartialEq)]
-pub(crate) enum CalMode {
-    Day,
-    Week,
 }
 
 pub struct Agenda {
@@ -167,7 +149,6 @@ pub struct Agenda {
     pub(crate) tags: Vec<Tag>,
     #[allow(dead_code)]
     pub(crate) headings: Vec<Heading>,
-    pub(crate) events: Vec<CalEvent>,
 
     pub(crate) route: Route,
     pub(crate) back_route: Route,
@@ -187,7 +168,16 @@ pub struct Agenda {
     pub(crate) sb_hover_id: Option<SharedString>,
     pub(crate) sb_highlight: SbHighlight,
     pub(crate) quick_entry_open: bool,
-    pub(crate) qe_billable: bool,
+    pub(crate) qe_someday: bool,
+    /// Quick-entry draft flagged «на этой неделе» (the week list flag).
+    pub(crate) qe_week: bool,
+    /// Quick-entry panel slide tween (from, to, started) — zeron-style:
+    /// reopening mid-flight tweens from the currently visible width.
+    pub(crate) qe_tween: Option<(f32, f32, Instant)>,
+    /// User-resizable quick-entry panel width.
+    pub(crate) qe_w: f32,
+    /// Left-edge resize drag: (mouse x at grab, width at grab).
+    pub(crate) qe_resizing: Option<(f32, f32)>,
     pub(crate) qe_project: Option<String>,
     pub(crate) qe_menu_open: bool,
     pub(crate) qe_date: Option<String>,
@@ -199,19 +189,13 @@ pub struct Agenda {
     pub(crate) more_menu_t: f32,
     pub(crate) more_menu_stamp: Instant,
 
-    pub(crate) recur_open: bool,
-    pub(crate) recur_freq: u8,
-    pub(crate) recur_interval: u32,
-    pub(crate) recur_type: u8,
-    pub(crate) recur_days: Vec<u8>,
-
     pub(crate) theme_sel: u8, // 0 light 1 dark 2 system
     pub(crate) theme_idx: usize,
     pub(crate) sb_material: u8, // 0 solid 1 acrylic 2 mica
     pub(crate) appearance: Option<AppearanceResponse>,
     pub(crate) appearance_poller: Option<AppearancePoller>,
-    pub(crate) local_appearance: Option<(u8, usize, u8)>,
-    pub(crate) local_writer: Option<LocalWriter>,
+    pub(crate) appearance_writer: Option<AppearanceWriter>,
+    pub(crate) appearance_editor: Entity<imago_gpui::appearance_editor::AppearanceEditor>,
     pub(crate) resolved_font: Option<(String, String)>,
     pub(crate) vsync_enabled: bool,
     pub(crate) applied_material: Option<u8>,
@@ -232,9 +216,14 @@ pub struct Agenda {
     /// signal (zero per-frame cost vs fingerprinting the model).
     pub(crate) model_rev: u64,
     pub(crate) inputs: HashMap<String, Entity<InputState>>,
-    /// Single-line keys live in `inputs`; the task notes field is multi-line,
-    /// which in gpui-base 0.6 is a distinct entity type (`TextareaState`).
-    pub(crate) notes_input: Option<Entity<TextareaState>>,
+
+    /// Quick-entry notes — a real multi-line area, Notion-page style.
+    pub(crate) qe_notes: Option<Entity<TextareaState>>,
+    /// Quick-entry/panel title — multi-line so long names wrap like a page
+    /// heading; `submit_on_enter` keeps Enter = save.
+    pub(crate) qe_title: Option<Entity<TextareaState>>,
+    /// Task currently edited in the right panel — `None` = create mode.
+    pub(crate) qe_task: Option<String>,
     pub(crate) input_task: Option<String>,
     pub(crate) _subs: Vec<Subscription>,
 
@@ -244,9 +233,6 @@ pub struct Agenda {
     pub(crate) quick_open: bool,
     pub(crate) quick_query: String,
     pub(crate) quick_sel: usize,
-
-    pub(crate) cal_mode: CalMode,
-    pub(crate) cal_anchor: String,
 
     /// Share-card overlay on the statistics page.
     pub(crate) share_open: bool,
@@ -296,6 +282,7 @@ pub struct Agenda {
     pub(crate) content_view: Entity<ContentView>,
 
     pub(crate) root_focus: FocusHandle,
+    pub(crate) about_diag_open: bool,
     pub(crate) focused_once: bool,
     pub(crate) qs_focused: bool,
     pub(crate) qe_focused: bool,
@@ -304,12 +291,10 @@ pub struct Agenda {
 /// Screenshot/QA hook: `AGENDA_ROUTE=<route>` selects the initial route.
 fn initial_route() -> Route {
     match std::env::var("AGENDA_ROUTE").ok().as_deref() {
-        Some("today") => Route::Today,
-        Some("plans") => Route::Plans,
-        Some("calendar") => Route::Calendar,
+        Some("week") => Route::Week,
+        Some("next-week") => Route::NextWeek,
         Some("someday") => Route::Someday,
         Some("statistics") => Route::Statistics,
-        Some("recurring") => Route::Recurring,
         Some("logbook") => Route::Logbook,
         Some("trash") => Route::Trash,
         Some("settings") => Route::Settings,
@@ -317,7 +302,6 @@ fn initial_route() -> Route {
         Some("settings-energy") => Route::SettingsEnergy,
         Some("dev") => Route::Dev,
         Some("about") => Route::About,
-        Some(r) if r.starts_with("task/") => Route::Task(r[5..].to_string()),
         Some(r) if r.starts_with("project/") => Route::Project(r[8..].to_string()),
         _ => Route::Inbox,
     }
@@ -325,6 +309,7 @@ fn initial_route() -> Route {
 
 impl Agenda {
     pub fn new(cx: &mut Context<Self>) -> Self {
+        cx.bind_keys([gpui::KeyBinding::new("cmd-b", ToggleSidebar, None)]);
         // `cfg!(test)`: test builds always take the in-memory demo store, so
         // `start_storage` early-returns and no Engine worker ever spawns.
         let demo = std::env::var("AGENDA_DEMO").as_deref() == Ok("1")
@@ -333,16 +318,6 @@ impl Agenda {
                 .and_then(|v| v.parse::<usize>().ok())
                 .is_some()
             || cfg!(test);
-        let local_path = if demo {
-            None
-        } else {
-            crate::appearance::local_path()
-        };
-        let (local_mode, local_theme, local_material) = local_path
-            .as_deref()
-            .and_then(LocalAppearance::load)
-            .map(|saved| saved.selection())
-            .unwrap_or((1, 0, 0));
         let mut this = Self {
             demo,
             storage: None,
@@ -356,12 +331,15 @@ impl Agenda {
             areas: if demo { seed_areas() } else { vec![] },
             tags: if demo { seed_tags() } else { vec![] },
             headings: if demo { seed_headings() } else { vec![] },
-            events: if demo { seed_events() } else { vec![] },
             route: initial_route(),
             back_route: Route::Inbox,
             sidebar_t: 1.0,
             sidebar_target: 1.0,
             sidebar_stamp: Instant::now(),
+            qe_tween: (std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quickentry"))
+                .then(|| (0.0_f32, 1.0_f32, Instant::now())),
+            qe_w: 340.0,
+            qe_resizing: None,
             hovers: HashMap::new(),
             options_open: false,
             more_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("more"),
@@ -382,7 +360,8 @@ impl Agenda {
                 tick_stamp: Instant::now(),
             },
             quick_entry_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quickentry"),
-            qe_billable: true,
+            qe_someday: false,
+            qe_week: false,
             qe_project: None,
             qe_menu_open: false,
             qe_date: None,
@@ -393,18 +372,22 @@ impl Agenda {
             group_open_stamp: Instant::now(),
             more_menu_t: 0.0,
             more_menu_stamp: Instant::now(),
-            recur_open: false,
-            recur_freq: 0,
-            recur_interval: 1,
-            recur_type: 0,
-            recur_days: vec![],
-            theme_sel: local_mode,
-            theme_idx: local_theme,
-            sb_material: local_material,
+            theme_sel: 1,
+            theme_idx: 0,
+            sb_material: 0,
             appearance: None,
             appearance_poller: None,
-            local_appearance: None,
-            local_writer: local_path.map(LocalWriter::start),
+            appearance_writer: None,
+            appearance_editor: {
+                let agenda = cx.weak_entity();
+                cx.new(|cx| {
+                    imago_gpui::appearance_editor::AppearanceEditor::new(cx, move |patch, cx| {
+                        let _ = agenda.update(cx, |app, cx| {
+                            app.persist_appearance_patch(patch, cx);
+                        });
+                    })
+                })
+            },
             resolved_font: None,
             vsync_enabled: std::env::var("AGENDA_VSYNC").as_deref() != Ok("0"),
             applied_material: None,
@@ -416,7 +399,10 @@ impl Agenda {
             row_cache: None,
             model_rev: 0,
             inputs: HashMap::new(),
-            notes_input: None,
+
+            qe_notes: None,
+            qe_title: None,
+            qe_task: None,
             input_task: None,
             _subs: vec![],
             boards: HashMap::new(),
@@ -433,8 +419,6 @@ impl Agenda {
             quick_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quicksearch"),
             quick_query: String::new(),
             quick_sel: 0,
-            cal_mode: CalMode::Week,
-            cal_anchor: today_key(),
             share_open: false,
             dev_grid: false,
             dev_fps: std::env::var("AGENDA_FPS").is_ok(),
@@ -474,6 +458,7 @@ impl Agenda {
                 cx.new(|cx| ContentView::new(agenda, cx))
             },
             root_focus: cx.focus_handle(),
+            about_diag_open: false,
             focused_once: false,
             qs_focused: false,
             qe_focused: false,
@@ -490,6 +475,9 @@ impl Agenda {
             this.todos
                 .extend(gen_random_todos(devtasks, 0x5eed_5eed, 1, first_sort));
             this.model_rev += 1;
+        }
+        if !demo {
+            this.appearance_writer = Some(AppearanceWriter::start());
         }
         this.start_storage(cx);
         this.start_appearance(cx);
@@ -515,9 +503,14 @@ impl Agenda {
                         last
                     });
                     if let Some(reply) = latest {
-                        if this.appearance.as_ref() != Some(&reply) {
-                            this.receive_appearance(reply);
-                            cx.notify();
+                        if let Ok(parsed) = AppearanceResponse::parse(&reply) {
+                            if this.appearance.as_ref() != Some(&parsed) {
+                                this.receive_appearance(parsed);
+                                this.appearance_editor.update(cx, |editor, _| {
+                                    editor.ingest(&reply);
+                                });
+                                cx.notify();
+                            }
                         }
                     }
                 })
@@ -529,37 +522,59 @@ impl Agenda {
         .detach();
     }
 
+    /// A scoped reply IS the effective style: while Engine follows apps it
+    /// carries the shared global settings, otherwise this app's own saved
+    /// overrides. Apply it unconditionally.
     fn receive_appearance(&mut self, response: AppearanceResponse) {
-        if response.settings.follow_apps {
-            if self.local_appearance.is_none() {
-                self.local_appearance = Some((self.theme_sel, self.theme_idx, self.sb_material));
-            }
-            self.theme_sel = match response.settings.mode {
-                crate::appearance::Mode::Light => 0,
-                crate::appearance::Mode::Dark => 1,
-                crate::appearance::Mode::System => 2,
-            };
-            self.sb_material = response.material();
-        } else if let Some((mode, theme, material)) = self.local_appearance.take() {
-            self.theme_sel = mode;
-            self.theme_idx = theme;
-            self.sb_material = material;
-        }
+        self.theme_sel = match response.settings.mode {
+            crate::appearance::Mode::Light => 0,
+            crate::appearance::Mode::Dark => 1,
+            crate::appearance::Mode::System => 2,
+        };
+        self.sb_material = response.material();
         self.appearance = Some(response);
     }
 
+    /// Engine follows apps: controls stay read-only and edits are rejected.
     pub(crate) fn inherited_appearance(&self) -> bool {
-        self.appearance
-            .as_ref()
-            .is_some_and(|r| r.settings.follow_apps)
+        self.appearance.as_ref().is_some_and(|r| r.policy.following)
     }
 
-    pub(crate) fn persist_local_appearance(&self) {
-        if !self.inherited_appearance() {
-            if let Some(writer) = &self.local_writer {
-                writer.save((self.theme_sel, self.theme_idx, self.sb_material));
+    /// Scoped writes are allowed once a reply arrived and Engine is not in
+    /// follow mode.
+    pub(crate) fn appearance_editable(&self) -> bool {
+        self.appearance.as_ref().is_some_and(|r| r.policy.editable)
+    }
+
+    /// Optimistically fold the patch into the held snapshot so the shell theme
+    /// tracks the edit, then forward it as a scoped `appearance.set`. The
+    /// shared editor mirrors the same optimistic value until the next poll.
+    pub(crate) fn persist_appearance_patch(&mut self, patch: Value, cx: &mut Context<Self>) {
+        if !self.appearance_editable() {
+            return;
+        }
+        if let Some(mut value) = self
+            .appearance
+            .as_ref()
+            .and_then(|r| serde_json::to_value(r).ok())
+        {
+            if let (Some(settings), Some(patch)) = (
+                value.get_mut("settings").and_then(Value::as_object_mut),
+                patch.as_object(),
+            ) {
+                for (key, item) in patch {
+                    settings.insert(key.clone(), item.clone());
+                }
+            }
+            if let Ok(next) = AppearanceResponse::parse(&value) {
+                self.receive_appearance(next);
             }
         }
+        if self.appearance_writer.is_none() {
+            self.appearance_writer = Some(AppearanceWriter::start());
+        }
+        self.appearance_writer.as_ref().unwrap().set(patch);
+        cx.notify();
     }
 
     // ------------------------------------------------------------------
@@ -708,6 +723,66 @@ impl Agenda {
         ease_emphasized(self.sidebar_t.clamp(0.0, 1.0))
     }
 
+    pub(crate) fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.sidebar_target = if self.sidebar_target > 0.5 { 0.0 } else { 1.0 };
+        self.sidebar_stamp = Instant::now();
+        cx.notify();
+    }
+
+    /// zeron RESIZE timing: 200ms, CSS ease-out cubic-bezier(0, 0, 0.58, 1).
+    const QE_PANEL_MS: f32 = 0.2;
+    fn ease_out_cubic(x: f32) -> f32 {
+        cubic_bezier(0.0, 0.0, 0.58, 1.0, x)
+    }
+
+    /// Current eased panel progress — pure, so toggling mid-flight can tween
+    /// the visible width back instead of snapping.
+    pub(crate) fn qe_now(&self) -> f32 {
+        let Some((from, to, started)) = self.qe_tween else {
+            return if self.quick_entry_open { 1.0 } else { 0.0 };
+        };
+        let raw = started.elapsed().as_secs_f32() / Self::QE_PANEL_MS;
+        if raw >= 1.0 {
+            return to;
+        }
+        from + (to - from) * Self::ease_out_cubic(raw)
+    }
+
+    /// Every open/close goes through here so a mid-flight toggle reverses
+    /// from the visible width (zeron's interruptible pane behavior).
+    pub(crate) fn set_quick_entry(&mut self, open: bool, cx: &gpui::App) {
+        if self.quick_entry_open == open {
+            return;
+        }
+        if !open {
+            self.panel_persist(cx);
+            self.qe_task = None;
+        }
+        let from = self.qe_now();
+        self.quick_entry_open = open;
+        self.qe_tween = Some((from, if open { 1.0 } else { 0.0 }, Instant::now()));
+    }
+
+    /// Quick-entry side panel: eased slide evaluated in render; while the
+    /// tween is mid-flight another frame is requested so it stays fluid.
+    pub(crate) fn qe_panel_progress(&mut self, window: &mut Window) -> f32 {
+        if cfg!(test) {
+            // Tests have no frame clock — land on the end state.
+            self.qe_tween = None;
+            return if self.quick_entry_open { 1.0 } else { 0.0 };
+        }
+        let Some((from, to, started)) = self.qe_tween else {
+            return if self.quick_entry_open { 1.0 } else { 0.0 };
+        };
+        let raw = started.elapsed().as_secs_f32() / Self::QE_PANEL_MS;
+        if raw >= 1.0 {
+            self.qe_tween = None;
+            return to;
+        }
+        window.request_animation_frame();
+        from + (to - from) * Self::ease_out_cubic(raw)
+    }
+
     /// Sidebar shell background for the selected material. "Solid" is the
     /// opaque theme color; acrylic gets a strong theme tint (native acrylic
     /// stays readable over the blurred desktop — the material shows as
@@ -790,7 +865,6 @@ impl Agenda {
             self.dropdown = None;
             // Task-scoped draft state must not leak across pages: the editor
             // is seeded from one task but applies to the page's current one.
-            self.recur_open = false;
             self.reset_hovers(None);
         }
     }
@@ -800,12 +874,12 @@ impl Agenda {
     }
 
     /// Board-options storage key for the current route, or `None` on pages
-    /// without display options (Trash, Calendar, Settings, task, ...).
+    /// without display options (Trash, Settings, task, ...).
     pub(crate) fn view_options_key(&self) -> Option<String> {
         match &self.route {
             Route::Inbox => Some("agenda.inbox.view".to_string()),
-            Route::Today => Some("agenda.today.view".to_string()),
-            Route::Plans => Some("agenda.plans.view".to_string()),
+            Route::Week => Some("agenda.week.view".to_string()),
+            Route::NextWeek => Some("agenda.next-week.view".to_string()),
             Route::Someday => Some("agenda.someday.view".to_string()),
             Route::Logbook => Some("agenda.logbook.view".to_string()),
             Route::Project(id) => Some(format!("agenda.project.{id}.view")),
@@ -828,12 +902,10 @@ impl Agenda {
     pub(crate) fn page_title(&self) -> (SharedString, &'static str) {
         match &self.route {
             Route::Inbox => ("Входящие".into(), "icons/inbox.svg"),
-            Route::Today => ("Сегодня".into(), "icons/calendar-01.svg"),
-            Route::Plans => ("Планы".into(), "icons/calendar-02.svg"),
-            Route::Calendar => ("Календарь".into(), "icons/calendar-02.svg"),
+            Route::Week => ("Эта неделя".into(), "icons/calendar-01.svg"),
+            Route::NextWeek => ("Следующая неделя".into(), "icons/calendar-02.svg"),
             Route::Someday => ("Потом".into(), "icons/clock-01.svg"),
             Route::Statistics => ("Статистика".into(), "icons/analytics-01.svg"),
-            Route::Recurring => ("Повторяющиеся".into(), "icons/repeat.svg"),
             Route::Logbook => ("Архив".into(), "icons/book-open.svg"),
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
             Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
@@ -847,13 +919,6 @@ impl Agenda {
                     .unwrap_or_else(|| "Проект".into())
                     .into(),
                 "icons/folder-open.svg",
-            ),
-            Route::Task(id) => (
-                self.todo(id)
-                    .map(|t| t.title.clone())
-                    .unwrap_or_else(|| "Задача".into())
-                    .into(),
-                "icons/task-01.svg",
             ),
         }
     }
@@ -894,6 +959,17 @@ impl Render for Agenda {
             self.root_focus.focus(window, cx);
         }
         let sidebar_p = self.sidebar_progress(window);
+        if (self.sidebar_t - self.sidebar_target).abs() > 0.0005 {
+            // Cached views must render throughout the transition, including
+            // when no input/caret/hover events are arriving.
+            cx.notify();
+        }
+        let qe_p = self.qe_panel_progress(window);
+        if self.qe_tween.is_some() {
+            // ContentView replays cached paint unless Agenda is dirty —
+            // notify each frame so the FAB fade-out follows the tween.
+            cx.notify();
+        }
 
         // Resolve theme mode ("system" follows the OS appearance) and material.
         let sys_dark = matches!(
@@ -905,23 +981,17 @@ impl Render for Agenda {
             2 => sys_dark,
             _ => true,
         };
-        if self.inherited_appearance() {
-            self.theme_idx = self.appearance.as_ref().unwrap().theme_index(dark);
+        if let Some(response) = self.appearance.clone() {
+            self.theme_idx = response.theme_index(dark);
         }
-        let accent = self
-            .appearance
-            .as_ref()
-            .filter(|r| r.settings.follow_apps)
-            .and_then(|r| r.accent());
+        let accent = self.appearance.as_ref().and_then(|r| r.accent());
         let font_size = self
             .appearance
             .as_ref()
-            .filter(|r| r.settings.follow_apps)
             .map_or(13.0, |r| r.settings.font_size);
         let requested_font = self
             .appearance
             .as_ref()
-            .filter(|r| r.settings.follow_apps)
             .map_or("Inter", |r| r.settings.font_family.as_str())
             .to_owned();
         if self.resolved_font.as_ref().map(|(requested, _)| requested) != Some(&requested_font) {
@@ -992,24 +1062,71 @@ impl Render for Agenda {
                     let _ = weak.update(cx, |this, cx| this.on_key(ev, window, cx));
                 }
             })
+            .on_action({
+                let weak = weak.clone();
+                move |_: &ToggleSidebar, _, cx| {
+                    let _ = weak.update(cx, |this, cx| this.toggle_sidebar(cx));
+                }
+            })
+            .on_mouse_move({
+                let weak = weak.clone();
+                move |ev: &gpui::MouseMoveEvent, _, cx| {
+                    let _ = weak.update(cx, |this, cx| {
+                        if let Some((grab_x, grab_w)) = this.qe_resizing {
+                            this.qe_w =
+                                (grab_w + (grab_x - f32::from(ev.position.x))).clamp(240.0, 640.0);
+                            cx.notify();
+                        }
+                    });
+                }
+            })
+            .on_mouse_up(gpui::MouseButton::Left, {
+                let weak = weak.clone();
+                move |_: &gpui::MouseUpEvent, _, cx| {
+                    let _ = weak.update(cx, |this, _| this.qe_resizing = None);
+                }
+            })
             // Cached subtree boundaries: each is laid out at a definite style,
             // and its contents render lazily — only when that view (or this
             // one, via `observe`) was notified. A scroll inside the page
             // replays the sidebar; a sidebar hover replays the page.
-            .child(
-                self.sidebar_view.clone().cached(
-                    gpui::StyleRefinement::default()
-                        .w(gpui::px(crate::chrome::SIDEBAR_W * sidebar_p))
-                        .h_full()
-                        .flex_none()
-                        .overflow_hidden(),
-                ),
-            )
-            .child(
+            // Cached paint does not replay AccessKit nodes in this GPUI
+            // revision. Rebuild these subtrees while an AX client is active.
+            .child(if window.is_a11y_active() {
+                div()
+                    .w(gpui::px(crate::chrome::SIDEBAR_W * sidebar_p))
+                    .h_full()
+                    .flex_none()
+                    .overflow_hidden()
+                    .child(self.sidebar_view.clone())
+                    .into_any_element()
+            } else {
+                self.sidebar_view
+                    .clone()
+                    .cached(
+                        gpui::StyleRefinement::default()
+                            .w(gpui::px(crate::chrome::SIDEBAR_W * sidebar_p))
+                            .h_full()
+                            .flex_none()
+                            .overflow_hidden(),
+                    )
+                    .into_any_element()
+            })
+            .child(if window.is_a11y_active() {
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .child(self.content_view.clone())
+                    .into_any_element()
+            } else {
                 self.content_view
                     .clone()
-                    .cached(gpui::StyleRefinement::default().flex_1().min_w_0().h_full()),
-            )
+                    .cached(gpui::StyleRefinement::default().flex_1().min_w_0().h_full())
+                    .into_any_element()
+            })
+            .when(qe_p > 0.0001, |d| d.child(self.qe_panel(qe_p, window, cx)))
+            .child(self.render_cluster_slab(window))
             .child(self.render_sidebar_toggle(window, cx));
 
         // overlays
@@ -1019,9 +1136,6 @@ impl Render for Agenda {
         }
         if self.more_open || self.more_menu_t > 0.001 {
             overlays.push(self.render_more_menu(window, cx).into_any_element());
-        }
-        if self.quick_entry_open {
-            overlays.push(self.render_quick_entry(window, cx).into_any_element());
         }
         if self.quick_open {
             overlays.push(self.render_quick_search(window, cx).into_any_element());
@@ -1111,13 +1225,8 @@ impl Agenda {
             }
             return;
         }
-        if ctrl && k.key == "b" {
-            self.sidebar_target = if self.sidebar_target > 0.5 { 0.0 } else { 1.0 };
-            self.sidebar_stamp = Instant::now();
-            return;
-        }
         if ctrl && k.key == "n" && !k.modifiers.shift && !k.modifiers.alt {
-            self.quick_entry_open = !self.quick_entry_open;
+            self.set_quick_entry(!self.quick_entry_open, cx);
             self.qe_menu_open = false;
             if self.quick_entry_open {
                 self.reset_quick_entry(window, cx);
@@ -1157,12 +1266,11 @@ impl Agenda {
             self.menu = None;
             self.dropdown = None;
             if self.quick_entry_open {
-                self.quick_entry_open = false;
+                self.set_quick_entry(false, cx);
                 self.qe_focused = false;
                 self.root_focus.focus(window, cx);
             }
             self.qe_menu_open = false;
-            self.recur_open = false;
         }
     }
 
@@ -1177,23 +1285,24 @@ impl Agenda {
         use gpui_component::input::InputEvent;
         match (key, ev) {
             ("qs", InputEvent::PressEnter { .. }) => {
-                self.quick_select_current();
+                self.quick_select_current(cx);
             }
             ("qs", InputEvent::Change) => {
                 self.quick_sel = 0;
             }
-            ("task-title", InputEvent::Blur) | ("task-title", InputEvent::PressEnter { .. }) => {
-                self.save_task_title(cx);
-            }
-            ("task-notes", InputEvent::Blur) => {
-                self.save_task_notes(cx);
-            }
             ("qe-title", InputEvent::PressEnter { .. }) => {
-                self.quick_entry_save(cx);
+                if self.qe_task.is_some() {
+                    self.panel_persist(cx);
+                } else {
+                    self.quick_entry_save(cx);
+                }
+            }
+            ("qe-title" | "qe-notes", InputEvent::Blur) => {
+                self.panel_persist(cx);
             }
             ("qe-title", InputEvent::Change) => {
                 // @упоминание проекта в заголовке (parseProjectMention parity)
-                if let Some(state) = self.inputs.get("qe-title") {
+                if let Some(state) = self.qe_title.as_ref() {
                     let raw = state.read(cx).value().to_string();
                     if self.qe_project.is_none() {
                         let (clean, pid) = parse_project_mention(&raw, &self.projects);
@@ -1206,14 +1315,19 @@ impl Agenda {
             }
             _ => {}
         }
+        // The text-field AX value and search results live in this view,
+        // outside the input entity's independently repainted subtree.
+        if matches!(ev, InputEvent::Change) {
+            cx.notify();
+        }
     }
 
-    fn quick_select_current(&mut self) {
+    fn quick_select_current(&mut self, cx: &mut Context<Self>) {
         let (todos, projects) = self.quick_matches();
         if let Some(t) = todos.get(self.quick_sel) {
             let id = t.id.to_string();
             self.quick_open = false;
-            self.navigate(Route::Task(id));
+            self.open_task_panel(&id, cx);
         } else if let Some(p) = projects.get(self.quick_sel.saturating_sub(todos.len())) {
             let id = p.id.to_string();
             self.quick_open = false;
@@ -1221,40 +1335,9 @@ impl Agenda {
         }
     }
 
-    fn save_task_title(&mut self, cx: &mut Context<Self>) {
-        let Some(tid) = self.current_task_id() else {
-            return;
-        };
-        let Some(state) = self.inputs.get("task-title") else {
-            return;
-        };
-        let title = state.read(cx).value().trim().to_string();
-        if title.is_empty() {
-            return;
-        }
-        self.update_todo(&tid, |t| t.title = title);
-        cx.notify();
-    }
-
-    fn save_task_notes(&mut self, cx: &mut Context<Self>) {
-        let Some(tid) = self.current_task_id() else {
-            return;
-        };
-        let Some(state) = &self.notes_input else {
-            return;
-        };
-        let notes = state.read(cx).value().trim().to_string();
-        self.update_todo(&tid, |t| {
-            t.notes = if notes.is_empty() { None } else { Some(notes) }
-        });
-        cx.notify();
-    }
-
+    /// The task open in the right panel — panel edits are the task page now.
     pub(crate) fn current_task_id(&self) -> Option<String> {
-        match &self.route {
-            Route::Task(id) => Some(id.clone()),
-            _ => None,
-        }
+        self.qe_task.clone()
     }
 
     /// Clear the quick-entry draft — chips and both text inputs. Every "open"
@@ -1262,7 +1345,7 @@ impl Agenda {
     /// opens, so leftover text or chip state would leak into the next draft
     /// and Enter would silently save a duplicate.
     pub(crate) fn reset_quick_entry(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        self.qe_billable = false;
+        self.qe_someday = false;
         self.qe_date = None;
         self.qe_date_touched = false;
         self.qe_project_touched = false;
@@ -1272,53 +1355,67 @@ impl Agenda {
             Route::Project(id) => Some(id.clone()),
             _ => None,
         };
-        for key in ["qe-title", "qe-notes"] {
-            if let Some(state) = self.inputs.get(key).cloned() {
-                state.update(cx, |s, cx| s.set_value("", window, cx));
-            }
+        self.qe_task = None;
+        if let Some(state) = self.qe_title.as_ref().cloned() {
+            state.update(cx, |s, cx| s.set_value("", window, cx));
+        }
+        if let Some(state) = self.qe_notes.as_ref().cloned() {
+            state.update(cx, |s, cx| s.set_value("", window, cx));
         }
     }
 
     /// Quick entry save: title/notes from inputs, date/project/billable/sig from state.
-    fn quick_entry_save(&mut self, cx: &mut Context<Self>) {
+    /// Sidebar "+" — create a project and open it. Optimistic local insert;
+    /// the Engine reply replaces it by id (demo mode stores it directly).
+    pub(crate) fn create_project(&mut self) {
+        if !self.can_save() {
+            return;
+        }
+        let project = Project {
+            id: uuid::Uuid::new_v4().to_string(),
+            title: "Новый проект".to_string(),
+            status: 0,
+            deadline: None,
+            sort_order: self
+                .projects
+                .iter()
+                .map(|p| p.sort_order)
+                .max()
+                .unwrap_or(0)
+                + 1,
+            area_id: None,
+        };
+        if !self.demo {
+            self.send_storage(crate::store::Command::CreateProject(project.clone()));
+        }
+        self.projects.push(project.clone());
+        self.kanban_group_open = true;
+        self.model_rev += 1;
+        self.navigate(Route::Project(project.id));
+    }
+
+    /// Quick-entry save: title/notes from inputs, date/project/billable/sig from state.
+    pub(crate) fn quick_entry_save(&mut self, cx: &mut Context<Self>) {
         if !self.can_save() {
             cx.notify();
             return;
         }
         let title = self
-            .inputs
-            .get("qe-title")
+            .qe_title
+            .as_ref()
             .map(|s| s.read(cx).value().to_string())
             .unwrap_or_default();
         let notes = self
-            .inputs
-            .get("qe-notes")
+            .qe_notes
+            .as_ref()
             .map(|s| s.read(cx).value().to_string())
             .unwrap_or_default();
         let title = title.trim().to_string();
         if title.is_empty() {
             return;
         }
-        let default_date = if self.route == Route::Today {
-            Some(today_key())
-        } else {
-            None
-        };
-        let uses_contextual =
-            !self.qe_date_touched && default_date.is_some() && self.qe_date == default_date;
-        let captured = parse_quick_entry_capture(
-            &title,
-            if uses_contextual {
-                None
-            } else {
-                self.qe_date.clone()
-            },
-        );
-        let scheduled = if uses_contextual && captured.1.is_none() {
-            default_date
-        } else {
-            captured.1
-        };
+        let captured = parse_quick_entry_capture(&title, self.qe_date.clone());
+        let scheduled = captured.1;
         // The @mention is markup regardless of how qe_project got set (chip,
         // route default, or this title) — it must always be stripped from the
         // saved title. Parsed project wins only when no chip was chosen —
@@ -1344,11 +1441,17 @@ impl Agenda {
         t.scheduled_date = scheduled;
         t.project_id = project;
         t.status = status;
-        t.billable = self.qe_billable;
+        t.billable = false;
         t.sort_order = self.todos.len() as i32;
         t.created_at = chrono::Utc::now().to_rfc3339();
+        t.is_today = self.qe_week;
+        if self.qe_someday {
+            t.status = Status::Deferred;
+            t.is_someday = true;
+            t.scheduled_date = None;
+        }
         if self.save_todo(None, t) {
-            self.quick_entry_open = false;
+            self.set_quick_entry(false, cx);
         }
     }
 
@@ -1375,24 +1478,89 @@ impl Agenda {
         st
     }
 
-    /// Lazily create the multi-line task notes state ("task-notes" key).
-    pub(crate) fn notes_state(
+    /// Open the right panel in EDIT mode for an existing task — same shell
+    /// as quick entry, but fields seed from and persist back to the todo.
+    /// `input_task` marks which task the panel inputs were seeded for —
+    /// `None` forces a reseed on the next render (task-page semantics).
+    pub(crate) fn open_task_panel(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.panel_persist(cx);
+        self.qe_task = Some(id.to_string());
+        self.input_task = None;
+        self.set_quick_entry(true, cx);
+    }
+
+    /// Write the panel's title/notes back into the edited task, if any.
+    pub(crate) fn panel_persist(&mut self, cx: &gpui::App) {
+        let Some(id) = self.qe_task.clone() else {
+            return;
+        };
+        let title = self
+            .qe_title
+            .as_ref()
+            .map(|s| s.read(cx).value().to_string())
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+        let notes = self
+            .qe_notes
+            .as_ref()
+            .map(|s| s.read(cx).value().to_string())
+            .unwrap_or_default();
+        let notes = if notes.trim().is_empty() {
+            None
+        } else {
+            Some(notes)
+        };
+        self.update_todo(&id, |t| {
+            if !title.is_empty() {
+                t.title = title.clone();
+            }
+            t.notes = notes.clone();
+        });
+    }
+
+    /// Quick-entry/panel title — wraps long names; Enter submits.
+    pub(crate) fn qe_title_state(
         &mut self,
         window: &mut Window,
         cx: &mut Context<Self>,
-        placeholder: impl Into<SharedString>,
     ) -> Entity<TextareaState> {
-        if let Some(s) = &self.notes_input {
+        if let Some(s) = &self.qe_title {
             return s.clone();
         }
-        let st = cx.new(|cx| TextareaState::new(window, cx).placeholder(placeholder));
+        let st = cx.new(|cx| {
+            TextareaState::new(window, cx)
+                .placeholder("Новая задача")
+                .auto_grow(1, 8)
+                .submit_on_enter(true)
+        });
         self._subs.push(cx.subscribe(
             &st,
             move |this, _s, ev: &gpui_component::input::InputEvent, cx| {
-                this.on_input_event("task-notes", ev, cx);
+                this.on_input_event("qe-title", ev, cx);
             },
         ));
-        self.notes_input = Some(st.clone());
+        self.qe_title = Some(st.clone());
+        st
+    }
+
+    /// The quick-entry notes area — persistent across opens until reset.
+    pub(crate) fn qe_notes_state(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Entity<TextareaState> {
+        if let Some(s) = &self.qe_notes {
+            return s.clone();
+        }
+        let st = cx.new(|cx| TextareaState::new(window, cx).placeholder("Заметки"));
+        self._subs.push(cx.subscribe(
+            &st,
+            move |this, _s, ev: &gpui_component::input::InputEvent, cx| {
+                this.on_input_event("qe-notes", ev, cx);
+            },
+        ));
+        self.qe_notes = Some(st.clone());
         st
     }
 
@@ -1486,12 +1654,13 @@ impl Agenda {
         self.save_todo(Some(before), todo);
     }
 
-    pub(crate) fn move_to_today(&mut self, id: &str) {
+    /// «На неделю» — into the week list, no precise date (Dorofeev week).
+    pub(crate) fn move_to_week(&mut self, id: &str) {
         self.update_todo(id, |t| {
             t.status = Status::Todo;
-            t.scheduled_date = Some(today_key());
+            t.scheduled_date = None;
             t.deadline = None;
-            t.is_today = false;
+            t.is_today = true;
             t.is_someday = false;
         });
     }
@@ -1507,6 +1676,16 @@ impl Agenda {
     }
 
     pub(crate) fn run_menu_action(&mut self, action: MenuAction) {
+        if matches!(
+            &action,
+            MenuAction::QeSetProject(_)
+                | MenuAction::QeSetDate(_)
+                | MenuAction::QeSetSomeday
+                | MenuAction::QeSetWeek
+        ) {
+            // Return to typing after choosing a task property.
+            self.qe_focused = false;
+        }
         match action {
             MenuAction::TrashTodo(id) => self.update_todo(&id, |t| t.is_trashed = true),
             MenuAction::RestoreProject(id) => {
@@ -1523,8 +1702,6 @@ impl Agenda {
                 self.delete_blocked = true;
             }
             MenuAction::RenameProject(id) => self.navigate(Route::Project(id)),
-            MenuAction::SetStatus(id, status) => self.set_todo_status(&id, status),
-            MenuAction::SetPriority(id, p) => self.update_todo(&id, |t| t.priority = p),
             MenuAction::SetProject(id, pid) => {
                 let p: Option<String> = pid.as_deref().and_then(|p| {
                     self.projects
@@ -1534,24 +1711,12 @@ impl Agenda {
                 });
                 self.move_to_project(&id, p);
             }
-            MenuAction::AddTag(id, tag) => {
-                let st = self.tags.iter().find(|t| t.id == tag).map(|t| t.id.clone());
-                if let Some(st) = st {
-                    self.update_todo(&id, |t| {
-                        if !t.tag_ids.contains(&st) {
-                            t.tag_ids.push(st);
-                        }
-                    });
-                }
-            }
-            MenuAction::SetSignificance(id, s) => self.update_todo(&id, |t| t.significance = s),
-            MenuAction::SetBillable(id, b) => self.update_todo(&id, |t| t.billable = b),
             MenuAction::SetDate(id, d) => self.update_todo(&id, |t| {
                 t.scheduled_date = d;
                 t.deadline = None;
             }),
             MenuAction::RestoreTodo(id) => self.update_todo(&id, |t| t.is_trashed = false),
-            MenuAction::MoveToToday(id) => self.move_to_today(&id),
+            MenuAction::MoveToWeek(id) => self.move_to_week(&id),
             MenuAction::CompleteTodo(id) => {
                 let done = self
                     .todo(&id)
@@ -1562,19 +1727,28 @@ impl Agenda {
                     self.complete_todo(&id);
                 }
             }
-            MenuAction::RemoveTag(id, tag) => self.update_todo(&id, |t| {
-                t.tag_ids.retain(|x| *x != tag.as_str());
-            }),
             MenuAction::QeSetProject(p) => {
                 self.qe_project = p;
                 self.qe_project_touched = true;
             }
             MenuAction::QeSetDate(d) => {
                 self.qe_date = d;
+                self.qe_someday = false;
+                self.qe_week = false;
                 self.qe_date_touched = true;
             }
-            MenuAction::RecurSetFreq(v) => self.recur_freq = v,
-            MenuAction::RecurSetType(v) => self.recur_type = v,
+            MenuAction::QeSetSomeday => {
+                self.qe_date = None;
+                self.qe_someday = true;
+                self.qe_week = false;
+                self.qe_date_touched = true;
+            }
+            MenuAction::QeSetWeek => {
+                self.qe_date = None;
+                self.qe_someday = false;
+                self.qe_week = true;
+                self.qe_date_touched = true;
+            }
             MenuAction::Noop => {}
         }
         // Covers arms that bypass update_todo (trash, project archive/restore).
@@ -1878,33 +2052,31 @@ mod appearance_tests {
     use serde_json::json;
 
     #[gpui::test]
-    fn follow_off_restores_local_mode_theme_and_material(cx: &mut TestAppContext) {
+    fn scoped_replies_apply_effective_style_and_policy(cx: &mut TestAppContext) {
         let (agenda, cx) = crate::ui_tests::launch(cx);
-        let path = std::env::temp_dir()
-            .join(format!("agenda-follow-local-{}", uuid::Uuid::new_v4()))
-            .join("appearance.json");
         agenda.update(cx, |a, _| {
             a.theme_sel = 0;
             a.theme_idx = 4;
             a.sb_material = 2;
-            a.local_writer = Some(LocalWriter::start(path.clone()));
-            a.persist_local_appearance();
-            let response = |follow| AppearanceResponse::parse(json!({
-                "settings":{"schema_version":1,"mode":"dark","light_theme":"default","dark_theme":"claude","accent_source":"custom","accent_color":"#123ABC","follow_apps":follow,"material":"frosted","font_family":"Inter","font_size":15,"revision":1},
-                "capabilities":{"materials":["default","frosted"],"wallpaper_accent":false},
-                "wallpaper_accent":null
-            })).unwrap();
-            a.receive_appearance(response(true));
+            let response = |following, editable| {
+                AppearanceResponse::parse(&json!({
+                    "settings":{"schema_version":1,"mode":"dark","light_theme":"default","dark_theme":"claude","accent_source":"custom","accent_color":"#123ABC","material":"frosted","font_family":"Inter","font_size":15,"revision":1},
+                    "policy":{"following":following,"editable":editable,"can_set_follow_apps":false},
+                    "capabilities":{"materials":["default","frosted"],"wallpaper_accent":false},
+                    "wallpaper_accent":null
+                }))
+                .unwrap()
+            };
+            a.receive_appearance(response(true, false));
             assert!(a.inherited_appearance());
+            assert!(!a.appearance_editable());
+            // The effective style applies in both modes; scoped replies never
+            // restore app-local files — Engine owns the per-app override.
             assert_eq!((a.theme_sel, a.sb_material), (1, 1));
-            assert_eq!(a.local_appearance, Some((0, 4, 2)));
-            a.receive_appearance(response(false));
+            a.receive_appearance(response(false, true));
             assert!(!a.inherited_appearance());
-            assert_eq!((a.theme_sel, a.theme_idx, a.sb_material), (0, 4, 2));
-            assert!(a.local_appearance.is_none());
-            drop(a.local_writer.take());
-            assert_eq!(LocalAppearance::load(&path).unwrap().selection(), (0, 4, 2));
+            assert!(a.appearance_editable());
+            assert_eq!((a.theme_sel, a.sb_material), (1, 1));
         });
-        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
     }
 }

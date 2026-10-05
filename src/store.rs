@@ -1,6 +1,8 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
 pub mod mapping;
 #[cfg(test)]
+mod mapping_tests;
+#[cfg(test)]
 mod payload_fixtures;
 #[cfg(test)]
 mod tests;
@@ -33,6 +35,7 @@ pub enum Command {
     Load,
     Save(Box<Mutation>),
     Project(Project),
+    CreateProject(Project),
 }
 
 pub enum Reply {
@@ -65,6 +68,9 @@ impl Worker {
                     }
                     Command::Project(project) => {
                         Reply::Project(engine.save_project(&project).map(|()| project))
+                    }
+                    Command::CreateProject(project) => {
+                        Reply::Project(engine.create_project(&project).map(|()| project))
                     }
                 };
                 if results.send(reply).is_err() {
@@ -191,6 +197,23 @@ impl Engine {
             });
         }
         Ok(())
+    }
+
+    fn create_project(&self, project: &Project) -> Result<(), EngineError> {
+        let mut object = self.references()?;
+        let projects = object["propsJson"]["projects"]
+            .as_array_mut()
+            .ok_or_else(|| Self::mapping_err("no projects in references".into()))?;
+        projects.push(json!({
+            "id": project.id,
+            "title": project.title,
+            "status": project.status,
+            "deadline": project.deadline,
+            "sortOrder": project.sort_order,
+            "areaId": project.area_id,
+        }));
+        object["updatedAt"] = json!(chrono::Utc::now().to_rfc3339());
+        self.upsert(object)
     }
 
     fn save_project(&self, project: &Project) -> Result<(), EngineError> {

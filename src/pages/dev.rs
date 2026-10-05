@@ -25,9 +25,10 @@ impl Agenda {
             .px_7()
             .pt_4()
             .gap_3()
+            .w_full()
             .max_w(px(720.))
-            .child(div().text_size(crate::theme::text_px(15.)).font_weight(gpui::FontWeight::SEMIBOLD)
-                .text_color(c(FG())).child("Энергосбережение"))
+            .mx_auto()
+            .child(settings::settings_heading("Энергосбережение"))
             .child(self.dev_row(
                 DevRow {
                     id: "vsync",
@@ -53,80 +54,27 @@ impl Agenda {
     fn dev_row(
         &mut self,
         row: DevRow,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
         on_click: impl Fn(&mut Agenda) + 'static,
     ) -> gpui::Stateful<gpui::Div> {
-        let hid = format!("dev-{}", row.id);
-        let t = self.hover_t(window, &hid);
-        let weak = cx.weak_entity();
-        let key = SharedString::from(hid.clone());
-        let on = row.on;
-        div()
-            .id(SharedString::from(format!("el-{hid}")))
-            .flex()
-            .items_center()
-            .justify_between()
-            .px_3()
-            .py_2()
-            .rounded_md()
-            .border_1()
-            .border_color(if on {
-                rgba(ACCENT(), 0.5)
-            } else {
-                rgba(FG(), 0.08 + 0.05 * t)
-            })
-            .bg(if on {
-                mix(ACCENT(), 0.08, BG())
-            } else {
-                fg_mix(0.02 + 0.02 * t)
-            })
+        let style = crate::theme::ui_style();
+        style
+            .row(row.title, row.desc)
+            .id(SharedString::from(format!("el-dev-{}", row.id)))
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .child(
-                        div()
-                            .text_size(crate::theme::text_px(13.))
-                            .text_color(c(FG()))
-                            .child(row.title),
+                imago_gpui::toggle::toggle(row.id, row.on, cx, move |this, _, _| on_click(this))
+                    .accessibility_label(row.title)
+                    .glass(
+                        self.sb_material != 0
+                            && cfg!(any(target_os = "macos", target_os = "windows")),
                     )
-                    .child(
-                        div()
-                            .text_size(crate::theme::text_px(11.))
-                            .text_color(c(MUTED_FG()))
-                            .child(row.desc),
-                    ),
+                    .colors(imago_gpui::toggle::ToggleColors {
+                        accent: style.accent,
+                        foreground: style.foreground,
+                        surface: style.surface,
+                    }),
             )
-            .child(
-                div()
-                    .w(px(36.))
-                    .h(px(20.))
-                    .rounded_full()
-                    .p(px(2.))
-                    .flex()
-                    .when(on, |d| d.justify_end())
-                    .bg(if on { c(ACCENT()) } else { fg_mix(0.16) })
-                    .child(div().size(px(16.)).rounded_full().bg(if on {
-                        c(ACCENT_FG())
-                    } else {
-                        rgba(FG(), 0.55)
-                    })),
-            )
-            .on_hover(move |hovered, _, cx| {
-                let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
-            })
-            .on_click({
-                let weak = cx.weak_entity();
-                move |_: &ClickEvent, _, cx| {
-                    let _ = weak.update(cx, |this, cx| {
-                        on_click(this);
-                        cx.notify();
-                    });
-                }
-            })
-            .a11y_switch(row.title, on)
     }
 
     pub(crate) fn dev_page(&mut self, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
@@ -150,7 +98,9 @@ impl Agenda {
             .px_7()
             .pt_4()
             .gap_3()
+            .w_full()
             .max_w(px(720.))
+            .mx_auto()
             .child(
                 div()
                     .text_size(crate::theme::text_px(15.))

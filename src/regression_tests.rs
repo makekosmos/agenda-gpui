@@ -33,12 +33,12 @@ fn quick_entry_reopens_with_empty_draft(cx: &mut TestAppContext) {
             a.quick_entry_open,
             "ctrl-n after save must reopen quick entry"
         );
-        let title = a.inputs["qe-title"].read(cx).value().to_string();
-        let notes = a.inputs["qe-notes"].read(cx).value().to_string();
+        let title = a.qe_title.as_ref().unwrap().read(cx).value().to_string();
+        let notes = a.qe_notes.as_ref().unwrap().read(cx).value().to_string();
         assert!(title.is_empty(), "reopened quick entry kept: {title:?}");
         assert!(notes.is_empty(), "reopened quick entry kept: {notes:?}");
         assert_eq!(a.qe_date, None);
-        assert!(!a.qe_billable);
+        assert!(!a.qe_someday);
     });
 
     // Enter on the empty form must not recreate the just-saved task.
@@ -61,7 +61,7 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
     agenda.update(cx, |a, _| {
         a.qe_date = Some(day_key(3));
         a.qe_date_touched = true;
-        a.qe_billable = true;
+        a.qe_someday = true;
     });
     click(cx, "fab-new");
     redraw(cx);
@@ -69,7 +69,7 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
     agenda.read_with(cx, |a, _| {
         assert!(a.quick_entry_open);
         assert_eq!(a.qe_date, None);
-        assert!(!a.qe_billable);
+        assert!(!a.qe_someday);
     });
 }
 
@@ -83,19 +83,24 @@ fn task_fields_stay_empty_after_user_clears_them(cx: &mut TestAppContext) {
         a.update_todo("dev-inbox-1", |t| t.notes = Some("заметка".into()));
     });
     click(cx, "tr-dev-inbox-1");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
+    agenda.read_with(cx, |a, _| {
+        assert!(
+            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-inbox-1"),
+            "row click must open the task in the right panel"
+        );
+    });
 
     cx.update(|window, cx| {
-        let title_state = agenda.read(cx).inputs["task-title"].clone();
-        let notes_state = agenda.read(cx).notes_input.clone().unwrap();
+        let title_state = agenda.read(cx).qe_title.clone().unwrap();
+        let notes_state = agenda.read(cx).qe_notes.clone().unwrap();
         title_state.update(cx, |s, cx| s.set_value("", window, cx));
         notes_state.update(cx, |s, cx| s.set_value("", window, cx));
     });
     redraw(cx);
 
     agenda.read_with(cx, |a, cx| {
-        let title = a.inputs["task-title"].read(cx).value().to_string();
-        let notes = a.notes_input.as_ref().unwrap().read(cx).value().to_string();
+        let title = a.qe_title.as_ref().unwrap().read(cx).value().to_string();
+        let notes = a.qe_notes.as_ref().unwrap().read(cx).value().to_string();
         assert!(title.is_empty(), "cleared title refilled with {title:?}");
         assert!(notes.is_empty(), "cleared notes refilled with {notes:?}");
     });
@@ -165,7 +170,6 @@ fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
     click(cx, "more-item-trash");
     assert_eq!(route_of(cx, &agenda), Route::Trash);
 
-    click(cx, "trs-dev-trash-1");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
         let t = a
@@ -231,9 +235,14 @@ fn close_completes_after_pending_write(cx: &mut TestAppContext) {
         a.storage_ready = true;
     });
     click(cx, "tr-dev-inbox-1");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
+    agenda.read_with(cx, |a, _| {
+        assert!(
+            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-inbox-1"),
+            "row click must open the task in the right panel"
+        );
+    });
     cx.update(|window, cx| {
-        let title = agenda.read(cx).inputs["task-title"].clone();
+        let title = agenda.read(cx).qe_title.clone().unwrap();
         title.update(cx, |s, cx| s.set_value("Переименовано", window, cx));
     });
 

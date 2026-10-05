@@ -9,6 +9,7 @@ mod model;
 mod pages;
 mod palettes;
 mod store;
+mod text_field;
 mod theme;
 #[cfg(test)]
 mod ui_tests;
@@ -16,6 +17,8 @@ mod widgets;
 
 #[cfg(test)]
 mod a11y_tests;
+#[cfg(test)]
+mod input_tests;
 #[cfg(test)]
 mod kos216_tests;
 #[cfg(test)]
@@ -28,6 +31,8 @@ mod kos254_tests;
 mod kos295_tests;
 #[cfg(test)]
 mod regression_tests;
+#[cfg(test)]
+mod settings_a11y_tests;
 
 use gpui::{px, size, App, AppContext, Bounds, SharedString, Styled, WindowBounds, WindowOptions};
 
@@ -72,7 +77,7 @@ fn main() {
                     title: Some(SharedString::from("Agenda")),
                     appears_transparent: true,
                     // macOS traffic-light buttons sit inside the sidebar top strip.
-                    traffic_light_position: Some(gpui::point(px(12.), px(14.))),
+                    traffic_light_position: Some(gpui::point(px(14.), px(14.))),
                 }),
                 ..Default::default()
             },
@@ -93,6 +98,7 @@ fn main() {
             },
         )
         .unwrap();
+        text_field::init_native_focus();
         if std::env::var("AGENDA_OFFSCREEN").is_err() {
             cx.activate(true);
         }

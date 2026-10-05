@@ -59,9 +59,9 @@ impl Agenda {
                         let weak = cx.weak_entity();
                         let tid = tid.clone();
                         move |_: &ClickEvent, _, cx| {
-                            let _ = weak.update(cx, |this, _| {
+                            let _ = weak.update(cx, |this, cx| {
                                 this.quick_open = false;
-                                this.navigate(Route::Task(tid.clone()));
+                                this.open_task_panel(&tid, cx);
                             });
                         }
                     })
@@ -185,14 +185,23 @@ impl Agenda {
                     .px_3p5()
                     .child(icon("icons/search.svg", 16., c(MUTED_FG())))
                     .child(
-                        Input::new(&qs)
-                            .accessibility_id("qs")
-                            .flex_1()
-                            .text_size(crate::theme::text_px(14.))
-                            .text_color(c(FG()))
-                            .appearance(false)
-                            .bordered(false)
-                            .h(px(24.)),
+                        crate::text_field::text_field(
+                            "qs",
+                            "Поиск задач и проектов",
+                            qs.clone(),
+                            cx,
+                        )
+                        .flex_1()
+                        .child(
+                            Input::new(&qs)
+                                .role(None)
+                                .w_full()
+                                .text_size(crate::theme::text_px(14.))
+                                .text_color(c(FG()))
+                                .appearance(false)
+                                .bordered(false)
+                                .h(px(24.)),
+                        ),
                     )
                     .child(
                         div()

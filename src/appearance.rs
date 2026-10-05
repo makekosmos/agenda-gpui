@@ -1,69 +1,21 @@
-//! Read-only consumer of Engine's shared appearance settings.
+//! Consumer of Engine's per-app appearance settings. All state lives in the
+//! Engine data dir — the app holds no local appearance file; `get`/`set` are
+//! scoped to `agenda-gpui` via `app_id`.
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
 use crate::store::Engine;
-mod local;
-pub use local::{path as local_path, LocalAppearance, LocalWriter};
 
-/// Resolve a requested family once when it changes. Engine may name a font
-/// installed on another machine; keep GPUI on an installed system fallback.
-pub fn resolve_font_family(requested: &str, cx: &mut gpui::App) -> String {
-    if requested == "Inter" {
-        return "Inter".into();
-    }
-    let text_system = cx.text_system();
-    let names = text_system.all_font_names();
-    if names.is_empty() {
-        return "Inter".into();
-    }
-    if !matches!(
-        requested.to_ascii_lowercase().as_str(),
-        "system" | ".systemuifont"
-    ) {
-        if let Some(name) = names
-            .iter()
-            .find(|name| name.eq_ignore_ascii_case(requested))
-        {
-            return name.clone();
-        }
-    }
-    let system = text_system
-        .get_font_for_id(text_system.resolve_font(&gpui::font(".SystemUIFont")))
-        .map(|font| font.family.to_string());
-    choose_font_family(requested, &names, system.as_deref())
-}
+pub const APP_ID: &str = "agenda-gpui";
 
-fn choose_font_family(requested: &str, installed: &[String], system: Option<&str>) -> String {
-    if !matches!(
-        requested.to_ascii_lowercase().as_str(),
-        "system" | ".systemuifont"
-    ) {
-        if let Some(name) = installed
-            .iter()
-            .find(|name| name.eq_ignore_ascii_case(requested))
-        {
-            return name.clone();
-        }
-    }
-    system
-        .and_then(|family| {
-            installed
-                .iter()
-                .find(|name| name.eq_ignore_ascii_case(family))
-        })
-        .or_else(|| {
-            installed
-                .iter()
-                .find(|name| name.eq_ignore_ascii_case("Inter"))
-        })
-        .cloned()
-        .unwrap_or_else(|| "Inter".into())
-}
+mod fonts;
+#[cfg(test)]
+use fonts::choose_font_family;
+pub use fonts::resolve_font_family;
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -73,7 +25,7 @@ pub enum Mode {
     Dark,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccentSource {
     Theme,
@@ -81,7 +33,7 @@ pub enum AccentSource {
     Wallpaper,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Material {
     Default,
@@ -91,7 +43,7 @@ pub enum Material {
     Mica,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Settings {
     pub schema_version: u32,
     pub mode: Mode,
@@ -100,6 +52,9 @@ pub struct Settings {
     pub accent_source: AccentSource,
     #[serde(default)]
     pub accent_color: Option<String>,
+    /// Only meaningful on the global (Manager) settings shape; scoped replies
+    /// omit it and the field stays `false`.
+    #[serde(default)]
     pub follow_apps: bool,
     pub material: Material,
     pub font_family: String,
@@ -108,22 +63,44 @@ pub struct Settings {
     pub revision: u64,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+/// Engine's write policy for this app. `following` mirrors the global
+/// `follow_apps` toggle: while it is on, `editable` is false and every scoped
+/// write is rejected (the app's saved style is left untouched until follow
+/// turns back off).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize, Serialize)]
+pub struct Policy {
+    #[serde(default)]
+    pub following: bool,
+    #[serde(default = "default_editable")]
+    pub editable: bool,
+    #[serde(default)]
+    pub can_set_follow_apps: bool,
+}
+
+fn default_editable() -> bool {
+    true
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 pub struct Response {
     pub settings: Settings,
+    #[serde(default)]
+    pub policy: Policy,
     pub capabilities: Capabilities,
     #[serde(default)]
     pub wallpaper_accent: Option<String>,
+    #[serde(default)]
+    pub wallpaper_error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
+pub struct Capabilities {
+    pub materials: Vec<Material>,
+    pub wallpaper_accent: bool,
 }
 
 fn default_font_size() -> f32 {
     13.0
-}
-
-#[derive(Clone, Debug, PartialEq, Deserialize)]
-pub struct Capabilities {
-    pub materials: Vec<Material>,
-    pub wallpaper_accent: bool,
 }
 
 fn hex_color(value: &str) -> Option<u32> {
@@ -134,8 +111,8 @@ fn hex_color(value: &str) -> Option<u32> {
 }
 
 impl Response {
-    pub fn parse(value: serde_json::Value) -> Result<Self, String> {
-        let response: Self = serde_json::from_value(value).map_err(|e| e.to_string())?;
+    pub fn parse(value: &serde_json::Value) -> Result<Self, String> {
+        let response: Self = serde_json::from_value(value.clone()).map_err(|e| e.to_string())?;
         let s = &response.settings;
         if s.schema_version != 1
             || !s.font_size.is_finite()
@@ -202,8 +179,10 @@ impl Response {
 }
 
 /// The poller owns the authenticated transport and never runs on the UI thread.
+/// Replies carry the raw scoped `appearance.get` payload so the shared editor
+/// can ingest it unchanged.
 pub struct Poller {
-    pub replies: Receiver<Response>,
+    pub replies: Receiver<Value>,
     stop: Arc<AtomicBool>,
 }
 
@@ -212,15 +191,15 @@ impl Poller {
         let engine = Engine::with_timeout(Duration::from_millis(700));
         Self::start_with(Duration::from_secs(2), move || {
             engine
-                .rpc("appearance.get", json!({}))
+                .rpc("appearance.get", json!({"app_id": APP_ID}))
                 .ok()
-                .and_then(|value| Response::parse(value).ok())
+                .filter(|value| Response::parse(value).is_ok())
         })
     }
 
     fn start_with(
         interval: Duration,
-        mut fetch: impl FnMut() -> Option<Response> + Send + 'static,
+        mut fetch: impl FnMut() -> Option<Value> + Send + 'static,
     ) -> Self {
         let (sender, replies) = mpsc::channel();
         let stop = Arc::new(AtomicBool::new(false));
@@ -240,6 +219,53 @@ impl Poller {
 }
 
 impl Drop for Poller {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Coalescing scoped `appearance.set` writer: rapid edits fold into one
+/// merged patch per flush, mirroring the old local writer's debounce. Replies
+/// are ignored — the poller refreshes the authoritative snapshot.
+pub struct Writer {
+    sender: Sender<Value>,
+    stop: Arc<AtomicBool>,
+}
+
+impl Writer {
+    pub fn start() -> Self {
+        let (sender, receiver) = mpsc::channel::<Value>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let thread_stop = stop.clone();
+        std::thread::spawn(move || {
+            let engine = Engine::with_timeout(Duration::from_millis(1500));
+            while !thread_stop.load(Ordering::Relaxed) {
+                let Ok(first) = receiver.recv_timeout(Duration::from_millis(250)) else {
+                    continue;
+                };
+                let mut merged = first.as_object().cloned().unwrap_or_default();
+                while let Ok(next) = receiver.try_recv() {
+                    if let Some(object) = next.as_object() {
+                        for (key, item) in object {
+                            merged.insert(key.clone(), item.clone());
+                        }
+                    }
+                }
+                let params = json!({"app_id": APP_ID, "patch": Value::Object(merged)});
+                if let Err(error) = engine.rpc("appearance.set", params) {
+                    eprintln!("[appearance] scoped set failed: {error:?}");
+                }
+            }
+        });
+        Self { sender, stop }
+    }
+
+    pub fn set(&self, patch: Value) {
+        let _ = self.sender.send(patch);
+    }
+}
+
+impl Drop for Writer {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
     }

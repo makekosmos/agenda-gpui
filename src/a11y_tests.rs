@@ -43,7 +43,7 @@ const INTERACTIVE_ROLES: &[&str] = &[
 /// Builds the same view tree as `main.rs` — Agenda inside AgendaShell inside
 /// `gpui_component::Root` — on the deterministic test platform. `AGENDA_DEMO`
 /// seeds the in-memory dataset so no Engine worker is spawned.
-fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
+pub(crate) fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
     std::env::set_var("AGENDA_DEMO", "1");
     std::env::remove_var("AGENDA_DEVTASKS");
     cx.update(gpui_component::init);
@@ -63,7 +63,7 @@ fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTestContext) {
 
 /// Draw a pending frame (product handlers don't always `notify`, so force a
 /// redraw), then read the accesskit tree captured at end of frame.
-fn a11y_tree(cx: &mut VisualTestContext) -> Value {
+pub(crate) fn a11y_tree(cx: &mut VisualTestContext) -> Value {
     cx.update(|_, cx| cx.refresh_windows());
     cx.run_until_parked();
     let json = cx
@@ -73,7 +73,7 @@ fn a11y_tree(cx: &mut VisualTestContext) -> Value {
 }
 
 /// `role` / `label` / state flags for each node, keyed by node id.
-fn nodes(tree: &Value) -> Vec<(String, Value)> {
+pub(crate) fn nodes(tree: &Value) -> Vec<(String, Value)> {
     tree["nodes"]
         .as_object()
         .expect("nodes object")
@@ -196,8 +196,8 @@ async fn a11y_tree_inbox_exposes_russian_names(cx: &mut TestAppContext) {
     // Sidebar navigation, window chrome and the FAB — stable Russian names.
     let mut expected_names = vec![
         "Входящие",
-        "Сегодня",
-        "Календарь",
+        "Эта неделя",
+        "Следующая неделя",
         "Проекты",
         "Другое",
         "Боковая панель",

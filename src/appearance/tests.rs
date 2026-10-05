@@ -4,7 +4,7 @@ fn sample() -> serde_json::Value {
 }
 #[test]
 fn parses_and_resolves_modes_accents_material() {
-    let r = Response::parse(sample()).unwrap();
+    let r = Response::parse(&sample()).unwrap();
     assert_eq!(r.theme_index(false), 0);
     assert_eq!(crate::palettes::THEMES[r.theme_index(true)].key, "claude");
     assert_eq!(r.accent(), Some(0x123abc));
@@ -34,7 +34,7 @@ fn omitted_optional_values_use_contract_defaults() {
     settings.remove("font_size");
     settings.remove("accent_color");
     value.as_object_mut().unwrap().remove("wallpaper_accent");
-    let parsed = Response::parse(value).unwrap();
+    let parsed = Response::parse(&value).unwrap();
     assert_eq!(parsed.settings.font_size, 13.0);
     assert_eq!(parsed.accent(), None);
 }
@@ -42,20 +42,20 @@ fn omitted_optional_values_use_contract_defaults() {
 fn rejects_invalid_contract_and_falls_back_for_missing_wallpaper_accent() {
     let mut v = sample();
     v["settings"]["font_size"] = json!(19);
-    assert!(Response::parse(v).is_err());
+    assert!(Response::parse(&v).is_err());
     let mut v = sample();
     v["settings"]["font_size"] = json!(12.5);
-    assert_eq!(Response::parse(v).unwrap().settings.font_size, 12.5);
+    assert_eq!(Response::parse(&v).unwrap().settings.font_size, 12.5);
     let mut v = sample();
     v["settings"]["light_theme"] = json!("unknown");
-    assert!(Response::parse(v).is_err());
+    assert!(Response::parse(&v).is_err());
     let mut v = sample();
     v["settings"]["accent_color"] = json!("red");
-    assert!(Response::parse(v).is_err());
+    assert!(Response::parse(&v).is_err());
     let mut v = sample();
     v["settings"]["accent_source"] = json!("wallpaper");
     v["wallpaper_accent"] = serde_json::Value::Null;
-    assert_eq!(Response::parse(v).unwrap().accent(), None);
+    assert_eq!(Response::parse(&v).unwrap().accent(), None);
 }
 
 #[test]
@@ -64,11 +64,11 @@ fn default_material_is_opaque_and_wallpaper_accent_arrives_later() {
     value["settings"]["material"] = json!("default");
     value["settings"]["accent_source"] = json!("wallpaper");
     value["wallpaper_accent"] = serde_json::Value::Null;
-    let pending = Response::parse(value.clone()).unwrap();
+    let pending = Response::parse(&value).unwrap();
     assert_eq!(pending.material(), 0);
     assert_eq!(pending.accent(), None);
     value["wallpaper_accent"] = json!("#DEAD00");
-    let sampled = Response::parse(value).unwrap();
+    let sampled = Response::parse(&value).unwrap();
     assert_ne!(pending, sampled);
     assert_eq!(sampled.accent(), Some(0xdead00));
 }
@@ -85,11 +85,11 @@ fn poller_publishes_only_good_responses_and_survives_failed_fetch() {
         } else {
             let mut value = sample();
             value["settings"]["revision"] = json!(n);
-            Response::parse(value).ok()
+            Response::parse(&value).is_ok().then_some(value)
         }
     });
     let first = poller.replies.recv_timeout(Duration::from_secs(1)).unwrap();
     let second = poller.replies.recv_timeout(Duration::from_secs(1)).unwrap();
-    assert_eq!(first.settings.revision, 0);
-    assert_eq!(second.settings.revision, 2);
+    assert_eq!(first["settings"]["revision"], 0);
+    assert_eq!(second["settings"]["revision"], 2);
 }

@@ -10,10 +10,9 @@ use std::time::Duration;
 use gpui::TestAppContext;
 
 use crate::app::storage::StorageFault;
-use crate::app::Route;
 use crate::model::{new_todo, Status, Todo};
 use crate::store::{Command, EngineError, ErrorKind, Mutation, Reply, Snapshot, Worker};
-use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
+use crate::ui_tests::{click, launch, redraw, todo_of, type_text};
 
 fn engine_error(kind: ErrorKind) -> EngineError {
     EngineError {
@@ -260,9 +259,15 @@ fn task_props_set_significance(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     click(cx, "tr-dev-inbox-1");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
-    click(cx, "chip-tp-sig");
-    click(cx, "dd-7");
+    agenda.read_with(cx, |a, _| {
+        assert!(
+            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-inbox-1"),
+            "row click must open the task in the right panel"
+        );
+    });
+    agenda.update(cx, |a, _| {
+        a.update_todo("dev-inbox-1", |t| t.significance = Some(7))
+    });
 
     let t = todo_of(cx, &agenda, "dev-inbox-1");
     assert_eq!(t.significance, Some(7));

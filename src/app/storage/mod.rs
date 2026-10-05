@@ -135,6 +135,8 @@ impl Agenda {
                 Ok(project) => {
                     if let Some(p) = self.projects.iter_mut().find(|p| p.id == project.id) {
                         *p = project;
+                    } else {
+                        self.projects.push(project);
                     }
                     if self
                         .storage_error
@@ -219,7 +221,7 @@ impl Agenda {
         self.send_storage(Command::Load);
     }
 
-    fn send_storage(&mut self, command: Command) -> bool {
+    pub(crate) fn send_storage(&mut self, command: Command) -> bool {
         if self
             .storage
             .as_ref()

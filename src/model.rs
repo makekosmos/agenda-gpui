@@ -120,16 +120,6 @@ pub struct Heading {
     pub project_id: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct CalEvent {
-    #[allow(dead_code)]
-    pub id: &'static str,
-    pub title: &'static str,
-    pub starts_at: String,
-    pub ends_at: Option<String>,
-    pub location: Option<&'static str>,
-}
-
 // ---------------------------------------------------------------------------
 // Date helpers (mirror taskLifecycle localDateKey / taskDate)
 // ---------------------------------------------------------------------------
@@ -245,18 +235,58 @@ pub fn is_overdue(t: &Todo, today: &str) -> bool {
     !conflict && date.as_deref().is_some_and(|d| d < today)
 }
 
-pub fn is_due_today(t: &Todo, today: &str) -> bool {
+/// Next ISO week bounds (Monday..=Sunday) as day keys.
+pub fn next_week_bounds(today: &str) -> Option<(String, String)> {
+    let (mon, sun) = week_bounds(today)?;
+    let mon = parse_key(&mon)? + Duration::days(7);
+    let sun = parse_key(&sun)? + Duration::days(7);
+    Some((key_of(mon), key_of(sun)))
+}
+
+/// Monday of next week as a day key — «следующая неделя» as a real date.
+pub fn next_monday_key(today: &str) -> Option<String> {
+    let (mon, _) = week_bounds(today)?;
+    let mon = parse_key(&mon)? + Duration::days(7);
+    Some(key_of(mon))
+}
+
+/// Current ISO week bounds (Monday..=Sunday) as day keys.
+pub fn week_bounds(today: &str) -> Option<(String, String)> {
+    let d = parse_key(today)?;
+    let mon = d - Duration::days(d.weekday().num_days_from_monday() as i64);
+    Some((key_of(mon), key_of(mon + Duration::days(6))))
+}
+
+/// Dorofeev-style week membership: no precise day needed — a task belongs to
+/// the week when its date falls inside it or it carries the `is_today`
+/// ("this week") flag with no date at all.
+/// Active, non-deferred task whose date falls inside the given week bounds.
+fn is_due_in_bounds(t: &Todo, week: &(String, String)) -> bool {
+    let (date, _) = task_date(t);
+    date.as_deref()
+        .is_some_and(|d| d >= week.0.as_str() && d <= week.1.as_str())
+        && is_active(t)
+        && !is_deferred(t)
+}
+
+pub fn is_due_this_week(t: &Todo, week: &(String, String)) -> bool {
     if !is_active(t) || is_inbox(t) || is_deferred(t) {
         return false;
     }
     let (date, conflict) = task_date(t);
-    !conflict && (date.as_deref() == Some(today) || (date.is_none() && t.is_today))
+    !conflict
+        && (date
+            .as_deref()
+            .is_some_and(|d| d >= week.0.as_str() && d <= week.1.as_str())
+            || (date.is_none() && t.is_today))
 }
 
-pub fn completed_on(t: &Todo, today: &str) -> bool {
+pub fn completed_in_week(t: &Todo, week: &(String, String)) -> bool {
     task_status(t) == Status::Done
         && !t.is_trashed
-        && date_only(&t.completed_at).as_deref() == Some(today)
+        && date_only(&t.completed_at)
+            .as_deref()
+            .is_some_and(|d| d >= week.0.as_str() && d <= week.1.as_str())
 }
 
 /// The local day a task was completed, for statistics aggregation. Only
@@ -308,7 +338,8 @@ pub fn overdue_todos(todos: &[Todo], today: &str) -> Vec<Todo> {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SmartList {
     Inbox,
-    Today,
+    Week,
+    NextWeek,
     Plans,
     Someday,
     Logbook,
@@ -319,7 +350,8 @@ pub enum SmartList {
 /// without cloning any `Todo` — the hot path for virtualized lists.
 pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
     let today = today_key();
-    if list == SmartList::Today {
+    if list == SmartList::Week {
+        let week = week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
         let mut v: Vec<usize> = todos
             .iter()
             .enumerate()
@@ -335,18 +367,29 @@ pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
         let mut due: Vec<usize> = todos
             .iter()
             .enumerate()
-            .filter(|(_, t)| is_due_today(t, &today) || completed_on(t, &today))
+            .filter(|(_, t)| is_due_this_week(t, &week) || completed_in_week(t, &week))
             .map(|(i, _)| i)
             .collect();
         due.sort_by_key(|&i| todos[i].sort_order);
         v.extend(due);
         return v;
     }
+    if list == SmartList::NextWeek {
+        let week = next_week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
+        let mut v: Vec<usize> = todos
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| is_due_in_bounds(t, &week))
+            .map(|(i, _)| i)
+            .collect();
+        v.sort_by_key(|&i| todos[i].sort_order);
+        return v;
+    }
     let mut v: Vec<usize> = todos
         .iter()
         .enumerate()
         .filter(|(_, t)| match list {
-            SmartList::Today => unreachable!(),
+            SmartList::Week | SmartList::NextWeek => unreachable!(),
             SmartList::Inbox => is_inbox(t),
             SmartList::Plans => {
                 let (date, _) = task_date(t);
@@ -402,22 +445,32 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey) -> Vec<usiz
 
 pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
     let today = today_key();
-    // TodayPage.vue: [...overdueTodos(todos), ...filterTodos(SmartList.Today)]
-    if list == SmartList::Today {
+    if list == SmartList::Week {
+        let week = week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
         let mut v = overdue_todos(todos, &today);
         let mut due: Vec<Todo> = todos
             .iter()
-            .filter(|t| is_due_today(t, &today) || completed_on(t, &today))
+            .filter(|t| is_due_this_week(t, &week) || completed_in_week(t, &week))
             .cloned()
             .collect();
         due.sort_by_key(|a| a.sort_order);
         v.extend(due);
         return v;
     }
+    if list == SmartList::NextWeek {
+        let week = next_week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
+        let mut v: Vec<Todo> = todos
+            .iter()
+            .filter(|t| is_due_in_bounds(t, &week))
+            .cloned()
+            .collect();
+        v.sort_by_key(|a| a.sort_order);
+        return v;
+    }
     let mut v: Vec<Todo> = todos
         .iter()
         .filter(|t| match list {
-            SmartList::Today => unreachable!(),
+            SmartList::Week | SmartList::NextWeek => unreachable!(),
             SmartList::Inbox => is_inbox(t),
             SmartList::Plans => {
                 let (date, _) = task_date(t);
@@ -524,7 +577,6 @@ pub(crate) const MONTH_LONG: [&str; 12] = [
     "ноября",
     "декабря",
 ];
-const WEEKDAY_SHORT: [&str; 7] = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"];
 const WEEKDAY_DATIVE: [&str; 7] = [
     "понедельникам",
     "вторникам",
@@ -545,60 +597,6 @@ pub fn fmt_day_month(key: &str) -> String {
         }
         None => key.to_string(),
     }
-}
-
-/// {weekday: short, day: numeric, month: short} → "чт, 18 сент."
-pub fn fmt_cal_day_label(key: &str) -> String {
-    match parse_key(key) {
-        Some(d) => {
-            let wd = WEEKDAY_SHORT[d.weekday().num_days_from_monday() as usize];
-            format!(
-                "{}, {} {}",
-                wd,
-                d.day(),
-                MONTH_SHORT[(d.month() - 1) as usize]
-            )
-        }
-        None => key.to_string(),
-    }
-}
-
-/// {day: numeric, month: long, year: numeric} → "18 сентября 2025"
-pub fn fmt_day_month_year(key: &str) -> String {
-    match parse_key(key) {
-        Some(d) => format!(
-            "{} {} {}",
-            d.day(),
-            MONTH_LONG[(d.month() - 1) as usize],
-            d.year()
-        ),
-        None => key.to_string(),
-    }
-}
-
-/// Week period label: "15 сентября — 21 сентября 2025"
-pub fn fmt_week_period(first: &str, last: &str) -> String {
-    let (f, l) = match (parse_key(first), parse_key(last)) {
-        (Some(f), Some(l)) => (f, l),
-        _ => return format!("{} — {}", first, last),
-    };
-    let first_text = format!("{} {}", f.day(), MONTH_LONG[(f.month() - 1) as usize]);
-    let mut last_text = format!("{} {}", l.day(), MONTH_LONG[(l.month() - 1) as usize]);
-    if f.year() != l.year() {
-        last_text = format!("{} {}", last_text, l.year());
-    }
-    if f.year() == l.year() {
-        format!("{} — {} {}", first_text, last_text, f.year())
-    } else {
-        format!("{} — {}", first_text, last_text)
-    }
-}
-
-/// iso "YYYY-MM-DDTHH:MM" → "HH:MM"
-/// `get` over a byte slice: a ≥16-byte stamp whose index 11 sits inside a
-/// multi-byte char degrades to "" instead of panicking.
-pub fn fmt_time(iso: &str) -> String {
-    iso.get(11..16).unwrap_or_default().to_string()
 }
 
 // ---------------------------------------------------------------------------
@@ -1275,74 +1273,3 @@ pub fn seed_headings() -> Vec<Heading> {
         },
     ]
 }
-
-pub fn seed_events() -> Vec<CalEvent> {
-    vec![
-        CalEvent {
-            id: "dev-event-standup",
-            title: "Ежедневный стендап",
-            starts_at: iso_at(0, 10, 0),
-            ends_at: Some(iso_at(0, 10, 30)),
-            location: Some("Zoom"),
-        },
-        CalEvent {
-            id: "dev-event-lunch",
-            title: "Обед с Аней",
-            starts_at: iso_at(0, 13, 0),
-            ends_at: Some(iso_at(0, 14, 0)),
-            location: Some("Кафе на углу"),
-        },
-        CalEvent {
-            id: "dev-event-gym",
-            title: "Спортзал",
-            starts_at: iso_at(0, 18, 30),
-            ends_at: Some(iso_at(0, 19, 30)),
-            location: None,
-        },
-        CalEvent {
-            id: "dev-event-design-review",
-            title: "Дизайн-ревью",
-            starts_at: iso_at(1, 11, 0),
-            ends_at: Some(iso_at(1, 12, 30)),
-            location: Some("Переговорка 2"),
-        },
-        CalEvent {
-            id: "dev-event-one-on-one",
-            title: "1:1 с руководителем",
-            starts_at: iso_at(2, 15, 0),
-            ends_at: Some(iso_at(2, 16, 0)),
-            location: None,
-        },
-        CalEvent {
-            id: "dev-event-planning",
-            title: "Планирование спринта",
-            starts_at: iso_at(3, 9, 0),
-            ends_at: Some(iso_at(3, 10, 30)),
-            location: Some("Zoom"),
-        },
-        CalEvent {
-            id: "dev-event-demo",
-            title: "Демо заказчику",
-            starts_at: iso_at(4, 17, 0),
-            ends_at: Some(iso_at(4, 18, 0)),
-            location: None,
-        },
-        CalEvent {
-            id: "dev-event-webinar",
-            title: "Вебинар по Rust",
-            starts_at: iso_at(5, 12, 0),
-            ends_at: Some(iso_at(5, 13, 0)),
-            location: None,
-        },
-        CalEvent {
-            id: "dev-event-strategy",
-            title: "Стратегическая сессия",
-            starts_at: iso_at(8, 10, 0),
-            ends_at: Some(iso_at(8, 16, 0)),
-            location: Some("Офис"),
-        },
-    ]
-}
-
-#[cfg(test)]
-mod tests;

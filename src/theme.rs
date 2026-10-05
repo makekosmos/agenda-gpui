@@ -8,6 +8,9 @@ pub use imago_gpui::theme::*;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
+/// Base corner radius for Agenda surfaces and controls, in physical pixels.
+pub const BASE_RADIUS: f32 = 12.0;
+
 const NO_ACCENT: u32 = u32::MAX;
 static ACCENT_OVERRIDE: AtomicU32 = AtomicU32::new(NO_ACCENT);
 static FONT_SIZE: AtomicU32 = AtomicU32::new(13.0f32.to_bits());
@@ -68,6 +71,15 @@ pub fn ACCENT_DIM() -> u32 {
 
 pub fn text_px(size: f32) -> gpui::Pixels {
     gpui::px(size * f32::from_bits(FONT_SIZE.load(Ordering::Relaxed)) / 13.0)
+}
+
+/// Shared controls receive Agenda's resolved accent and typography explicitly.
+pub fn ui_style() -> imago_gpui::settings::UiStyle {
+    imago_gpui::settings::UiStyle {
+        accent: ACCENT(),
+        font_scale: f32::from_bits(FONT_SIZE.load(Ordering::Relaxed)) / 13.0,
+        ..Default::default()
+    }
 }
 
 pub fn set_font_size(size: f32) {

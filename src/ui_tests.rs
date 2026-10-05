@@ -208,18 +208,16 @@ fn status_ring_completes_task(cx: &mut TestAppContext) {
     assert!(t.completed_at.is_some());
 }
 
-/// Re-toggling a done task back to work: the ring click also opens the task
-/// page (both listeners see the hit), where the "…" menu offers
-/// «Вернуть в работу» — CompleteTodo on a done task reverts it to Todo.
+/// «Вернуть в работу»: CompleteTodo on a done task reverts it to Todo.
+/// (Done rows leave «Входящие», so the toggle goes through the action.)
 #[gpui::test]
 fn done_task_returns_to_work_via_menu(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     click(cx, "trs-dev-inbox-1");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-1".into()));
-
-    click(cx, "tp-more-btn");
-    click(cx, "ctx-item-0"); // «Вернуть в работу»
+    agenda.update(cx, |a, _| {
+        a.run_menu_action(crate::pages::MenuAction::CompleteTodo("dev-inbox-1".into()))
+    });
 
     let t = todo_of(cx, &agenda, "dev-inbox-1");
     assert!(!t.is_completed);
@@ -233,16 +231,20 @@ fn task_status_dropdown_toggles_round_trip(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     click(cx, "tr-dev-inbox-2");
-    assert_eq!(route_of(cx, &agenda), Route::Task("dev-inbox-2".into()));
+    agenda.read_with(cx, |a, _| {
+        assert!(
+            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-inbox-2"),
+            "row click must open the task in the right panel"
+        );
+    });
 
-    click(cx, "chip-tp-status");
-    click(cx, "dd-4"); // «Готово»
+    // Status chips live only in the old full page; the model call toggles.
+    agenda.update(cx, |a, _| a.set_todo_status("dev-inbox-2", Status::Done));
     let t = todo_of(cx, &agenda, "dev-inbox-2");
     assert_eq!(task_status(&t), Status::Done);
     assert!(t.is_completed);
 
-    click(cx, "chip-tp-status");
-    click(cx, "dd-1"); // «Сделать»
+    agenda.update(cx, |a, _| a.set_todo_status("dev-inbox-2", Status::Todo));
     let t = todo_of(cx, &agenda, "dev-inbox-2");
     assert!(!t.is_completed);
     assert_eq!(task_status(&t), Status::Todo);
@@ -252,10 +254,10 @@ fn task_status_dropdown_toggles_round_trip(cx: &mut TestAppContext) {
 #[gpui::test]
 fn sidebar_navigates_lists(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
+    assert!(cx.debug_bounds("sb-plans").is_none());
     for (selector, want) in [
-        ("sb-today", Route::Today),
+        ("sb-week", Route::Week),
         ("sb-someday", Route::Someday),
-        ("sb-plans", Route::Plans),
         ("sb-inbox", Route::Inbox),
     ] {
         click(cx, selector);

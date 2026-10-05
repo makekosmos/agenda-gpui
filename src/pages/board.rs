@@ -130,7 +130,7 @@ impl Agenda {
                 rows
             };
             if rows.is_empty() {
-                body = body.child(empty_state());
+                body = body.child(empty_state_for(list));
             } else {
                 body =
                     body.child(self.task_list(format!("list-{storage}"), storage, rows, true, cx));
@@ -229,8 +229,7 @@ impl Agenda {
                         let weak = cx.weak_entity();
                         let tid = tid.clone();
                         move |_: &ClickEvent, _, cx| {
-                            let _ =
-                                weak.update(cx, |this, _| this.navigate(Route::Task(tid.clone())));
+                            let _ = weak.update(cx, |this, cx| this.open_task_panel(&tid, cx));
                         }
                     })
                     .a11y_button(t.title.clone()),

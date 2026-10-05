@@ -21,7 +21,7 @@
 use gpui::TestAppContext;
 
 use crate::app::{DropKind, DropState, Route};
-use crate::model::{date_only, day_key, key_of, parse_quick_entry_capture, today_key};
+use crate::model::{date_only, key_of, parse_quick_entry_capture, today_key};
 use crate::ui_tests::{click, launch, redraw};
 use chrono::{Duration, Local};
 
@@ -160,7 +160,7 @@ fn share_overlay_dismiss_does_not_leak_to_page(cx: &mut TestAppContext) {
 fn qe_date_dropdown_checks_current_value(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
     agenda.update(cx, |a, _| {
-        a.qe_date = Some(day_key(1));
+        a.qe_week = true;
         a.qe_date_touched = true;
         a.dropdown = Some(DropState {
             kind: DropKind::QeDate,
@@ -186,6 +186,8 @@ fn qe_date_dropdown_checks_current_value(cx: &mut TestAppContext) {
             })
             .and_then(|n| n["aria"]["selected"].as_bool())
     };
-    assert_eq!(selected("Завтра"), Some(true));
+    assert_eq!(selected("Эта неделя"), Some(true));
+    assert_eq!(selected("Следующая неделя"), Some(false));
+    assert_eq!(selected("Потом"), Some(false));
     assert_eq!(selected("Без даты"), Some(false));
 }

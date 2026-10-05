@@ -8,11 +8,16 @@ macro_rules! embed {
         fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
             match path {
                 $( $path => Ok(Some(Cow::Borrowed(include_bytes!(concat!("../assets/", $path)) as &[u8]))), )*
-                _ => Ok(None),
+                _ => imago_gpui::assets::Assets.load(path),
             }
         }
-        fn list(&self, _path: &str) -> Result<Vec<SharedString>> {
-            Ok(vec![$( SharedString::new_static($path) ),*])
+        fn list(&self, path: &str) -> Result<Vec<SharedString>> {
+            let mut paths = imago_gpui::assets::Assets.list(path)?;
+            paths.extend([$(SharedString::new_static($path)),*].into_iter()
+                .filter(|name| name.starts_with(path)));
+            paths.sort();
+            paths.dedup();
+            Ok(paths)
         }
     };
 }
@@ -22,20 +27,29 @@ pub struct Assets;
 impl AssetSource for Assets {
     embed!(
         "icons/analytics-01.svg",
+        "icons/analytics-01-fill.svg",
         "icons/arrow-left.svg",
         "icons/book-open.svg",
+        "icons/book-open-fill.svg",
         "icons/calendar-01.svg",
         "icons/calendar-02.svg",
+        "icons/calendar-01-fill.svg",
+        "icons/calendar-02-fill.svg",
+        "icons/chevrons-right.svg",
         "icons/check.svg",
         "icons/clock-01.svg",
+        "icons/clock-01-fill.svg",
         "icons/delete.svg",
+        "icons/delete-fill.svg",
         "icons/dollar.svg",
         "icons/folder.svg",
         "icons/folder-closed.svg",
         "icons/folder-open.svg",
         "icons/folder-open2.svg",
+        "icons/folder-open-fill.svg",
         "icons/help-circle.svg",
         "icons/inbox.svg",
+        "icons/inbox-fill.svg",
         "icons/more-circle.svg",
         "icons/more-h.svg",
         "icons/plus.svg",
@@ -51,6 +65,7 @@ impl AssetSource for Assets {
         "icons/status-x.svg",
         "icons/tag.svg",
         "icons/task-01.svg",
+        "icons/task-01-fill.svg",
         "icons/window-max.svg",
         "icons/window-min.svg",
         "icons/window-restore.svg",

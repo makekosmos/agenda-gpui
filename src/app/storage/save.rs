@@ -9,18 +9,15 @@ impl Agenda {
             self.close_pending = true;
             return false;
         }
-        let Some(id) = self
-            .current_task_id()
-            .filter(|id| self.input_task.as_ref() == Some(id))
-        else {
+        let Some(id) = self.current_task_id() else {
             return true;
         };
         let title = self
-            .inputs
-            .get("task-title")
+            .qe_title
+            .as_ref()
             .map(|s| s.read(cx).value().trim().to_string());
         let notes = self
-            .notes_input
+            .qe_notes
             .as_ref()
             .map(|s| s.read(cx).value().trim().to_string());
         let Some(before) = self.todo(&id).cloned() else {
