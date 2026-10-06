@@ -151,11 +151,6 @@ fn empty_state_for(list: SmartList) -> gpui::Div {
             "На следующей неделе пусто",
             "Поставь задаче дату следующей недели",
         ),
-        SmartList::Plans => empty_state(
-            "icons/calendar-02.svg",
-            "Планы пусты",
-            "Запланируй задачу на будущее",
-        ),
         SmartList::Someday => empty_state(
             "icons/clock-01.svg",
             "Потом пуст",

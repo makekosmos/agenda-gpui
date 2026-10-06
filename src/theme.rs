@@ -56,19 +56,6 @@ pub fn ACCENT_FG() -> u32 {
     }
 }
 
-pub fn ACCENT_DIM() -> u32 {
-    if ACCENT_OVERRIDE.load(Ordering::Relaxed) == NO_ACCENT {
-        imago_gpui::theme::ACCENT_DIM()
-    } else {
-        let a = ACCENT();
-        let bg = BG();
-        let channel = |shift| {
-            ((((a >> shift) & 255u32) * 7u32 + ((bg >> shift) & 255u32) * 3u32) / 10u32) << shift
-        };
-        channel(16) | channel(8) | channel(0)
-    }
-}
-
 pub fn text_px(size: f32) -> gpui::Pixels {
     gpui::px(size * f32::from_bits(FONT_SIZE.load(Ordering::Relaxed)) / 13.0)
 }
