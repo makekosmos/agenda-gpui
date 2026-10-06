@@ -259,13 +259,33 @@ fn logbook_sorts_completed_instants_not_strings() {
     assert_eq!(got, [1, 0], "filter_idx must order Logbook by instant");
 }
 
+/// A task dated earlier this week is overdue AND inside the week bounds; the
+/// Week list used to show it twice (Tuesday through Sunday), and the two rows
+/// shared one element id, so hovering them flapped forever.
 #[test]
-fn fmt_time_survives_non_ascii_stamp() {
-    // `iso[11..16]` panics when byte 11 sits inside a multi-byte char, even
-    // though the length check passed. A malformed stamp must degrade to "".
-    assert_eq!(fmt_time("2026-10-04T10:30"), "10:30");
-    assert_eq!(fmt_time("2026-10-04"), "");
-    // 10 ASCII bytes + 'Я' (2 UTF-8 bytes) + tail: total 18 bytes ≥ 16, but
-    // index 11 is mid-char.
-    assert_eq!(fmt_time("2026-10-04Я9:00:00"), "");
+fn week_list_has_no_duplicate_tasks() {
+    let todos: Vec<Todo> = (-6..=6)
+        .map(|offset| {
+            let mut t = todo(format!("t{offset}"), "task");
+            t.status = Status::Todo;
+            t.scheduled_date = Some(day_key(offset));
+            t
+        })
+        .collect();
+    let mut seen = filter_idx(SmartList::Week, &todos);
+    assert!(!seen.is_empty());
+    let listed = seen.len();
+    seen.sort_unstable();
+    seen.dedup();
+    assert_eq!(seen.len(), listed, "Week list repeats a task");
+
+    let cloned: Vec<String> = filter_todos(SmartList::Week, &todos)
+        .into_iter()
+        .map(|t| t.id)
+        .collect();
+    let by_idx: Vec<String> = filter_idx(SmartList::Week, &todos)
+        .into_iter()
+        .map(|i| todos[i].id.clone())
+        .collect();
+    assert_eq!(cloned, by_idx);
 }

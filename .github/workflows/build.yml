@@ -118,6 +118,7 @@ jobs:
           -A clippy::result_large_err -A clippy::duplicated_attributes -A clippy::useless_conversion
           -A clippy::panic -A clippy::assertions_on_constants
       - name: Tests
+        timeout-minutes: 40
         run: cargo test --locked --release --workspace --all-features --target "$BUILD_TARGET"
       - name: Source size
         if: runner.os == 'Windows'
