@@ -246,15 +246,6 @@ fn logbook_sorts_completed_instants_not_strings() {
     later.status = Status::Done;
     later.completed_at = Some("2020-01-10T21:00:00Z".into());
 
-    let got: Vec<String> = filter_todos(SmartList::Logbook, &[earlier.clone(), later.clone()])
-        .into_iter()
-        .map(|t| t.id)
-        .collect();
-    assert_eq!(
-        got,
-        ["b", "a"],
-        "filter_todos must order Logbook by instant"
-    );
     let got: Vec<usize> = filter_idx(SmartList::Logbook, &[earlier.clone(), later.clone()]);
     assert_eq!(got, [1, 0], "filter_idx must order Logbook by instant");
 }
@@ -278,14 +269,4 @@ fn week_list_has_no_duplicate_tasks() {
     seen.sort_unstable();
     seen.dedup();
     assert_eq!(seen.len(), listed, "Week list repeats a task");
-
-    let cloned: Vec<String> = filter_todos(SmartList::Week, &todos)
-        .into_iter()
-        .map(|t| t.id)
-        .collect();
-    let by_idx: Vec<String> = filter_idx(SmartList::Week, &todos)
-        .into_iter()
-        .map(|i| todos[i].id.clone())
-        .collect();
-    assert_eq!(cloned, by_idx);
 }

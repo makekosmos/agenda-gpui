@@ -12,13 +12,15 @@ impl Agenda {
         };
         let opts = self.board_opts(&key);
 
+        // Section label: zeron's chip (`px-1.5 py-0.5 rounded bg-ink/5
+        // text-[10px] text-muted`), not a plain line of text.
         let section = |title: &str| {
             div()
-                .pt_1()
-                .pb(px(2.))
-                .px_2()
-                .text_size(crate::theme::text_px(11.))
-                .font_weight(gpui::FontWeight::SEMIBOLD)
+                .px(px(5.))
+                .py(px(1.))
+                .rounded(px(5.))
+                .bg(rgba(FG(), 0.05))
+                .text_size(crate::theme::text_px(10.))
                 .text_color(c(MUTED_FG()))
                 .child(title.to_string())
         };
@@ -37,17 +39,21 @@ impl Agenda {
             let key3 = key2.clone();
             div()
                 .id(SharedString::from(format!("el-{i}-{label}")))
-                .h(px(26.))
                 .w_full()
                 .px_2()
+                .py(px(6.))
                 .flex()
                 .items_center()
                 .justify_between()
-                .gap_2()
-                .rounded(px(5.))
+                .gap(px(10.))
+                // Concentric with the card: 12 - 1 border - 4 inset.
+                .rounded(px(7.))
                 .text_size(crate::theme::text_px(13.))
                 .text_color(c(FG()))
-                .bg(fg_mix(0.06 * t))
+                .cursor_pointer()
+                // zeron menu_row: selected keeps the 11% wash, others fade it
+                // in on hover.
+                .bg(rgba(FG(), 0.11 * t.max(if checked { 1.0 } else { 0.0 })))
                 .child(label.to_string())
                 .when(checked, |el| {
                     el.child(icon("icons/check.svg", 14., c(MUTED_FG())))
@@ -63,7 +69,6 @@ impl Agenda {
                     let _ = weak.update(cx, |this, _| {
                         let mut o = this.boards.get(&key3).copied().unwrap_or_default();
                         match act {
-                            OptAct::View(v) => o.view = v,
                             OptAct::Sort(s) => o.sort = s,
                             OptAct::Group(g) => o.group = g,
                         }
@@ -83,6 +88,8 @@ impl Agenda {
         #[cfg(target_os = "macos")]
         let pop_right = 8.0;
 
+        // Card: zeron popover_card — r12, 4px inset, 2px row gap, hairline
+        // border, clipped so row washes don't poke out of the corners.
         let mut panel = div()
             .absolute()
             .right(px(pop_right))
@@ -91,40 +98,19 @@ impl Agenda {
             .p_1()
             .flex()
             .flex_col()
-            .rounded_lg()
+            .gap(px(2.))
+            .rounded(px(12.))
             .border_1()
             .border_color(c(BORDER()))
             .bg(c(POPOVER()))
-            .shadow(vec![gpui::BoxShadow {
-                color: rgba(0x000000, 0.12),
-                offset: gpui::point(px(0.), px(8.)),
-                blur_radius: px(24.),
-                spread_radius: px(0.),
-                inset: false,
-            }]);
+            .overflow_hidden()
+            .shadow_lg();
 
         let mut idx = 0usize;
-        let mut sec = div().flex().flex_col().child(section("Вид"));
-        for (v, l) in [(BoardView::List, "Список"), (BoardView::Kanban, "Доска")] {
-            sec = sec.child(item(
-                self,
-                window,
-                cx,
-                idx,
-                l,
-                opts.view == v,
-                OptAct::View(v),
-            ));
-            idx += 1;
-        }
-        panel = panel.child(sec);
         let mut sec = div()
             .flex()
             .flex_col()
-            .mt_1()
-            .pt_1()
-            .border_t_1()
-            .border_color(border_mix(0.6))
+            .gap(px(2.))
             .child(section("Сортировка"));
         for (v, l) in [
             (SortKey::Default, "По умолчанию"),
@@ -144,33 +130,33 @@ impl Agenda {
             idx += 1;
         }
         panel = panel.child(sec);
-        if opts.view == BoardView::List {
-            let mut sec = div()
-                .flex()
-                .flex_col()
-                .mt_1()
-                .pt_1()
-                .border_t_1()
-                .border_color(border_mix(0.6))
-                .child(section("Группировка"));
-            for (v, l) in [
-                (GroupKey::None, "Нет"),
-                (GroupKey::Project, "По проекту"),
-                (GroupKey::Date, "По дате"),
-            ] {
-                sec = sec.child(item(
-                    self,
-                    window,
-                    cx,
-                    idx,
-                    l,
-                    opts.group == v,
-                    OptAct::Group(v),
-                ));
-                idx += 1;
-            }
-            panel = panel.child(sec);
+        // zeron menu_section: hairline runs edge-to-edge of the card inset.
+        let mut sec = div()
+            .flex()
+            .flex_col()
+            .gap(px(2.))
+            .mt_1()
+            .pt_1()
+            .border_t_1()
+            .border_color(rgba(FG(), 0.06))
+            .child(section("Группировка"));
+        for (v, l) in [
+            (GroupKey::None, "Нет"),
+            (GroupKey::Project, "По проекту"),
+            (GroupKey::Date, "По дате"),
+        ] {
+            sec = sec.child(item(
+                self,
+                window,
+                cx,
+                idx,
+                l,
+                opts.group == v,
+                OptAct::Group(v),
+            ));
+            idx += 1;
         }
+        panel = panel.child(sec);
 
         div()
             .absolute()
@@ -247,7 +233,6 @@ impl Agenda {
 
 #[derive(Clone, Copy)]
 enum OptAct {
-    View(BoardView),
     Sort(SortKey),
     Group(GroupKey),
 }

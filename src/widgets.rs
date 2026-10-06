@@ -2,7 +2,7 @@
 use gpui::prelude::*;
 use gpui::{
     canvas, div, point, px, svg, Div, ElementId, Hsla, PathBuilder, Role, SharedString, Stateful,
-    Styled, Toggled,
+    Styled, Toggled, Window,
 };
 
 use crate::model::Status;
@@ -175,4 +175,36 @@ pub fn status_ring(status: Status) -> impl IntoElement {
         .into_any_element(),
         _ => ring(c(MUTED_FG())).into_any_element(),
     }
+}
+
+/// One-line hover note for small controls, ported from zeron's TextTooltip:
+/// same frosted chip metrics (px 9 / py 6, r6, 11px muted on the popover
+/// surface). No backdrop blur here — this gpui pin lacks it, so the chip uses
+/// the opaque popover color like every other overlay in the app.
+pub struct TextTooltip {
+    text: SharedString,
+}
+
+impl gpui::Render for TextTooltip {
+    fn render(&mut self, _window: &mut Window, _cx: &mut gpui::Context<Self>) -> impl IntoElement {
+        div()
+            .max_w(px(320.))
+            .px(px(9.))
+            .py(px(6.))
+            .rounded(px(6.))
+            .border_1()
+            .border_color(c(BORDER()))
+            .bg(c(POPOVER()))
+            .text_size(crate::theme::text_px(11.))
+            .text_color(c(MUTED_FG()))
+            .child(self.text.clone())
+    }
+}
+
+/// `.tooltip(...)` builder for a [`TextTooltip`].
+pub fn text_tooltip(
+    text: impl Into<SharedString>,
+) -> impl Fn(&mut Window, &mut gpui::App) -> gpui::AnyView + 'static {
+    let text: SharedString = text.into();
+    move |_, cx| cx.new(|_| TextTooltip { text: text.clone() }).into()
 }

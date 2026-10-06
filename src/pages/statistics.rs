@@ -1,5 +1,4 @@
 use super::*;
-use gpui_component::tooltip::Tooltip;
 
 mod clipboard;
 mod share;
@@ -190,7 +189,7 @@ impl Agenda {
                         .flex_none()
                         .rounded(px(2.5))
                         .bg(cell_bg(v))
-                        .tooltip(move |window, cx| Tooltip::new(caption.clone()).build(window, cx)),
+                        .tooltip(text_tooltip(caption.clone())),
                 );
             }
             cols = cols.child(col);

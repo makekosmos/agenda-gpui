@@ -38,15 +38,8 @@ pub enum Route {
     Project(String),
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum BoardView {
-    List,
-    Kanban,
-}
-
 #[derive(Clone, Copy)]
 pub struct BoardOpts {
-    pub view: BoardView,
     pub sort: SortKey,
     pub group: GroupKey,
 }
@@ -54,7 +47,6 @@ pub struct BoardOpts {
 impl Default for BoardOpts {
     fn default() -> Self {
         Self {
-            view: BoardView::List,
             sort: SortKey::Default,
             group: GroupKey::None,
         }
@@ -179,7 +171,7 @@ pub struct Agenda {
     pub(crate) qe_date: Option<String>,
     pub(crate) qe_date_touched: bool,
     pub(crate) qe_project_touched: bool,
-    pub(crate) kanban_group_open: bool,
+    pub(crate) projects_group_open: bool,
     pub(crate) group_open_t: f32,
     pub(crate) group_open_stamp: Instant,
     pub(crate) more_menu_t: f32,
@@ -365,7 +357,7 @@ impl Agenda {
             qe_date: None,
             qe_date_touched: false,
             qe_project_touched: false,
-            kanban_group_open: true,
+            projects_group_open: true,
             group_open_t: 1.0,
             group_open_stamp: Instant::now(),
             more_menu_t: 0.0,
@@ -1398,7 +1390,7 @@ impl Agenda {
             self.send_storage(crate::store::Command::Project(project.clone()));
         }
         self.projects.push(project.clone());
-        self.kanban_group_open = true;
+        self.projects_group_open = true;
         self.model_rev += 1;
         self.edit_project_title(project.id);
     }

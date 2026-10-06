@@ -2,7 +2,7 @@ use super::*;
 
 impl Agenda {
     // ==========================================================================
-    // TaskBoard parity: options row + list groups + kanban
+    // TaskBoard parity: options row + list groups.
     // ==========================================================================
 
     pub(crate) fn board_page(
@@ -10,7 +10,7 @@ impl Agenda {
         list: SmartList,
         storage: &str,
         fab_hint: bool,
-        window: &mut Window,
+        _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let _ = fab_hint;
@@ -18,11 +18,7 @@ impl Agenda {
 
         let mut body = div().flex_1().min_h_0().flex().flex_col().overflow_hidden();
 
-        if opts.view == BoardView::Kanban {
-            let items = filter_todos(list, &self.todos);
-            let items = sorted(&items, opts.sort);
-            body = body.child(self.kanban(&items, window, cx));
-        } else {
+        {
             // Index pipeline + row cache: filter/sort/group reruns only when
             // the list, options or model_rev change — scroll and idle frames
             // reuse the same Rc'd rows.
@@ -137,107 +133,5 @@ impl Agenda {
             }
         }
         body.into_any_element()
-    }
-
-    pub(crate) fn kanban(
-        &mut self,
-        items: &[Todo],
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
-        let cols: [(Status, &str); 3] = [
-            (Status::Todo, "К выполнению"),
-            (Status::Started, "В работе"),
-            (Status::Done, "Готово"),
-        ];
-        let mut grid = div()
-            .flex_1()
-            .min_h(px(192.))
-            .grid()
-            .grid_cols(3)
-            .gap_3()
-            .px_7()
-            .overflow_hidden();
-        for (st, label) in cols {
-            let col_items: Vec<Todo> = items
-                .iter()
-                .filter(|t| {
-                    let s = task_status(t);
-                    if st == Status::Todo {
-                        s == Status::Todo || s == Status::Inbox
-                    } else {
-                        s == st
-                    }
-                })
-                .cloned()
-                .collect();
-            let mut col = div()
-                .rounded_lg()
-                .border_1()
-                .border_color(c(BORDER()))
-                .bg(rgba(SECONDARY(), 0.3))
-                .p_2()
-                .flex()
-                .flex_col()
-                .child(
-                    div()
-                        .mb_2()
-                        .px_2()
-                        .text_size(crate::theme::text_px(12.))
-                        .font_weight(gpui::FontWeight::SEMIBOLD)
-                        .text_color(c(MUTED_FG()))
-                        .child(format!("{} · {}", label, col_items.len())),
-                );
-            let mut cards = div().flex().flex_col().gap_2();
-            for t in &col_items {
-                let hid = format!("kb-{}", t.id);
-                let ht = self.hover_t(window, &hid);
-                let weak = cx.weak_entity();
-                let tid = t.id.to_string();
-                let key = SharedString::from(hid.clone());
-                let mut card = div()
-                    .id(SharedString::from(format!("el-{hid}")))
-                    .rounded_md()
-                    .border_1()
-                    .border_color(lerp(BORDER(), ACCENT(), ht))
-                    .bg(c(CARD()))
-                    .p_3()
-                    .text_left()
-                    .text_size(crate::theme::text_px(13.))
-                    .child(
-                        div()
-                            .font_weight(gpui::FontWeight::MEDIUM)
-                            .child(t.title.clone()),
-                    );
-                if let Some(n) = &t.notes {
-                    card = card.child(
-                        div()
-                            .mt_1()
-                            .text_size(crate::theme::text_px(12.))
-                            .text_color(c(MUTED_FG()))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(n.clone()),
-                    );
-                }
-                cards = cards.child(
-                    card.on_hover(move |hovered, _, cx| {
-                        let _ = weak.update(cx, |this, _| this.set_hover(&key, *hovered));
-                    })
-                    .on_click({
-                        let weak = cx.weak_entity();
-                        let tid = tid.clone();
-                        move |_: &ClickEvent, _, cx| {
-                            let _ = weak.update(cx, |this, cx| this.open_task_panel(&tid, cx));
-                        }
-                    })
-                    .a11y_button(t.title.clone()),
-                );
-            }
-            col = col.child(cards);
-            grid = grid.child(col);
-        }
-        grid.into_any_element()
     }
 }

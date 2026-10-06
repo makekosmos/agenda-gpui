@@ -26,7 +26,7 @@ fn empty_projects_cannot_expand_or_animate(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
     agenda.update(cx, |a, cx| {
         a.projects.clear();
-        a.kanban_group_open = true;
+        a.projects_group_open = true;
         a.group_open_t = 1.0;
         cx.notify();
     });
@@ -34,7 +34,7 @@ fn empty_projects_cannot_expand_or_animate(cx: &mut TestAppContext) {
     click(cx, "sb-projects-head");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
-        assert!(!a.kanban_group_open);
+        assert!(!a.projects_group_open);
         assert_eq!(a.group_open_t, 0.0);
     });
 }
@@ -53,7 +53,7 @@ fn archived_only_projects_cannot_expand(cx: &mut TestAppContext) {
     click(cx, "sb-projects-head");
     redraw(cx);
     agenda.read_with(cx, |a, _| {
-        assert!(!a.kanban_group_open);
+        assert!(!a.projects_group_open);
         assert_eq!(a.group_open_t, 0.0);
     });
 }
@@ -62,9 +62,9 @@ fn archived_only_projects_cannot_expand(cx: &mut TestAppContext) {
 fn populated_projects_still_toggle(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
     assert!(agenda.read_with(cx, |a, _| a.projects.iter().any(|p| p.status == 0)));
-    let before = agenda.read_with(cx, |a, _| a.kanban_group_open);
+    let before = agenda.read_with(cx, |a, _| a.projects_group_open);
     click(cx, "sb-projects-head");
-    assert_eq!(agenda.read_with(cx, |a, _| a.kanban_group_open), !before);
+    assert_eq!(agenda.read_with(cx, |a, _| a.projects_group_open), !before);
     click(cx, "sb-projects-head");
-    assert_eq!(agenda.read_with(cx, |a, _| a.kanban_group_open), before);
+    assert_eq!(agenda.read_with(cx, |a, _| a.projects_group_open), before);
 }

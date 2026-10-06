@@ -296,20 +296,6 @@ fn instant_key(value: Option<&str>) -> i64 {
         .unwrap_or(i64::MIN)
 }
 
-pub fn overdue_todos(todos: &[Todo], today: &str) -> Vec<Todo> {
-    let mut v: Vec<Todo> = todos
-        .iter()
-        .filter(|t| is_overdue(t, today))
-        .cloned()
-        .collect();
-    v.sort_by(|a, b| {
-        let da = task_date(a).0.unwrap_or_default();
-        let db = task_date(b).0.unwrap_or_default();
-        da.cmp(&db).then(a.sort_order.cmp(&b.sort_order))
-    });
-    v
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum SmartList {
     Inbox,
@@ -407,53 +393,6 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey) -> Vec<usiz
     items
 }
 
-pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
-    let today = today_key();
-    if list == SmartList::Week {
-        let week = week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
-        let mut v = overdue_todos(todos, &today);
-        let mut due: Vec<Todo> = todos
-            .iter()
-            .filter(|t| in_week_list(t, &week, &today))
-            .cloned()
-            .collect();
-        due.sort_by_key(|a| a.sort_order);
-        v.extend(due);
-        return v;
-    }
-    if list == SmartList::NextWeek {
-        let week = next_week_bounds(&today).unwrap_or_else(|| (today.clone(), today.clone()));
-        let mut v: Vec<Todo> = todos
-            .iter()
-            .filter(|t| is_due_in_bounds(t, &week))
-            .cloned()
-            .collect();
-        v.sort_by_key(|a| a.sort_order);
-        return v;
-    }
-    let mut v: Vec<Todo> = todos
-        .iter()
-        .filter(|t| match list {
-            SmartList::Week | SmartList::NextWeek => unreachable!(),
-            SmartList::Inbox => is_inbox(t),
-            SmartList::Someday => is_deferred(t),
-            SmartList::Logbook => is_archived(t, &today),
-            SmartList::Trash => t.is_trashed,
-        })
-        .cloned()
-        .collect();
-    v.sort_by(|a, b| match list {
-        SmartList::Logbook => {
-            instant_key(b.completed_at.as_deref()).cmp(&instant_key(a.completed_at.as_deref()))
-        }
-        SmartList::Trash => {
-            instant_key(Some(b.created_at.as_str())).cmp(&instant_key(Some(a.created_at.as_str())))
-        }
-        _ => a.sort_order.cmp(&b.sort_order),
-    });
-    v
-}
-
 // ---------------------------------------------------------------------------
 // Sorting/grouping for TaskBoard
 // ---------------------------------------------------------------------------
@@ -471,30 +410,6 @@ pub enum GroupKey {
     None,
     Project,
     Date,
-}
-
-pub fn sorted(items: &[Todo], key: SortKey) -> Vec<Todo> {
-    let mut arr = items.to_vec();
-    match key {
-        SortKey::Default => {}
-        SortKey::Date => arr.sort_by(|a, b| {
-            let da = task_date(a).0.unwrap_or_else(|| "9999".into());
-            let db = task_date(b).0.unwrap_or_else(|| "9999".into());
-            da.cmp(&db).then(a.sort_order.cmp(&b.sort_order))
-        }),
-        SortKey::Priority => arr.sort_by(|a, b| {
-            b.priority
-                .cmp(&a.priority)
-                .then(a.sort_order.cmp(&b.sort_order))
-        }),
-        SortKey::Title => arr.sort_by(|a, b| {
-            a.title
-                .to_lowercase()
-                .cmp(&b.title.to_lowercase())
-                .then(a.sort_order.cmp(&b.sort_order))
-        }),
-    }
-    arr
 }
 
 // ---------------------------------------------------------------------------

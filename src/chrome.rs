@@ -259,7 +259,7 @@ impl Agenda {
         // Empty (including archived-only) groups have nothing to reveal. Snap
         // closed without animating the folder icon or scheduling more frames.
         if !self.projects.iter().any(|project| project.status == 0) {
-            self.kanban_group_open = false;
+            self.projects_group_open = false;
             self.group_open_t = 0.0;
             self.group_open_stamp = Instant::now();
             return 0.0;
@@ -267,7 +267,7 @@ impl Agenda {
         let now = Instant::now();
         let dt = now.duration_since(self.group_open_stamp).as_secs_f32() * 1000.0;
         self.group_open_stamp = now;
-        let target = if self.kanban_group_open { 1.0 } else { 0.0 };
+        let target = if self.projects_group_open { 1.0 } else { 0.0 };
         let step = dt / 350.0;
         if self.group_open_t < target {
             self.group_open_t = (self.group_open_t + step).min(target);
@@ -491,7 +491,7 @@ impl Agenda {
                             if !this.projects.iter().any(|project| project.status == 0) {
                                 return;
                             }
-                            this.kanban_group_open = !this.kanban_group_open;
+                            this.projects_group_open = !this.projects_group_open;
                             this.group_open_stamp = Instant::now();
                             // The header itself stays mounted and hovered —
                             // keep its hover target so its bg/icons don't dim.
@@ -500,7 +500,7 @@ impl Agenda {
                         });
                     }
                 })
-                .aria_expanded(self.kanban_group_open)
+                .aria_expanded(self.projects_group_open)
                 .a11y_button("Проекты");
             rects.push((
                 "nav-projects-head".into(),

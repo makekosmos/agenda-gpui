@@ -24,7 +24,7 @@ pub(crate) use gpui_component::input::{Input, Textarea};
 
 pub(crate) use crate::app::{
     storage::{StorageError, StorageFault},
-    Agenda, BoardView, CtxMenu, DropKind, DropState, MenuAction, Route,
+    Agenda, CtxMenu, DropKind, DropState, MenuAction, Route,
 };
 #[cfg(not(target_os = "macos"))]
 pub(crate) use crate::chrome::CAPTION_W;
