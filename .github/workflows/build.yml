@@ -112,6 +112,7 @@ jobs:
         if: runner.os == 'Windows'
         run: cargo clippy --locked --workspace --all-targets --all-features -- -D warnings
       - name: Tests
+        timeout-minutes: 40
         run: cargo test --locked --release --workspace --all-features --target "$BUILD_TARGET"
       - name: Source size
         if: runner.os == 'Windows'

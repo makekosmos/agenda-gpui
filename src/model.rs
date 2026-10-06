@@ -250,6 +250,12 @@ pub fn is_due_this_week(t: &Todo, week: &(String, String)) -> bool {
             || (date.is_none() && t.is_today))
 }
 
+/// Week list body below the overdue block: a task dated earlier this week is
+/// already listed as overdue, so it must not appear a second time.
+fn in_week_list(t: &Todo, week: &(String, String), today: &str) -> bool {
+    (is_due_this_week(t, week) && !is_overdue(t, today)) || completed_in_week(t, week)
+}
+
 pub fn completed_in_week(t: &Todo, week: &(String, String)) -> bool {
     task_status(t) == Status::Done
         && !t.is_trashed
@@ -335,7 +341,7 @@ pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
         let mut due: Vec<usize> = todos
             .iter()
             .enumerate()
-            .filter(|(_, t)| is_due_this_week(t, &week) || completed_in_week(t, &week))
+            .filter(|(_, t)| in_week_list(t, &week, &today))
             .map(|(i, _)| i)
             .collect();
         due.sort_by_key(|&i| todos[i].sort_order);
@@ -408,7 +414,7 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
         let mut v = overdue_todos(todos, &today);
         let mut due: Vec<Todo> = todos
             .iter()
-            .filter(|t| is_due_this_week(t, &week) || completed_in_week(t, &week))
+            .filter(|t| in_week_list(t, &week, &today))
             .cloned()
             .collect();
         due.sort_by_key(|a| a.sort_order);
@@ -1144,3 +1150,6 @@ pub fn seed_tags() -> Vec<Tag> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests;
