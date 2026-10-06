@@ -143,12 +143,7 @@ pub struct Agenda {
     pub(crate) close_pending: bool,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
-    // Seeded model state kept for Agenda parity; not rendered yet.
-    #[allow(dead_code)]
-    pub(crate) areas: Vec<Area>,
     pub(crate) tags: Vec<Tag>,
-    #[allow(dead_code)]
-    pub(crate) headings: Vec<Heading>,
 
     pub(crate) route: Route,
     pub(crate) back_route: Route,
@@ -328,9 +323,7 @@ impl Agenda {
             close_pending: false,
             todos: if demo { seed_todos() } else { vec![] },
             projects: if demo { seed_projects() } else { vec![] },
-            areas: if demo { seed_areas() } else { vec![] },
             tags: if demo { seed_tags() } else { vec![] },
-            headings: if demo { seed_headings() } else { vec![] },
             route: initial_route(),
             back_route: Route::Inbox,
             sidebar_t: 1.0,

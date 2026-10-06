@@ -76,25 +76,9 @@ pub struct Project {
     pub id: String,
     pub title: String,
     pub status: u8, // 0 active, 1 someday, 2 completed
-    // Schema fields seeded for Agenda parity; not rendered yet.
-    #[allow(dead_code)]
     pub deadline: Option<String>,
-    #[allow(dead_code)]
     pub sort_order: i32,
-    #[allow(dead_code)]
     pub area_id: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Area {
-    // Seeded for Agenda parity; areas are not rendered yet.
-    #[allow(dead_code)]
-    pub id: String,
-    #[allow(dead_code)]
-    pub title: String,
-    #[allow(dead_code)]
-    pub sort_order: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Deserialize)]
@@ -103,21 +87,6 @@ pub struct Tag {
     pub id: String,
     pub title: String,
     pub color: String,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Heading {
-    // Seeded for Agenda parity; headings are not rendered yet.
-    #[allow(dead_code)]
-    pub id: String,
-    #[allow(dead_code)]
-    pub title: String,
-    #[allow(dead_code)]
-    pub sort_order: i32,
-    #[allow(dead_code)]
-    #[serde(default)]
-    pub project_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -346,7 +315,6 @@ pub enum SmartList {
     Inbox,
     Week,
     NextWeek,
-    Plans,
     Someday,
     Logbook,
     Trash,
@@ -397,13 +365,6 @@ pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
         .filter(|(_, t)| match list {
             SmartList::Week | SmartList::NextWeek => unreachable!(),
             SmartList::Inbox => is_inbox(t),
-            SmartList::Plans => {
-                let (date, _) = task_date(t);
-                date.as_deref().is_some_and(|d| d > today.as_str())
-                    && is_active(t)
-                    && !is_deferred(t)
-                    && t.system_kind.is_none()
-            }
             SmartList::Someday => is_deferred(t),
             SmartList::Logbook => is_archived(t, &today),
             SmartList::Trash => t.is_trashed,
@@ -411,9 +372,6 @@ pub fn filter_idx(list: SmartList, todos: &[Todo]) -> Vec<usize> {
         .map(|(i, _)| i)
         .collect();
     match list {
-        SmartList::Plans => {
-            v.sort_by_cached_key(|&i| task_date(&todos[i]).0.unwrap_or_else(|| "\u{ffff}".into()))
-        }
         SmartList::Logbook => v.sort_by_cached_key(|&i| {
             std::cmp::Reverse(instant_key(todos[i].completed_at.as_deref()))
         }),
@@ -478,13 +436,6 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
         .filter(|t| match list {
             SmartList::Week | SmartList::NextWeek => unreachable!(),
             SmartList::Inbox => is_inbox(t),
-            SmartList::Plans => {
-                let (date, _) = task_date(t);
-                date.as_deref().is_some_and(|d| d > today.as_str())
-                    && is_active(t)
-                    && !is_deferred(t)
-                    && t.system_kind.is_none()
-            }
             SmartList::Someday => is_deferred(t),
             SmartList::Logbook => is_archived(t, &today),
             SmartList::Trash => t.is_trashed,
@@ -492,11 +443,6 @@ pub fn filter_todos(list: SmartList, todos: &[Todo]) -> Vec<Todo> {
         .cloned()
         .collect();
     v.sort_by(|a, b| match list {
-        SmartList::Plans => {
-            let da = task_date(a).0.unwrap_or_else(|| "\u{ffff}".into());
-            let db = task_date(b).0.unwrap_or_else(|| "\u{ffff}".into());
-            da.cmp(&db)
-        }
         SmartList::Logbook => {
             instant_key(b.completed_at.as_deref()).cmp(&instant_key(a.completed_at.as_deref()))
         }
@@ -583,15 +529,6 @@ pub(crate) const MONTH_LONG: [&str; 12] = [
     "ноября",
     "декабря",
 ];
-const WEEKDAY_DATIVE: [&str; 7] = [
-    "понедельникам",
-    "вторникам",
-    "средам",
-    "четвергам",
-    "пятницам",
-    "субботам",
-    "воскресеньям",
-];
 
 /// {day: numeric, month: short} then strip trailing dot → "18 сент"
 pub fn fmt_day_month(key: &str) -> String {
@@ -603,40 +540,6 @@ pub fn fmt_day_month(key: &str) -> String {
         }
         None => key.to_string(),
     }
-}
-
-// ---------------------------------------------------------------------------
-// Recurrence description (describeRecurrence)
-// ---------------------------------------------------------------------------
-
-pub fn describe_recurrence(rule: &Option<RecurrenceRule>) -> String {
-    let Some(rule) = rule else {
-        return "Повторение".into();
-    };
-    let singular = ["Каждый день", "Каждую неделю", "Каждый месяц", "Каждый год"];
-    let plural = ["дня", "недели", "месяца", "года"];
-    let i = (rule.frequency as usize).min(3);
-    let every = if rule.interval == 1 {
-        singular[i].to_string()
-    } else {
-        format!("Каждые {} {}", rule.interval, plural[i])
-    };
-    let weekdays = if rule.frequency == 1 && !rule.days_of_week.is_empty() {
-        let names: Vec<&str> = rule
-            .days_of_week
-            .iter()
-            .map(|d| WEEKDAY_DATIVE[(*d as usize).saturating_sub(1).min(6)])
-            .collect();
-        format!(" по {}", names.join(" и "))
-    } else {
-        String::new()
-    };
-    let mode = if rule.recurrence_type == 1 {
-        " после выполнения"
-    } else {
-        " по расписанию"
-    };
-    format!("{}{}{}", every, weekdays, mode)
 }
 
 // ---------------------------------------------------------------------------
@@ -1228,21 +1131,6 @@ pub fn seed_projects() -> Vec<Project> {
     ]
 }
 
-pub fn seed_areas() -> Vec<Area> {
-    vec![
-        Area {
-            id: "dev-area-work".into(),
-            title: "Работа".into(),
-            sort_order: 0,
-        },
-        Area {
-            id: "dev-area-life".into(),
-            title: "Личное".into(),
-            sort_order: 1,
-        },
-    ]
-}
-
 pub fn seed_tags() -> Vec<Tag> {
     vec![
         Tag {
@@ -1259,23 +1147,6 @@ pub fn seed_tags() -> Vec<Tag> {
             id: "dev-tag-home".into(),
             title: "дом".into(),
             color: "green".into(),
-        },
-    ]
-}
-
-pub fn seed_headings() -> Vec<Heading> {
-    vec![
-        Heading {
-            id: "dev-head-prep".into(),
-            title: "Подготовка".into(),
-            sort_order: 0,
-            project_id: Some("dev-proj-release".into()),
-        },
-        Heading {
-            id: "dev-head-polish".into(),
-            title: "Полировка".into(),
-            sort_order: 1,
-            project_id: Some("dev-proj-release".into()),
         },
     ]
 }

@@ -10,7 +10,7 @@ mod transport;
 #[cfg(test)]
 mod transport_tests;
 
-use crate::model::{Area, Heading, Project, Tag, Todo};
+use crate::model::{Project, Tag, Todo};
 pub use mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -20,9 +20,7 @@ pub use transport::Engine;
 pub struct Snapshot {
     pub todos: Vec<Todo>,
     pub projects: Vec<Project>,
-    pub areas: Vec<Area>,
     pub tags: Vec<Tag>,
-    pub headings: Vec<Heading>,
 }
 
 pub struct Mutation {
@@ -145,9 +143,7 @@ impl Engine {
             return Err(Self::mapping_err("unknown references model_version".into()));
         }
         snapshot.projects = collection(props, "projects")?;
-        snapshot.areas = collection(props, "areas")?;
         snapshot.tags = collection(props, "tags")?;
-        snapshot.headings = collection(props, "headings")?;
         Ok(snapshot)
     }
 
