@@ -23,9 +23,10 @@
 
 - Все данные идут через операции Engine. Приложение никогда не открывает
   SQLite само (`cortex/docs/write-boundary.md`) и не хранит копию задач.
-- Engine ищется по `engine.lock.json` в `MUNDUS_DATA_DIR`; без неё — в папке
-  конфигурации Mundus (`src/brand.rs`). Старые `KOSMOS_DATA_DIR` и `Kosmos`
-  пока читаются как запасной путь: первый найденный lock-файл побеждает.
+- Engine ищется по `engine.lock.json`; порядок кандидатов: `MUNDUS_DATA_DIR`,
+  `KOSMOS_DATA_DIR`, `<config>/Mundus`, `<config>/Kosmos` — побеждает первая
+  папка с lock-файлом (`src/store/transport.rs`, `src/brand.rs`). Старые
+  `KOSMOS_*`/`Kosmos` — переходный запас под `MIGRATION(KOS-267)`.
 - Переменные окружения для разработки: `AGENDA_DEMO=1` (демо без Engine,
   ничего не сохраняется), `AGENDA_DEVTASKS=N`, `AGENDA_ROUTE`,
   `AGENDA_OVERLAY`, `AGENDA_FPS`, `AGENDA_VSYNC`, `AGENDA_OFFSCREEN`,
@@ -49,12 +50,15 @@ Windows требует `fxc.exe` из Windows SDK в `PATH` или `GPUI_FXC_PAT
 ## Проверки
 
 CI (`.github/workflows/build.yml`) запускается на каждый PR и на push в
-`main`: `cargo fmt --check`, `cargo clippy -- -D warnings`, тесты, гейт размера
-файлов и release-сборка на Windows, Linux и macOS; плюс проверка правил
-версий (`python scripts/test_release.py`, `scripts/test_release_notes.py`).
-Ночью (00:00 МСК) тот же workflow выпускает релиз.
+`main`. На Windows, Linux и macOS: `cargo fmt --check`, `cargo test --release`
+и release-сборка; clippy и гейт размера файлов — только на Windows; плюс
+проверка правил версий (`python scripts/test_release.py`,
+`scripts/test_release_notes.py`). `cargo shear` и `cargo deny` в CI не
+запускаются, только локально через `hk`. Ночью (00:00 МСК = 21:00 UTC) тот же
+workflow выпускает релиз, если исходники изменились.
 
-Локально те же проверки гонит `hk` (`hk.pkl`):
+Локальный гейт — `hk` (`hk.pkl`); pre-commit у него лёгкий (`cargo check` и
+`cargo fmt --check`), полный гейт идёт на pre-push:
 
 ```text
 cargo install hk --locked && hk install     # один раз на копию
@@ -76,12 +80,16 @@ hk run pre-push                             # или hk check --all
 - Мёртвый код удаляй сразу, вместе с тестами только на него. Не используй
   `#[allow(dead_code)]` и не добавляй `-A …` в clippy (`hk.pkl`, `build.yml`):
 - Размер файла — не больше 300 строк (`src/bin/check-source-size.rs`);
-  список `GRANDFATHERED` только сокращается.
-- `gpui` (псевдоним `gpui-kit`), `gpui-component`, `gpui-base` закреплены
-  точными версиями и должны совпадать с cortex/manager-gpui, memoria-gpui и
-  dictation: две версии gpui в одной сборке — ошибка типов. Поднимай вместе.
-  `imago-gpui`, `mundus-gpui-kit` и `[patch.crates-io]` закреплены по rev
-  репозитория `makekosmos/imago`.
+  список `GRANDFATHERED` (`app.rs`, `chrome.rs`, `model.rs`, `pages.rs`) только
+  сокращается: новый код клади в подмодули.
+- `gpui` (псевдоним `gpui-kit`) и `gpui-component` закреплены точными
+  версиями и должны совпадать с cortex/manager-gpui, memoria-gpui и dictation
+  (там же закреплён и `gpui-base`; он здесь приходит транзитивно): две версии
+  gpui в одной сборке — ошибка типов. Поднимай вместе. `imago-gpui` и
+  `mundus-gpui-kit` закреплены по одному rev репозитория `makekosmos/imago`,
+  `[patch.crates-io]` (`gpui-pre*`) — по другому; их меняют отдельно.
+- В `[profile.release]` `debug-assertions` должен оставаться `false`:
+  иначе gpui-pre-windows не скомпилирует шейдеры (комментарий в `Cargo.toml`).
 - Цвета и шрифты — только через токены темы (`theme.rs`, `palettes.rs`).
   Сохраняй клавиатурный доступ, фокус и доступные имена элементов.
 - Подписки, таймеры и слушатели снимай при уничтожении окна или view.
