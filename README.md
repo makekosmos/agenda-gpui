@@ -1,13 +1,12 @@
 # agenda-gpui
 
-Экспериментальный native GPUI-клон Agenda (KOS-124). Не замена Vue/Electron Agenda.
+Native GPUI-приложение Agenda для Mundus. Правила для агентов: [AGENTS.md](AGENTS.md).
 
 ## Требования
 
-- Rust stable
+- Rust stable; на Linux ещё `ld.lld` в `PATH`
 - `hk` для Git hooks: `cargo install hk --locked`, затем `hk install` в корне репозитория
 - Гейты pre-push: `cargo nextest`, `cargo shear`, `cargo clippy`, `cargo deny` (ставятся через `cargo install` по необходимости)
-- Linux: обычный `cargo run`
 - Windows release: нужен Windows SDK `fxc.exe` в `PATH` или `GPUI_FXC_PATH` (вшитые DXBC-шейдеры). Иначе падение на DirectWrite/шейдерах.
 
 Весь гейт можно прогнать вручную: `hk check --all` или `hk run pre-push`.
@@ -68,7 +67,7 @@ Linear в описании PR. Для прямых коммитов указыв
 ## Сборка
 
 Обычный запуск читает настоящие задачи через локальный Mundus Engine API v1.
-Сначала запусти Mundus Engine с той же папкой данных, что использует Vue Agenda.
+Сначала запусти Mundus Engine.
 Приложение читает `engine.lock.json` из `%APPDATA%\Mundus` (Windows),
 `~/Library/Application Support/Mundus` (macOS) или `$XDG_CONFIG_HOME/Mundus`
 (`~/.config/Mundus` по умолчанию на Linux). Для другой папки задай `MUNDUS_DATA_DIR`.
@@ -78,36 +77,27 @@ Linear в описании PR. Для прямых коммитов указыв
 
 ### Runbook: Engine → agenda-gpui (одна папка данных)
 
-Engine живёт в `makekosmos/cortex` (`runtime/`, бинарь `kepler-backend`),
-sidecar `ark-core-rpc` — в `makekosmos/core` (`crates/ark-core`). Подробный
-гайд по Linux-окружению: `cortex/docs/linux-dev.md`.
+Engine живёт в `makekosmos/cortex` (крейт `engine` в `runtime/`, бинарь
+`mundus-engine`); ARK работает внутри его процесса, отдельного sidecar нет.
+Из корня cortex:
 
 ```bash
-# 1. Sidecar из пинned ревизии core (cortex/desktop/scripts/ark-core-rpc.mjs)
-#    или из sibling checkout: cargo build --bin ark-core-rpc в core/.
-# 2. Engine (из cortex/):
-cargo build -p kepler-backend
-MUNDUS_DATA_DIR=/path/to/data MUNDUS_HEADLESS=1 \
-  ARK_CORE_RPC_PATH=/path/to/ark-core-rpc \
-  target/debug/kepler-backend &
-# 3. Проверь, что появился lock-файл:
-cat /path/to/data/engine.lock.json   # http_port + auth_token
-# 4. agenda-gpui на той же папке:
-MUNDUS_DATA_DIR=/path/to/data cargo run
+pnpm run dev -- --engine-only --data-dir /path/to/data   # Engine
+cat /path/to/data/engine.lock.json                       # http_port + auth_token
 ```
 
-Engine до ребрендинга (0.9.x) читает те же переменные с префиксом `KOSMOS_` (`KOSMOS_DATA_DIR`, `KOSMOS_HEADLESS`); agenda-gpui их тоже понимает как legacy-фолбэк.
+Затем agenda-gpui на той же папке: `MUNDUS_DATA_DIR=/path/to/data cargo run`.
+Подробности: `AGENTS.md` и `cortex/docs/linux-dev.md`.
 
-Тот же `MUNDUS_DATA_DIR` должен использовать Electron Host / Vue Agenda —
-тогда обе Agenda видят одни задачи. Если Engine остановлен или lock-файла
-нет, приложение показывает баннер «Engine не запущен…» / «Нет подтверждения
-от Engine» и кнопку «Обновить»; seed-карточки при этом не рисуются.
+Если Engine остановлен или lock-файла нет, приложение показывает баннер
+«Engine не запущен…» / «Нет подтверждения от Engine» и кнопку «Обновить»;
+seed-карточки при этом не рисуются.
 
 Создание, название, заметки, свойства, статус, перенос в Сегодня и корзина
 сохраняются через Engine. Изменение появляется в списке после подтверждения
 записи. Во время запроса закрытие окна блокируется; при ошибке приложение
 показывает сообщение и требует обновить список перед следующей записью.
-`Ctrl+R` / `Cmd+R` обновляет данные, в том числе изменения из Vue Agenda.
+`Ctrl+R` / `Cmd+R` обновляет данные, в том числе изменения других клиентов.
 Автоматической подписки на изменения другого клиента пока нет.
 
 Демо для дизайна: `AGENDA_DEMO=1`; `AGENDA_DEVTASKS=N` также явно включает
@@ -117,9 +107,8 @@ Engine до ребрендинга (0.9.x) читает те же перемен
 
 Проверка сохранения между отдельными процессами клиента:
 `cargo test --bin agenda-gpui store::tests`. Тест использует локальный HTTP
-стенд контракта Engine с записью на диск. Для приёмки KOS-126 дополнительно
-проверь реальный Engine: создать → закрыть/открыть → переименовать →
-закрыть/открыть → завершить → закрыть/открыть; сравни Inbox/Сегодня с Vue Agenda.
+стенд контракта Engine с записью на диск. Для ручной проверки на реальном Engine: создать → закрыть/открыть →
+переименовать → закрыть/открыть → завершить → закрыть/открыть.
 
 ```bash
 git clone git@github.com:makekosmos/agenda-gpui.git
@@ -139,7 +128,4 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 - `src/` — UI
 - `assets/` — шрифты и иконки
-- `vendor/gpui-pre-*-patched/` — локальные патчи gpui-pre 0.3.5 для window hit-test
 - `windows/` — манифест Common Controls v6
-
-Вынесено из `makekosmos/agenda` ветка `kos-124` / PR #32.
