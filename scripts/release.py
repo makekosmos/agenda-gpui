@@ -107,11 +107,32 @@ def package(target):
         executable = contents / "MacOS" / "agenda-gpui"
         shutil.copy2(binary, executable)
         executable.chmod(0o755)
+        # CFBundleIconFile + Contents/Resources/agenda.icns — without them the
+        # app shows the generic blank icon. windows/app-icon.png is already
+        # squircle-masked full-canvas art, so sips + iconutil suffice.
+        iconset = dist / "agenda.iconset"
+        iconset.mkdir(exist_ok=True)
+        for size in (16, 32, 128, 256, 512):
+            for scale, pixels in ((1, size), (2, size * 2)):
+                icon_name = f"icon_{size}x{size}{'@2x' if scale == 2 else ''}.png"
+                subprocess.run(
+                    ["sips", "-z", str(pixels), str(pixels), "windows/app-icon.png",
+                     "--out", str(iconset / icon_name)],
+                    check=True, capture_output=True,
+                )
+        resources = contents / "Resources"
+        resources.mkdir(exist_ok=True)
+        subprocess.run(
+            ["iconutil", "-c", "icns", str(iconset), "-o", str(resources / "agenda.icns")],
+            check=True,
+        )
+        shutil.rmtree(iconset)
         with (contents / "Info.plist").open("wb") as plist:
             plistlib.dump({
                 "CFBundleName": "Agenda", "CFBundleDisplayName": "Agenda",
                 "CFBundleIdentifier": "com.makekosmos.agenda-gpui",
                 "CFBundleExecutable": "agenda-gpui", "CFBundlePackageType": "APPL",
+                "CFBundleIconFile": "agenda",
                 "CFBundleShortVersionString": version, "CFBundleVersion": version,
                 "NSHighResolutionCapable": True,
             }, plist)
