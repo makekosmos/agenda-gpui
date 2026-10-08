@@ -65,7 +65,8 @@ jobs:
             target: x86_64-unknown-linux-gnu
           - os: windows-2022
             target: x86_64-pc-windows-msvc
-          - os: macos-15
+          # SDK 26+ enables Tahoe's native window controls, matching Cortex.
+          - os: macos-26
             target: aarch64-apple-darwin
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
@@ -100,9 +101,14 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y clang libfontconfig-dev libwayland-dev libxkbcommon-x11-dev libx11-xcb-dev libssl-dev libzstd-dev libvulkan1
-      - name: macOS Metal compiler
+      - name: macOS SDK and Metal compiler
         if: runner.os == 'macOS'
         run: |
+          macos_sdk_version=$(xcrun --sdk macosx --show-sdk-version)
+          if [ "${macos_sdk_version%%.*}" -lt 26 ]; then
+            echo "Agenda requires macOS SDK 26+ for native Tahoe window controls (found $macos_sdk_version)" >&2
+            exit 1
+          fi
           if ! xcrun --find metal; then
             xcodebuild -downloadComponent MetalToolchain
           fi
