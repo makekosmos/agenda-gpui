@@ -47,9 +47,9 @@ fn project_round_trips_as_canonical_object() {
         area_id: Some("a1".into()),
     };
     let object =
-        crate::store::projects::project_object(Value::Null, &project, "2026-10-05T00:00:00Z");
+        agenda_core::projects::project_object(&Value::Null, &project, "2026-10-05T00:00:00Z");
     assert_eq!(object["typeId"], "com.kosmos.project");
     assert_eq!(object["propsJson"]["status"], "someday");
     assert_eq!(object["propsJson"]["dueAt"], "2026-12-01");
-    assert_eq!(crate::store::projects::read_project(&object), project);
+    assert_eq!(agenda_core::projects::read_project(&object), project);
 }
