@@ -4,7 +4,8 @@
 //! the same agenda-core rules desktop runs. Usage:
 //!   cargo run -p agenda-core --bin seed-parity -- <YYYY-MM-DD> <utc-offset-secs>
 use agenda_core::{
-    filter_idx, is_archived, mapping, projects, seed, today_idx, LocalDay, SmartList,
+    filter_idx, mapping, project_page_idx, projects, seed, tag_page_idx, today_idx, LocalDay,
+    SmartList,
 };
 use chrono::{FixedOffset, NaiveDate};
 use serde_json::{json, Value};
@@ -88,28 +89,17 @@ fn main() -> Result<(), String> {
 
     let mut proj_views = serde_json::Map::new();
     for p in &projs {
-        // Same predicate as desktop project_page: project match, not
-        // trashed, not archived (project.rs filter).
-        let view: Vec<usize> = todos
-            .iter()
-            .enumerate()
-            .filter(|(_, t)| {
-                t.project_id.as_deref() == Some(p.id.as_str())
-                    && !t.is_trashed
-                    && !is_archived(t, &day)
-            })
-            .map(|(i, _)| i)
-            .collect();
-        proj_views.insert(p.id.clone(), json!(ids(&todos, view)));
+        proj_views.insert(
+            p.id.clone(),
+            json!(ids(&todos, project_page_idx(&p.id, &todos, &day))),
+        );
     }
     let mut tag_views = serde_json::Map::new();
     for tag in &tags {
-        let view: Vec<String> = todos
-            .iter()
-            .filter(|t| !t.is_trashed && t.tag_ids.iter().any(|id| id == &tag.id))
-            .map(|t| t.id.clone())
-            .collect();
-        tag_views.insert(tag.id.clone(), json!(view));
+        tag_views.insert(
+            tag.id.clone(),
+            json!(ids(&todos, tag_page_idx(&tag.id, &todos))),
+        );
     }
 
     let out = json!({

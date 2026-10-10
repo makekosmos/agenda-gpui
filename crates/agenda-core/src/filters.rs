@@ -255,3 +255,31 @@ pub fn today_idx(todos: &[Todo], day: &LocalDay) -> Vec<usize> {
         .collect();
     overdue.into_iter().chain(due).collect()
 }
+
+/// Project page membership (desktop `project_page`): tasks in the project,
+/// not trashed, not archived — `sort_order` board order.
+pub fn project_page_idx(project_id: &str, todos: &[Todo], day: &LocalDay) -> Vec<usize> {
+    let mut v: Vec<usize> = todos
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| {
+            t.project_id.as_deref() == Some(project_id) && !t.is_trashed && !is_archived(t, day)
+        })
+        .map(|(i, _)| i)
+        .collect();
+    v.sort_by_key(|&i| todos[i].sort_order);
+    v
+}
+
+/// Tag filter membership: live tasks carrying the tag (trash hidden),
+/// `sort_order` board order.
+pub fn tag_page_idx(tag_id: &str, todos: &[Todo]) -> Vec<usize> {
+    let mut v: Vec<usize> = todos
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| !t.is_trashed && t.tag_ids.iter().any(|id| id == tag_id))
+        .map(|(i, _)| i)
+        .collect();
+    v.sort_by_key(|&i| todos[i].sort_order);
+    v
+}
