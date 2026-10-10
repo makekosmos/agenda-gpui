@@ -33,7 +33,31 @@ fn main() -> Result<(), String> {
     );
     let now = format!("{}T12:00:00{:+03}:{:02}", day.today_key(), 0, 0);
 
-    let todos = seed::seed_todos_at(&day);
+    // Instant fields (`reminder_date`, `completed_at`) must carry an
+    // explicit offset to survive the Engine's canonical normalization —
+    // `iso_at` deliberately emits bare local stamps, so append the dump's
+    // own offset like a real writer on this box would have.
+    let suffix = format!(
+        "{}{:02}:{:02}",
+        if offset < 0 { "-" } else { "+" },
+        offset.abs() / 3600,
+        offset.abs() % 3600 / 60
+    );
+    let fix = |v: Option<String>| {
+        v.map(|s| {
+            if chrono::DateTime::parse_from_rfc3339(&s).is_ok() {
+                s
+            } else {
+                format!("{s}{suffix}")
+            }
+        })
+    };
+    let mut todos = seed::seed_todos_at(&day);
+    for t in &mut todos {
+        t.reminder_date = fix(t.reminder_date.take());
+        t.completed_at = fix(t.completed_at.take());
+    }
+    let todos = todos;
     let projs = seed::seed_projects_at(&day);
     let tags = seed::seed_tags();
 
