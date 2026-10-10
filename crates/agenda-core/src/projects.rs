@@ -66,7 +66,6 @@ pub fn references_object(projects: &[Project], tags: &[crate::Tag], now: &str) -
     json!({
         "id": "agenda:references",
         "typeId": "com.kosmos.agenda.references",
-        "typeVersion": "1.0.0",
         "title": "Agenda references",
         "createdAt": now,
         "updatedAt": now,
