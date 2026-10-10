@@ -271,8 +271,9 @@ pub fn project_page_idx(project_id: &str, todos: &[Todo], day: &LocalDay) -> Vec
     v
 }
 
-/// Tag filter membership: live tasks carrying the tag (trash hidden),
-/// `sort_order` board order.
+/// Tag filter membership: every non-trashed task carrying the tag, done
+/// ones included — a filter view, not a work list (documented choice;
+/// desktop shows tags only via quick search).
 pub fn tag_page_idx(tag_id: &str, todos: &[Todo]) -> Vec<usize> {
     let mut v: Vec<usize> = todos
         .iter()

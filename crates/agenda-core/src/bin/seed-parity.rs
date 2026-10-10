@@ -102,6 +102,12 @@ fn main() -> Result<(), String> {
         );
     }
 
+    let logbook_projects: Vec<String> = projs
+        .iter()
+        .filter(|p| p.status == 2)
+        .map(|p| p.id.clone())
+        .collect();
+
     let out = json!({
         "today": day.today_key(),
         "utcOffsetSeconds": offset,
@@ -113,6 +119,7 @@ fn main() -> Result<(), String> {
             "lists": lists,
             "projects": proj_views,
             "tags": tag_views,
+            "logbookProjects": logbook_projects,
         },
     });
     println!(

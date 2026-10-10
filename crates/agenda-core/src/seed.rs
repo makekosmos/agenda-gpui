@@ -199,6 +199,16 @@ pub fn seed_projects_at(day: &LocalDay) -> Vec<Project> {
             sort_order: 2,
             area_id: Some("dev-area-life".into()),
         },
+        // status 2: completed project — desktop shows these in the Logbook
+        // «Проекты» section, so the parity gate needs one in the seed.
+        Project {
+            id: "dev-proj-archive".into(),
+            title: "Старый сайт".into(),
+            status: 2,
+            deadline: None,
+            sort_order: 3,
+            area_id: Some("dev-area-work".into()),
+        },
     ]
 }
 
