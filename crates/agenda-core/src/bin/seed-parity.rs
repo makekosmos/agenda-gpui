@@ -3,10 +3,7 @@
 //! list, project view and tag filter for a fixed `today`, all computed by
 //! the same agenda-core rules desktop runs. Usage:
 //!   cargo run -p agenda-core --bin seed-parity -- <YYYY-MM-DD> <utc-offset-secs>
-use agenda_core::{
-    filter_idx, mapping, project_page_idx, projects, seed, tag_page_idx, today_idx, LocalDay,
-    SmartList,
-};
+use agenda_core::{filter_idx, mapping, project_page_idx, projects, seed, LocalDay, SmartList};
 use chrono::{FixedOffset, NaiveDate};
 use serde_json::{json, Value};
 
@@ -85,8 +82,6 @@ fn main() -> Result<(), String> {
             json!(ids(&todos, filter_idx(list, &todos, &day))),
         );
     }
-    lists.insert("today".into(), json!(ids(&todos, today_idx(&todos, &day))));
-
     let mut proj_views = serde_json::Map::new();
     for p in &projs {
         proj_views.insert(
@@ -94,14 +89,6 @@ fn main() -> Result<(), String> {
             json!(ids(&todos, project_page_idx(&p.id, &todos, &day))),
         );
     }
-    let mut tag_views = serde_json::Map::new();
-    for tag in &tags {
-        tag_views.insert(
-            tag.id.clone(),
-            json!(ids(&todos, tag_page_idx(&tag.id, &todos))),
-        );
-    }
-
     let logbook_projects: Vec<String> = projs
         .iter()
         .filter(|p| p.status == 2)
@@ -118,7 +105,6 @@ fn main() -> Result<(), String> {
         "expected": {
             "lists": lists,
             "projects": proj_views,
-            "tags": tag_views,
             "logbookProjects": logbook_projects,
         },
     });

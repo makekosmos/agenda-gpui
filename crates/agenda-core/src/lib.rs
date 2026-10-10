@@ -4,6 +4,7 @@
 //! hidden clock reads: every function that depends on "now" takes a
 //! [`LocalDay`] from its caller.
 
+mod actions;
 mod dates;
 mod filters;
 pub mod mapping;
@@ -13,6 +14,7 @@ mod recurrence;
 pub mod seed;
 mod types;
 
+pub use actions::*;
 pub use dates::*;
 pub use filters::*;
 pub use quick_entry::*;

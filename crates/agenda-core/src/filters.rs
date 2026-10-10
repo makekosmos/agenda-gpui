@@ -235,27 +235,6 @@ pub enum GroupKey {
     Date,
 }
 
-/// «Сегодня» board: the Week pipeline narrowed to what the day actually
-/// holds — the overdue block first (same sort), then tasks dated today.
-/// Android shows this as its own list; desktop folds it into «Эта неделя».
-pub fn today_idx(todos: &[Todo], day: &LocalDay) -> Vec<usize> {
-    let week = filter_idx(SmartList::Week, todos, day);
-    let overdue: Vec<usize> = week
-        .iter()
-        .copied()
-        .filter(|&i| is_overdue(&todos[i], day))
-        .collect();
-    let due: Vec<usize> = week
-        .iter()
-        .copied()
-        .filter(|&i| {
-            !is_overdue(&todos[i], day)
-                && task_date(&todos[i], day).0.as_deref() == Some(day.today_key().as_str())
-        })
-        .collect();
-    overdue.into_iter().chain(due).collect()
-}
-
 /// Project page membership (desktop `project_page`): tasks in the project,
 /// not trashed, not archived — `sort_order` board order.
 pub fn project_page_idx(project_id: &str, todos: &[Todo], day: &LocalDay) -> Vec<usize> {
@@ -265,20 +244,6 @@ pub fn project_page_idx(project_id: &str, todos: &[Todo], day: &LocalDay) -> Vec
         .filter(|(_, t)| {
             t.project_id.as_deref() == Some(project_id) && !t.is_trashed && !is_archived(t, day)
         })
-        .map(|(i, _)| i)
-        .collect();
-    v.sort_by_key(|&i| todos[i].sort_order);
-    v
-}
-
-/// Tag filter membership: every non-trashed task carrying the tag, done
-/// ones included — a filter view, not a work list (documented choice;
-/// desktop shows tags only via quick search).
-pub fn tag_page_idx(tag_id: &str, todos: &[Todo]) -> Vec<usize> {
-    let mut v: Vec<usize> = todos
-        .iter()
-        .enumerate()
-        .filter(|(_, t)| !t.is_trashed && t.tag_ids.iter().any(|id| id == tag_id))
         .map(|(i, _)| i)
         .collect();
     v.sort_by_key(|&i| todos[i].sort_order);
