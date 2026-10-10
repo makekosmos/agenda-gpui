@@ -10,9 +10,9 @@ use gpui::{
 use gpui_component::InteractiveElementExt;
 
 use crate::app::{Agenda, MenuAction, Route};
-use crate::model::*;
 use crate::theme::*;
 use crate::widgets::*;
+use agenda_core::*;
 
 #[cfg(test)]
 #[path = "chrome_tests.rs"]

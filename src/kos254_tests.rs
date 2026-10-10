@@ -4,9 +4,9 @@
 use gpui::TestAppContext;
 use serde_json::json;
 
-use crate::model::{filter_idx, is_deferred, task_status, SmartList, Status};
-use crate::store::mapping;
 use crate::ui_tests::{click, launch, redraw, type_text};
+use agenda_core::mapping;
+use agenda_core::{filter_idx, is_deferred, task_status, LocalDay, SmartList, Status};
 
 /// «Входящие» is an explicit project choice, not "no choice": the
 /// `qe_project_touched` flag distinguishes the two, but `quick_entry_save`
@@ -59,7 +59,7 @@ fn completed_someday_task_leaves_someday(cx: &mut TestAppContext) {
     click(cx, "sb-someday");
     redraw(cx);
     assert!(agenda.read_with(cx, |a, _| {
-        filter_idx(SmartList::Someday, &a.todos)
+        filter_idx(SmartList::Someday, &a.todos, &LocalDay::now())
             .iter()
             .any(|&i| a.todos[i].id == "dev-someday-1")
     }));
@@ -72,7 +72,7 @@ fn completed_someday_task_leaves_someday(cx: &mut TestAppContext) {
         assert_eq!(task_status(t), Status::Done);
         assert!(!is_deferred(t), "a done task must not count as deferred");
         assert!(
-            !filter_idx(SmartList::Someday, &a.todos)
+            !filter_idx(SmartList::Someday, &a.todos, &LocalDay::now())
                 .iter()
                 .any(|&i| a.todos[i].id == "dev-someday-1"),
             "completed task still listed in «Потом»"

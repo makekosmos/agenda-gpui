@@ -10,9 +10,9 @@ use std::time::Duration;
 use gpui::TestAppContext;
 
 use crate::app::storage::StorageFault;
-use crate::model::{new_todo, Status, Todo};
 use crate::store::{Command, EngineError, ErrorKind, Mutation, Reply, Snapshot, Worker};
 use crate::ui_tests::{click, launch, redraw, todo_of, type_text};
+use agenda_core::{new_todo, Status, Todo};
 
 fn engine_error(kind: ErrorKind) -> EngineError {
     EngineError {

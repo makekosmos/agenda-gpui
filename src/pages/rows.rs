@@ -67,7 +67,7 @@ impl Agenda {
                 // Nothing in the row path reads this.todos back.
                 let rows_t0 = std::time::Instant::now();
                 let todos = std::mem::take(&mut this.todos);
-                let today = today_key();
+                let day = LocalDay::now();
                 let out: Vec<_> = range
                     .map(|ix| match &rows[ix] {
                         FlatRow::Header(label, count) => {
@@ -75,7 +75,7 @@ impl Agenda {
                         }
                         FlatRow::Task(ix) => match todos.get(*ix) {
                             Some(t) => this
-                                .task_row(t, *ix, &today, editable, window, cx)
+                                .task_row(t, *ix, &day, editable, window, cx)
                                 .into_any_element(),
                             None => div().into_any_element(),
                         },

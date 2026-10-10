@@ -9,12 +9,13 @@ impl Agenda {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let today = Local::now().date_naive();
+        let day = LocalDay::now();
+        let today = day.today;
 
         // Per-day completed counts for all history.
         let mut days = std::collections::BTreeMap::<NaiveDate, i64>::new();
         for t in &self.todos {
-            if let Some(d) = completed_day(t) {
+            if let Some(d) = completed_day(t, &day) {
                 *days.entry(d).or_insert(0) += 1;
             }
         }

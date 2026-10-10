@@ -5,7 +5,13 @@ edition = "2021"
 description = "GPUI clone of the Agenda task UI (experimental, KOS-124)"
 default-run = "agenda-gpui"
 
+[workspace]
+members = ["crates/agenda-core"]
+
 [dependencies]
+# Pure task/date/filter/quick-entry logic shared with the Android app
+# (KOS-370): no GPUI, no Engine transport, clock passed in as LocalDay.
+agenda-core = { path = "crates/agenda-core" }
 # gpui-kit pins the matching gpui-pre snapshot (0.3.5) and puts GPUI at its
 # root, so `use gpui::...` keeps working through this alias.
 gpui = { package = "gpui-kit", version = "=0.6.2" }

@@ -58,9 +58,10 @@ impl Agenda {
         // Edit mode: the same two property rows bind to the open task —
         // the panel is visually identical to task creation.
         let editing = self.qe_task.as_ref().and_then(|id| self.todo(id)).cloned();
-        let next_mon = next_monday_key(&today_key());
+        let day = LocalDay::now();
+        let next_mon = day.next_monday_key();
         let (date_label, date_has, date_kind, date_todo) = if let Some(t) = &editing {
-            let (d, _) = task_date(t);
+            let (d, _) = task_date(t, &day);
             let label = if t.is_today && d.is_none() {
                 "Эта неделя".to_string()
             } else {

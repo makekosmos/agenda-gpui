@@ -1,5 +1,5 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
-pub mod mapping;
+
 #[cfg(test)]
 mod mapping_tests;
 #[cfg(test)]
@@ -11,7 +11,7 @@ mod transport;
 #[cfg(test)]
 mod transport_tests;
 
-use crate::model::{Project, Tag, Todo};
+use agenda_core::{mapping, LocalDay, Project, Tag, Todo};
 pub use mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
 use std::sync::mpsc::{self, Receiver, Sender};
@@ -162,7 +162,9 @@ impl Engine {
             }
         }
         snapshot.projects.sort_by_key(|p| p.sort_order);
-        snapshot.tags = collection(props, "tags")?;
+        let (_, tags) =
+            agenda_core::projects::read_references(&object).map_err(Self::mapping_err)?;
+        snapshot.tags = tags;
         Ok(snapshot)
     }
 
@@ -199,7 +201,14 @@ impl Engine {
                 detail: "local: object already exists".into(),
             });
         }
-        let object = mapping::write(current, before, todo).map_err(Self::mapping_err)?;
+        let object = mapping::write_at(
+            current,
+            before,
+            todo,
+            &chrono::Utc::now().to_rfc3339(),
+            &LocalDay::now(),
+        )
+        .map_err(Self::mapping_err)?;
         self.upsert(object)
     }
 

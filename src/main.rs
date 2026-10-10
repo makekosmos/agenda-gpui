@@ -7,9 +7,9 @@ mod brand;
 mod chrome;
 #[cfg(feature = "e2e")]
 mod e2e;
-mod model;
 mod pages;
 mod palettes;
+mod seed;
 mod store;
 mod text_field;
 mod theme;

@@ -69,7 +69,7 @@ impl Agenda {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let items = filter_idx(SmartList::Logbook, &self.todos);
+        let items = filter_idx(SmartList::Logbook, &self.todos, &LocalDay::now());
         let archived: Vec<Project> = self
             .projects
             .iter()

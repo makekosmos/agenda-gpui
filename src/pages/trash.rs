@@ -6,7 +6,7 @@ impl Agenda {
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
-        let rows: Vec<FlatRow> = filter_idx(SmartList::Trash, &self.todos)
+        let rows: Vec<FlatRow> = filter_idx(SmartList::Trash, &self.todos, &LocalDay::now())
             .into_iter()
             .map(FlatRow::Task)
             .collect();

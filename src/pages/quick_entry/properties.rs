@@ -19,7 +19,8 @@ impl Agenda {
         } else if self.qe_someday {
             "Потом".to_string()
         } else {
-            let next_mon = next_monday_key(&today_key());
+            let day = LocalDay::now();
+            let next_mon = day.next_monday_key();
             self.qe_date
                 .as_ref()
                 .map(|d| {

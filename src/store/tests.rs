@@ -1,5 +1,17 @@
 use super::*;
-use crate::model::{is_due_this_week, is_inbox, new_todo, today_key, week_bounds, Status};
+use agenda_core::{is_due_this_week, is_inbox, new_todo, LocalDay, Status};
+/// `mapping::write` equivalent for tests: the app no longer has a
+/// clock-reading wrapper, so tests stamp `now`/`LocalDay` here.
+fn write(object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Value, String> {
+    mapping::write_at(
+        object,
+        before,
+        todo,
+        &chrono::Utc::now().to_rfc3339(),
+        &LocalDay::now(),
+    )
+}
+
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
@@ -11,7 +23,7 @@ fn mapping_preserves_unrepresented_fields() {
     let original = json!({"id":"real-id","typeId":mapping::TASK_TYPE,"typeVersion":"1.0.0",
         "title":"From Vue","createdAt":"2026-09-20T10:00:00Z","updatedAt":"2026-09-20T10:00:00Z",
         "contentJson":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Rich notes","marks":[{"type":"bold"}]}]}]},
-        "propsJson":{"status":"inProgress","priority":"high","scheduledAt":today_key(),
+        "propsJson":{"status":"inProgress","priority":"high","scheduledAt":LocalDay::now().today_key(),
             "checklist":[{"id":"item-1","title":"Keep this","isCompleted":true}],
             "extensions":{"priority":3,"linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
                 "project_id":"real-project","tag_ids":["real-tag"],"significance":7,"fuel_cost":12.5,"price":150.75}},"deletedAt":null});
@@ -21,21 +33,19 @@ fn mapping_preserves_unrepresented_fields() {
     assert_eq!(before.price, Some(150.75));
     assert_eq!(before.notes.as_deref(), Some("Rich notes"));
     assert_eq!(before.project_id.as_deref(), Some("real-project"));
-    assert!(is_due_this_week(
-        &before,
-        &week_bounds(&today_key()).unwrap()
-    ));
+    let day = LocalDay::now();
+    assert!(is_due_this_week(&before, &day.week_bounds().unwrap(), &day));
     let mut edited = before.clone();
     edited.title = "Renamed".into();
-    let written = mapping::write(original.clone(), Some(&before), &edited).unwrap();
+    let written = write(original.clone(), Some(&before), &edited).unwrap();
     assert_eq!(written["contentJson"], original["contentJson"]);
     assert_eq!(written["propsJson"], original["propsJson"]);
     assert_eq!(mapping::read(&written).unwrap(), edited);
     edited.status = Status::Deferred;
-    let deferred = mapping::write(written, Some(&before), &edited).unwrap();
+    let deferred = write(written, Some(&before), &edited).unwrap();
     assert_eq!(mapping::read(&deferred).unwrap().status, Status::Deferred);
     edited.status = Status::Todo;
-    let resumed = mapping::write(deferred, None, &edited).unwrap();
+    let resumed = write(deferred, None, &edited).unwrap();
     assert_eq!(mapping::read(&resumed).unwrap().status, Status::Todo);
 }
 
@@ -64,17 +74,15 @@ fn restart_client() {
             todo.title = "After restart".into();
             todo.notes = Some("Saved notes".into());
             todo.status = Status::Todo;
-            todo.scheduled_date = Some(today_key());
+            todo.scheduled_date = Some(LocalDay::now().today_key());
             engine.save(Some(before), &todo).unwrap();
         }
         "complete" => {
             let before = &tasks[0];
             assert_eq!(before.title, "After restart");
             assert_eq!(before.notes.as_deref(), Some("Saved notes"));
-            assert!(is_due_this_week(
-                before,
-                &week_bounds(&today_key()).unwrap()
-            ));
+            let day = LocalDay::now();
+            assert!(is_due_this_week(before, &day.week_bounds().unwrap(), &day));
             let mut todo = before.clone();
             todo.status = Status::Done;
             todo.is_completed = true;

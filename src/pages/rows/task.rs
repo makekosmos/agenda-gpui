@@ -9,7 +9,7 @@ impl Agenda {
         &mut self,
         t: &Todo,
         ix: usize,
-        today: &str,
+        day: &LocalDay,
         editable: bool,
         window: &mut Window,
         cx: &mut Context<Self>,
@@ -19,8 +19,11 @@ impl Agenda {
         let done = status == Status::Done || status == Status::Canceled;
         let hid = format!("row-{}", t.id);
         let t_h = self.hover_t(window, &hid);
-        let (date_val, _) = task_date(t);
-        let overdue = date_val.as_deref().is_some_and(|d| d < today) && !done;
+        let (date_val, _) = task_date(t, day);
+        let overdue = date_val
+            .as_deref()
+            .is_some_and(|d| d < day.today_key().as_str())
+            && !done;
         let row_name = t.title.clone();
         let ring_name = t.title.clone();
 
