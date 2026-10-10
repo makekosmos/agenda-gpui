@@ -234,3 +234,24 @@ pub enum GroupKey {
     Project,
     Date,
 }
+
+/// «Сегодня» board: the Week pipeline narrowed to what the day actually
+/// holds — the overdue block first (same sort), then tasks dated today.
+/// Android shows this as its own list; desktop folds it into «Эта неделя».
+pub fn today_idx(todos: &[Todo], day: &LocalDay) -> Vec<usize> {
+    let week = filter_idx(SmartList::Week, todos, day);
+    let overdue: Vec<usize> = week
+        .iter()
+        .copied()
+        .filter(|&i| is_overdue(&todos[i], day))
+        .collect();
+    let due: Vec<usize> = week
+        .iter()
+        .copied()
+        .filter(|&i| {
+            !is_overdue(&todos[i], day)
+                && task_date(&todos[i], day).0.as_deref() == Some(day.today_key().as_str())
+        })
+        .collect();
+    overdue.into_iter().chain(due).collect()
+}

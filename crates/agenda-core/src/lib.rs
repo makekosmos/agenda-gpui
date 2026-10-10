@@ -7,8 +7,10 @@
 mod dates;
 mod filters;
 pub mod mapping;
+pub mod projects;
 mod quick_entry;
 mod recurrence;
+pub mod seed;
 mod types;
 
 pub use dates::*;

@@ -162,7 +162,9 @@ impl Engine {
             }
         }
         snapshot.projects.sort_by_key(|p| p.sort_order);
-        snapshot.tags = collection(props, "tags")?;
+        let (_, tags) =
+            agenda_core::projects::read_references(&object).map_err(Self::mapping_err)?;
+        snapshot.tags = tags;
         Ok(snapshot)
     }
 

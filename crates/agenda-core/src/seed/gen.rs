@@ -7,7 +7,17 @@ use super::*;
 /// year so the statistics heatmap has data to show. Ids are namespaced as
 /// `dev-gen-{batch}-{i}` so batches never collide.
 pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec<Todo> {
-    let day = LocalDay::now();
+    gen_random_todos_at(n, seed, batch, first_sort, &LocalDay::now())
+}
+
+pub fn gen_random_todos_at(
+    n: usize,
+    seed: u64,
+    batch: u64,
+    first_sort: i32,
+    day: &LocalDay,
+) -> Vec<Todo> {
+    let day = *day;
     const PROJECTS: [&str; 3] = ["dev-proj-release", "dev-proj-home", "dev-proj-someday"];
     const TAGS: [&str; 3] = ["dev-tag-urgent", "dev-tag-focus", "dev-tag-home"];
 
