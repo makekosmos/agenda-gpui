@@ -117,6 +117,10 @@ pub struct QuickEntryDecision {
 /// `@mention` → project unless a chip was explicitly picked, and the status
 /// rule — any commitment (date, project, week flag) leaves Inbox; someday
 /// wins over everything.
+// Positional args mirror the desktop draft fields one-to-one and are the
+// UniFFI-facing signature agenda-android's rust/ calls; bundling them into a
+// struct is a cross-repo API change, not part of this gate fix.
+#[allow(clippy::too_many_arguments)]
 pub fn quick_entry_decision(
     title: &str,
     selected_date: Option<String>,
