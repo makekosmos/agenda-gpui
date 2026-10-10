@@ -11,8 +11,9 @@ use gpui_component::input::{InputState, TextareaState};
 use crate::appearance::{
     Poller as AppearancePoller, Response as AppearanceResponse, Writer as AppearanceWriter,
 };
-use crate::model::*;
+use crate::seed::{gen_random_todos, seed_projects, seed_tags, seed_todos};
 use crate::theme::*;
+use agenda_core::*;
 use serde_json::Value;
 
 const HOVER_MS: f32 = 120.0;
@@ -1415,7 +1416,7 @@ impl Agenda {
         if title.is_empty() {
             return;
         }
-        let captured = parse_quick_entry_capture(&title, self.qe_date.clone());
+        let captured = parse_quick_entry_capture(&title, self.qe_date.clone(), &LocalDay::now());
         let scheduled = captured.1;
         // The @mention is markup regardless of how qe_project got set (chip,
         // route default, or this title) — it must always be stripped from the
@@ -1630,7 +1631,7 @@ impl Agenda {
             let mut next = before.clone();
             next.id = uuid::Uuid::new_v4().to_string();
             next.status = Status::Todo;
-            next.scheduled_date = Some(next_recurrence_date(rule, &todo)?);
+            next.scheduled_date = Some(next_recurrence_date(rule, &todo, &LocalDay::now())?);
             next.completed_at = None;
             next.is_completed = false;
             next.is_cancelled = false;

@@ -1,4 +1,6 @@
-use crate::model::{date_only, task_status, Status, Todo};
+use crate::dates::{date_only, LocalDay};
+use crate::filters::task_status;
+use crate::types::{Status, Todo};
 use serde_json::{json, Value};
 
 pub const TASK_TYPE: &str = "com.kosmos.task";
@@ -148,18 +150,16 @@ fn plain_text(value: &Value) -> Option<String> {
     (!text.trim().is_empty()).then(|| text.trim().to_owned())
 }
 
-/// Patch a fresh Engine object, retaining fields this UI does not understand.
-pub fn write(object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Value, String> {
-    write_at(object, before, todo, &chrono::Utc::now().to_rfc3339())
-}
-
-/// `write` with an explicit clock — Engine payload fixtures must be
-/// deterministic, so `updatedAt`/`canceledAt` come from the caller.
+/// Patch a fresh Engine object, retaining fields this UI does not
+/// understand. The caller owns the clock: `now` stamps
+/// `updatedAt`/`canceledAt` (fixtures pin it for determinism) and `day`
+/// supplies the local offset `date_only` needs to normalize day fields.
 pub fn write_at(
     mut object: Value,
     before: Option<&Todo>,
     todo: &Todo,
     now: &str,
+    day: &LocalDay,
 ) -> Result<Value, String> {
     if object.is_null() {
         object = json!({"id":todo.id,"typeId":TASK_TYPE,"typeVersion":TASK_VERSION,
@@ -233,10 +233,10 @@ pub fn write_at(
     // `date_only` so a stray RFC 3339 stamp read back from older data can
     // never be re-persisted into the canonical field.
     if changed("scheduled_date") {
-        props["scheduledAt"] = json!(date_only(&todo.scheduled_date));
+        props["scheduledAt"] = json!(date_only(&todo.scheduled_date, day));
     }
     if changed("deadline") {
-        props["dueAt"] = json!(date_only(&todo.deadline));
+        props["dueAt"] = json!(date_only(&todo.deadline, day));
     }
     for (local, canonical) in [
         ("reminder_date", "reminderAt"),

@@ -44,9 +44,9 @@ impl Agenda {
             DropKind::Date => {
                 // Dorofeev weeks — «эта неделя» is a flag, «следующая» is a
                 // real Monday so the task can surface in «Планы».
-                let today = today_key();
-                let next_mon = next_monday_key(&today);
-                let cur = todo.as_ref().and_then(|t| task_date(t).0);
+                let day = LocalDay::now();
+                let next_mon = day.next_monday_key();
+                let cur = todo.as_ref().and_then(|t| task_date(t, &day).0);
                 let this_week = todo.as_ref().is_some_and(|t| t.is_today) && cur.is_none();
                 rows.push(self.dd_row(
                     window,
@@ -77,6 +77,7 @@ impl Agenda {
                 // Quick entry has no owning todo — the draft date lives on
                 // `qe_date`/`qe_someday`. «Потом» defers to the someday list,
                 // not a calendar date.
+                let day = LocalDay::now();
                 rows.push(self.dd_row(
                     window,
                     cx,
@@ -90,8 +91,8 @@ impl Agenda {
                     cx,
                     1,
                     "Следующая неделя",
-                    self.qe_date.is_some() && self.qe_date == next_monday_key(&today_key()),
-                    MenuAction::QeSetDate(next_monday_key(&today_key())),
+                    self.qe_date.is_some() && self.qe_date == day.next_monday_key(),
+                    MenuAction::QeSetDate(day.next_monday_key()),
                 ));
                 rows.push(self.dd_row(
                     window,

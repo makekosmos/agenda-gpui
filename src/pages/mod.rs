@@ -15,7 +15,7 @@ mod settings;
 mod statistics;
 mod trash;
 
-pub(crate) use chrono::{Datelike, Duration, Local, NaiveDate};
+pub(crate) use chrono::{Datelike, Duration, NaiveDate};
 pub(crate) use gpui::{
     deferred, div, prelude::*, px, AnyElement, ClickEvent, Context, MouseButton, MouseDownEvent,
     SharedString, Window,
@@ -28,9 +28,9 @@ pub(crate) use crate::app::{
 };
 #[cfg(not(target_os = "macos"))]
 pub(crate) use crate::chrome::CAPTION_W;
-pub(crate) use crate::model::*;
 pub(crate) use crate::theme::*;
 pub(crate) use crate::widgets::*;
+pub(crate) use agenda_core::*;
 pub(crate) use rows::{FlatRow, RowCache};
 
 fn panel_mix(a: f32) -> HslaAlias {
@@ -172,7 +172,7 @@ fn empty_state_for(list: SmartList) -> gpui::Div {
 fn date_group_label(value: Option<&str>) -> String {
     match value {
         None => "Без даты".to_string(),
-        Some(v) if v == today_key() => "Сегодня".to_string(),
+        Some(v) if v == LocalDay::now().today_key() => "Сегодня".to_string(),
         Some(v) => fmt_day_month(v),
     }
 }

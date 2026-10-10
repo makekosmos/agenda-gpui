@@ -5,8 +5,8 @@ use gpui::{
     Styled, Toggled, Window,
 };
 
-use crate::model::Status;
 use crate::theme::*;
+use agenda_core::Status;
 
 // ---------------------------------------------------------------------------
 // Accessibility helpers for the app's custom clickable `div`s. Every

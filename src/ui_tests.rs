@@ -15,7 +15,7 @@ use gpui::{
 };
 
 use crate::app::{Agenda, AgendaShell, Route};
-use crate::model::{task_status, Status, Todo};
+use agenda_core::{task_status, Status, Todo};
 
 /// Builds the same view tree as `main.rs` — Agenda inside AgendaShell inside
 /// `gpui_component::Root` — on the deterministic test platform. The returned

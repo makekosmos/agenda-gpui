@@ -6,12 +6,7 @@ use std::process::ExitCode;
 const SOURCE_LIMIT: usize = 300;
 /// Existing debt is explicit and finite. New files must meet the limit; removing
 /// an entry is the only way to retire debt, so the check never quietly regresses.
-const GRANDFATHERED: &[&str] = &[
-    "src/app.rs",
-    "src/chrome.rs",
-    "src/model.rs",
-    "src/pages.rs",
-];
+const GRANDFATHERED: &[&str] = &["src/app.rs", "src/chrome.rs"];
 const SOURCE_EXTENSIONS: &[&str] = &[
     ".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".vue", ".rs", ".inc",
 ];

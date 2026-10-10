@@ -1,11 +1,11 @@
 use super::*;
-use crate::model::{new_todo, parse_key, RecurrenceRule, Status, Todo};
+use agenda_core::{mapping, new_todo, parse_key, LocalDay, RecurrenceRule, Status, Todo};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Engine contract fixtures (KOS-297).
 //
-// These are the exact objects `mapping::write` sends to `upsert_object`.
+// These are the exact objects `mapping::write_at` sends to `upsert_object`.
 // They are committed under `fixtures/engine/` and consumed by the ark-core
 // contract test in cortex (`phase3_agenda_contract`), which validates them
 // against the real `canonical_ingress`. The two repos cannot share code, so
@@ -15,6 +15,15 @@ use std::path::PathBuf;
 // ---------------------------------------------------------------------------
 
 const NOW: &str = "2026-05-15T10:00:00.000Z";
+
+/// Fixtures pin the clock: the offset only steers `date_only` on RFC 3339
+/// inputs, and the canned todos carry bare dates — UTC is fine.
+fn day() -> LocalDay {
+    LocalDay::new(
+        chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
+        chrono::FixedOffset::east_opt(0).unwrap(),
+    )
+}
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -112,7 +121,7 @@ fn emit(name: &str, object: &Value) {
 #[test]
 fn engine_payload_fixtures_match_write_output() {
     for (name, todo) in cases() {
-        let object = mapping::write_at(Value::Null, None, &todo, NOW).unwrap();
+        let object = mapping::write_at(Value::Null, None, &todo, NOW, &day()).unwrap();
         assert_eq!(
             object["typeVersion"],
             json!(mapping::TASK_VERSION),
@@ -134,7 +143,7 @@ fn engine_payload_fixtures_match_write_output() {
         let before = mapping::read(&object).unwrap();
         let mut edited = before.clone();
         edited.title = format!("{name} edited");
-        let rewritten = mapping::write_at(object, Some(&before), &edited, NOW).unwrap();
+        let rewritten = mapping::write_at(object, Some(&before), &edited, NOW, &day()).unwrap();
         emit(&format!("{name}-edited"), &rewritten);
     }
 }

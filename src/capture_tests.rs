@@ -4,8 +4,8 @@
 use gpui::TestAppContext;
 
 use crate::app::{MenuAction, Route};
-use crate::model::{is_due_this_week, is_inbox, new_todo, today_key, week_bounds};
 use crate::ui_tests::{launch, redraw, type_text};
+use agenda_core::{is_due_this_week, is_inbox, new_todo, LocalDay, Status};
 
 /// Capturing tasks back to back: the second Ctrl+N must land typing in the
 /// title again, not in a stale focus left by the first save.
@@ -31,7 +31,8 @@ fn capture_twice_in_a_row(cx: &mut TestAppContext) {
 #[gpui::test]
 fn week_capture_lands_in_week_and_chip_resets(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    let week = week_bounds(&today_key()).unwrap();
+    let day = LocalDay::now();
+    let week = day.week_bounds().unwrap();
     agenda.update(cx, |a, _| a.navigate(Route::Week));
     for (route, title) in [(Route::Week, "Неделя"), (Route::Inbox, "Входящая")] {
         agenda.update(cx, |a, _| a.navigate(route));
@@ -44,7 +45,7 @@ fn week_capture_lands_in_week_and_chip_resets(cx: &mut TestAppContext) {
     }
     agenda.read_with(cx, |a, _| {
         let find = |title| a.todos.iter().find(|t| t.title == title).unwrap();
-        assert!(is_due_this_week(find("Неделя"), &week));
+        assert!(is_due_this_week(find("Неделя"), &week, &day));
         assert!(is_inbox(find("Входящая")) && !find("Входящая").is_today);
     });
 }
@@ -76,7 +77,7 @@ fn deleting_project_moves_tasks_to_inbox(cx: &mut TestAppContext) {
     agenda.update(cx, |a, _| {
         let mut todo = new_todo("in-project", "Задача проекта");
         todo.project_id = Some(pid.clone());
-        todo.status = crate::model::Status::Todo;
+        todo.status = Status::Todo;
         a.todos.push(todo);
         a.run_menu_action(MenuAction::DeleteProject(pid.clone()));
     });

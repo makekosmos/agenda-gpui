@@ -6,9 +6,9 @@ use std::sync::mpsc;
 use gpui::TestAppContext;
 
 use crate::app::Route;
-use crate::model::{day_key, new_todo, RecurrenceRule, Status};
 use crate::store::{Command, Mutation, Reply, Worker};
 use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
+use agenda_core::{new_todo, LocalDay, RecurrenceRule, Status};
 
 /// A saved quick-entry draft must not survive reopening: the overlay kept the
 /// previous title/notes text, so Enter on a reopened form silently duplicated
@@ -59,7 +59,7 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     agenda.update(cx, |a, _| {
-        a.qe_date = Some(day_key(3));
+        a.qe_date = Some(LocalDay::now().day_key(3));
         a.qe_date_touched = true;
         a.qe_someday = true;
     });
@@ -202,7 +202,14 @@ fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     let t = todo_of(cx, &agenda, "dev-inbox-1");
     assert_eq!(t.status, Status::Canceled);
 
-    let object = crate::store::mapping::write(serde_json::Value::Null, None, &t).unwrap();
+    let object = agenda_core::mapping::write_at(
+        serde_json::Value::Null,
+        None,
+        &t,
+        &chrono::Utc::now().to_rfc3339(),
+        &LocalDay::now(),
+    )
+    .unwrap();
     let stamp = object["propsJson"]["completedAt"]
         .as_str()
         .expect("cancel must stamp completedAt");

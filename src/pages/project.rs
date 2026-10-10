@@ -14,7 +14,7 @@ impl Agenda {
             .iter()
             .find(|p| p.id == id)
             .map(|p| p.id.as_str());
-        let today = today_key();
+        let day = LocalDay::now();
         // `pid == None` (a stale/unknown route id) must match nothing —
         // comparing against `project_id == None` listed every unprojected
         // task under the ghost page.
@@ -25,13 +25,13 @@ impl Agenda {
             .filter(|(_, t)| {
                 pid.is_some_and(|pid| t.project_id.as_deref() == Some(pid))
                     && !t.is_trashed
-                    && !is_archived(t, &today)
+                    && !is_archived(t, &day)
             })
             .map(|(i, _)| i)
             .collect();
         let storage = format!("agenda.project.{id}.view");
         let opts = self.board_opts(&storage);
-        let items = sort_idx(&self.todos, items, opts.sort);
+        let items = sort_idx(&self.todos, items, opts.sort, &day);
         let rows: Vec<FlatRow> = items.into_iter().map(FlatRow::Task).collect();
         let heading = pid.is_some().then(|| {
             let state = self.project_title_state(id, window, cx);

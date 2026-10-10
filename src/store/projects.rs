@@ -1,6 +1,6 @@
 //! Projects as canonical `com.kosmos.project` objects.
 use super::{Engine, EngineError};
-use crate::model::{Project, Todo};
+use agenda_core::{Project, Todo};
 use serde_json::{json, Value};
 use std::collections::HashSet;
 
