@@ -58,7 +58,6 @@ fn card_row(title: &'static str, description: &'static str) -> Div {
 impl Agenda {
     pub(crate) fn settings_page(
         &mut self,
-        fuel: bool,
         _window: &mut Window,
         cx: &mut Context<Self>,
     ) -> AnyElement {
@@ -77,11 +76,6 @@ impl Agenda {
             .max_w(px(720.))
             .mx_auto()
             .child(settings_heading(self.page_title().0));
-        if fuel {
-            return col.child(div().text_size(text_px(13.)).text_color(c(MUTED_FG()))
-                .child("Мыслетопливо оценивает стоимость задач в процентах. Оценивайте задачи от 1 до 10 на странице задачи."))
-                .into_any_element();
-        }
         // The page itself is the shared `imago_gpui` editor, identical to
         // Manager's; Agenda only wires the scoped Engine transport and hides
         // the follow-apps row (Manager owns that toggle).

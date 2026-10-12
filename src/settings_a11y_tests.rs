@@ -6,7 +6,6 @@ async fn settings_pages_have_named_h1(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
     for (route, title) in [
         (crate::app::Route::Settings, "Отображение"),
-        (crate::app::Route::SettingsFuel, "Мыслетопливо"),
         (crate::app::Route::SettingsEnergy, "Энергосбережение"),
     ] {
         agenda.update(cx, |app, cx| {

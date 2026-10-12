@@ -50,6 +50,7 @@ fn drag_inset(window: &Window) -> f32 {
 /// status ring: row px_2 (8) + (w_5 cell 20 − ring 14) / 2.
 const CONTENT_GRID_X: f32 = 11.0;
 /// Native caption button width (Windows convention).
+#[cfg(not(target_os = "macos"))]
 pub(crate) const CAPTION_W: f32 = 46.0;
 
 struct SbRect {
@@ -737,10 +738,7 @@ impl Agenda {
         let p = ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
         let closed_inset = drag_inset(window);
         let pl = closed_inset + (CONTENT_GRID_X - closed_inset) * p;
-        let settings_like = matches!(
-            self.route,
-            Route::Settings | Route::SettingsFuel | Route::SettingsEnergy
-        );
+        let settings_like = matches!(self.route, Route::Settings | Route::SettingsEnergy);
         let (title, title_icon) = self.page_title();
         #[allow(unused_mut)]
         let mut drag = div()

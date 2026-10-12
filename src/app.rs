@@ -31,7 +31,6 @@ pub enum Route {
     Logbook,
     Trash,
     Settings,
-    SettingsFuel,
     SettingsEnergy,
     Dev,
     About,
@@ -290,7 +289,6 @@ fn initial_route() -> Route {
         Some("logbook") => Route::Logbook,
         Some("trash") => Route::Trash,
         Some("settings") => Route::Settings,
-        Some("settings-fuel") => Route::SettingsFuel,
         Some("settings-energy") => Route::SettingsEnergy,
         Some("dev") => Route::Dev,
         Some("about") => Route::About,
@@ -829,12 +827,7 @@ impl Agenda {
     pub(crate) fn is_settings_route(r: &Route) -> bool {
         matches!(
             r,
-            Route::Settings
-                | Route::SettingsFuel
-                | Route::SettingsEnergy
-                | Route::About
-                | Route::Statistics
-                | Route::Dev
+            Route::Settings | Route::SettingsEnergy | Route::About | Route::Statistics | Route::Dev
         )
     }
 
@@ -901,7 +894,6 @@ impl Agenda {
             Route::Logbook => ("Архив".into(), "icons/book-open.svg"),
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
             Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
-            Route::SettingsFuel => ("Мыслетопливо".into(), "icons/star.svg"),
             Route::SettingsEnergy => ("Энергосбережение".into(), "icons/clock-01.svg"),
             Route::Dev => ("Для разработчиков".into(), "icons/settings.svg"),
             Route::About => ("О приложении".into(), "icons/help-circle.svg"),
