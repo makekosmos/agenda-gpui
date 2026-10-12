@@ -1,0 +1,8 @@
+[package]
+name = "mundus-gpui-kit-wasm"
+version = "0.2.0"
+edition = "2021"
+description = "wasm32 stand-in for mundus-gpui-kit: engine_error types only (the Engine RPC/WS clients are native)."
+
+[lib]
+name = "mundus_gpui_kit"

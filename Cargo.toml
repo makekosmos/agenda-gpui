@@ -10,23 +10,12 @@ default-run = "agenda-gpui"
 # root, so `use gpui::...` keeps working through this alias.
 gpui = { package = "gpui-kit", version = "=0.6.2" }
 gpui-component = "=0.6.2"
-# Shared Mundus GPUI visual core (theme/palettes seeded from this crate's
-# src/theme.rs + src/palettes.rs — hex values byte-identical). Its
-# gpui-base = "=0.6.4" pin constrains the transitive resolution for
-# gpui-component 0.6.2 (0.6.5+ broke the inspector API).
-imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
-# Shared Engine error classes (`engine_error`) — typed wire codes + Russian
-# user text, owned by the kit so the apps don't keep three copies (KOS-298).
-# Since KOS-319 the kit lives at crates/mundus-gpui-kit inside imago — pin
-# the SAME imago rev as imago-gpui so the lockfile holds one source.
-mundus-gpui-kit = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 image = { version = "0.25.1", default-features = false, features = ["png"] }
 raw-window-handle = "0.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 uuid = { version = "1.26.1", features = ["v4"] }
-ureq = { version = "2.12", default-features = false, features = ["json"] }
 
 # a11y-tree + UI autotests: #[gpui::test] + TestAppContext/VisualTestContext
 # live behind gpui's test-support feature (deterministic executors, test
@@ -51,6 +40,44 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 # Same AccessKit adapter version used by gpui-pre-macos 0.3.6.
 accesskit_macos = "=0.26.3"
+
+# Engine transport is native-only (ureq cannot run in the browser; the wasm
+# build uses the in-memory demo store instead). imago-gpui does not compile
+# for wasm32 (`gpui::assets::Assets` is a fetch-backed struct there, not the
+# unit struct its assets.rs calls) — wasm resolves same-named shim crates
+# under web/ instead (`[lib] name` keeps `imago_gpui::` paths working).
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+ureq = { version = "2.12", default-features = false, features = ["json"] }
+# Shared Mundus GPUI visual core (theme/palettes seeded from this crate's
+# src/theme.rs + src/palettes.rs — hex values byte-identical). Its
+# gpui-base = "=0.6.4" pin constrains the transitive resolution for
+# gpui-component 0.6.2 (0.6.5+ broke the inspector API).
+imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
+# Shared Engine error classes (`engine_error`) — typed wire codes + Russian
+# user text, owned by the kit so the apps don't keep three copies (KOS-298).
+# Since KOS-319 the kit lives at crates/mundus-gpui-kit inside imago — pin
+# the SAME imago rev as imago-gpui so the lockfile holds one source.
+mundus-gpui-kit = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+imago-gpui-wasm = { path = "web/imago-gpui" }
+mundus-gpui-kit-wasm = { path = "web/mundus-gpui-kit" }
+# std::time::Instant panics on wasm32-unknown-unknown; web-time forwards to
+# performance.now(). `chrono.wasmbind` gives Local::now() a real TZ offset.
+web-time = "1.1"
+chrono = { version = "0.4", default-features = false, features = ["wasmbind"] }
+# wasm32-only feature unification: transitive getrandom copies (0.2 via
+# tungstenite→rand 0.8, 0.4 via uuid/fastrand) fail to compile for
+# wasm32-unknown-unknown unless their JS backend is enabled. gpui-pre already
+# enables wasm_js on its own getrandom 0.3; these declarations do the same for
+# the other majors. They exist only to carry features — never referenced in
+# code (cargo-shear ignore below).
+getrandom = { version = "0.2", features = ["js"] }
+getrandom_03 = { package = "getrandom", version = "0.3", features = ["wasm_js"] }
+getrandom_04 = { package = "getrandom", version = "0.4", features = ["wasm_js"] }
+
+[package.metadata.cargo-shear]
+ignored = ["getrandom", "getrandom_03", "getrandom_04"]
 
 # Dev builds: own code compiles fast (opt-level 1, line-table debuginfo);
 # dependencies stay fully optimized without debuginfo — unoptimized

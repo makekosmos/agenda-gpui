@@ -1,6 +1,7 @@
 // Root view: chrome (sidebar + titlebar), routing, pages, overlays.
 use std::collections::{HashMap, VecDeque};
-use std::time::Instant;
+
+use crate::clock::Instant;
 
 use gpui::{
     div, prelude::*, AnyElement, Context, Entity, FocusHandle, Hsla, KeyDownEvent, ScrollHandle,
@@ -302,7 +303,10 @@ impl Agenda {
         cx.bind_keys([gpui::KeyBinding::new("cmd-b", ToggleSidebar, None)]);
         // `cfg!(test)`: test builds always take the in-memory demo store, so
         // `start_storage` early-returns and no Engine worker ever spawns.
-        let demo = std::env::var("AGENDA_DEMO").as_deref() == Ok("1")
+        // The wasm build is the demo: there is no Engine transport in the
+        // browser, so the in-memory seeded store is unconditional.
+        let demo = cfg!(target_family = "wasm")
+            || std::env::var("AGENDA_DEMO").as_deref() == Ok("1")
             || std::env::var("AGENDA_DEVTASKS")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
@@ -469,6 +473,34 @@ impl Agenda {
         if !demo {
             this.appearance_writer = Some(AppearanceWriter::start());
         }
+        // The browser demo has no Engine to ask for the scoped appearance —
+        // seed the defaults so the settings editor is interactive instead of
+        // stuck on «Загрузка настроек…». Theme/mode still apply live.
+        #[cfg(target_family = "wasm")]
+        {
+            let snapshot = serde_json::json!({
+                "settings": {
+                    "schema_version": 1,
+                    "mode": "dark",
+                    "light_theme": "default",
+                    "dark_theme": "default",
+                    "accent_source": "theme",
+                    "accent_color": null,
+                    "follow_apps": false,
+                    "material": "opaque",
+                    "font_family": "Inter",
+                    "font_size": 13.0,
+                    "revision": 0,
+                },
+                "policy": {"following": false, "editable": true, "can_set_follow_apps": false},
+                "capabilities": {"materials": ["default", "opaque"], "wallpaper_accent": false},
+            });
+            if let Ok(parsed) = AppearanceResponse::parse(&snapshot) {
+                this.receive_appearance(parsed);
+                this.appearance_editor
+                    .update(cx, |editor, _| editor.ingest(&snapshot));
+            }
+        }
         this.start_storage(cx);
         this.start_appearance(cx);
         this
@@ -560,10 +592,13 @@ impl Agenda {
                 self.receive_appearance(next);
             }
         }
-        if self.appearance_writer.is_none() {
-            self.appearance_writer = Some(AppearanceWriter::start());
+        // Demo has no Engine to persist to (and on wasm no threads to spawn).
+        if !self.demo {
+            if self.appearance_writer.is_none() {
+                self.appearance_writer = Some(AppearanceWriter::start());
+            }
+            self.appearance_writer.as_ref().unwrap().set(patch);
         }
-        self.appearance_writer.as_ref().unwrap().set(patch);
         cx.notify();
     }
 

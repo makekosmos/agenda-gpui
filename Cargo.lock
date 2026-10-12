@@ -116,16 +116,22 @@ dependencies = [
  "accesskit_macos",
  "chrono",
  "embed-resource",
+ "getrandom 0.2.17",
+ "getrandom 0.3.4",
+ "getrandom 0.4.3",
  "gpui-component",
  "gpui-kit",
  "image",
  "imago-gpui",
+ "imago-gpui-wasm",
  "mundus-gpui-kit",
+ "mundus-gpui-kit-wasm",
  "raw-window-handle",
  "serde",
  "serde_json",
  "ureq",
  "uuid",
+ "web-time",
  "windows 0.62.2",
 ]
 
@@ -3363,6 +3369,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "imago-gpui-wasm"
+version = "0.1.0"
+dependencies = [
+ "gpui-base",
+ "gpui-component",
+ "gpui-kit",
+ "serde",
+ "serde_json",
+ "web-time",
+]
+
+[[package]]
 name = "imgref"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4068,6 +4086,10 @@ dependencies = [
  "ureq",
  "uuid",
 ]
+
+[[package]]
+name = "mundus-gpui-kit-wasm"
+version = "0.2.0"
 
 [[package]]
 name = "naga"

@@ -1,6 +1,6 @@
 // App chrome: sidebar (nav/projects/footer + sliding hover highlight),
 // titlebar + view toggle, context menus.
-use std::time::Instant;
+use crate::clock::Instant;
 
 use gpui::{
     deferred, div, prelude::*, px, ClickEvent, Context, MouseButton, MouseDownEvent, Pixels,
@@ -787,7 +787,9 @@ impl Agenda {
                     .pr_2()
                     .children(self.render_options_button(window, cx)),
             );
-        #[cfg(not(target_os = "macos"))]
+        // Caption buttons (min/max/close) are native chrome — the browser tab
+        // owns those on wasm, so the row is not rendered there.
+        #[cfg(all(not(target_os = "macos"), not(target_family = "wasm")))]
         {
             bar = bar.child(self.render_window_controls(window, cx));
         }
@@ -798,8 +800,8 @@ impl Agenda {
     /// Windows: hitboxes are `WindowControlArea`s — the platform handles press,
     /// snap flyout and system tooltips; we only draw the glyphs and hover bg.
     /// Linux: plain click handlers on the same visuals. macOS uses the OS
-    /// traffic lights instead.
-    #[cfg(not(target_os = "macos"))]
+    /// traffic lights instead; wasm has no capturable caption surface.
+    #[cfg(all(not(target_os = "macos"), not(target_family = "wasm")))]
     fn render_window_controls(
         &mut self,
         window: &mut Window,

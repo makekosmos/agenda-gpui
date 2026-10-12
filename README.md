@@ -124,6 +124,37 @@ export GPUI_FXC_PATH=/path/to/fxc   # wine-wrapper ok
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
+### WebAssembly (демо в браузере, KOS-393)
+
+Приложение собирается в браузерный бандл и работает как живая демо-версия:
+то же дерево UI, но хранилище — встроенный набор задач в памяти
+(без Engine; изменения живут до перезагрузки страницы). Графика — WebGPU
+с откатом на WebGL2, вычисления в веб-воркерах через разделяемую память.
+
+Требования: nightly-toolchain с `rust-src` и `wasm32-unknown-unknown`
+(`gpui-pre-web` собирает std заново с атомикой) и `wasm-bindgen` CLI той же
+версии, что крейт в `Cargo.lock` (скрипт проверит и подскажет команду).
+
+```bash
+scripts/build-web.sh web/dist          # собрать бандл
+python3 scripts/serve-web.py web/dist  # http://127.0.0.1:8765
+```
+
+Сервер для раздачи должен отдавать `Cross-Origin-Opener-Policy: same-origin`
+и `Cross-Origin-Embedder-Policy: require-corp` — без SharedArrayBuffer
+движок падает в однопоточный режим. `serve-web.py` выставляет их сам.
+
+Бандл: `index.html`, `agenda-gpui.js` (glue), `agenda-gpui_bg.wasm`
+(~26 МБ; ~7 МБ gzip) и `assets/` с иконками, которые wasm-источник ресурсов
+подгружает по HTTP. `web/imago-gpui` и `web/mundus-gpui-kit` — локальные
+wasm-совместимые реализации интерфейсов этих крейтов (на wasm они
+подменяют git-зависимости с тем же `[lib] name`): без Engine-транспорта и
+нативных ассетов. `scripts/patch-wasm-time.py` и `fix-wasm-noreturn.py`
+подменяют в wasm-коде `std::time::{Instant,SystemTime}::now`, который на
+wasm32-unknown-unknown паникует, на реализацию из `web-time` —
+вызываемые из зависимостей места править нельзя, поэтому патч идёт на
+уровне скомпилированного модуля.
+
 ## Структура
 
 - `src/` — UI

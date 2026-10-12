@@ -135,7 +135,7 @@ impl Agenda {
                         // Warmup: first seconds after enabling are polluted by
                         // layout/shaping of the freshly mounted overlay.
                         this.fps_warmup =
-                            Some(std::time::Instant::now() + std::time::Duration::from_secs(4));
+                            Some(crate::clock::Instant::now() + std::time::Duration::from_secs(4));
                     }
                 },
             ))
@@ -205,9 +205,12 @@ impl Agenda {
                                     return;
                                 }
                                 this.dev_gen_batch += 1;
-                                let seed = std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .map(|d| d.as_nanos() as u64)
+                                // Utc::now works on wasm (chrono's wasmbind
+                                // backend reads JS Date); SystemTime::now
+                                // would panic there.
+                                let seed = chrono::Utc::now()
+                                    .timestamp_nanos_opt()
+                                    .map(|n| n as u64)
                                     .unwrap_or(0x9E3779B9)
                                     ^ this.dev_gen_batch;
                                 let first_sort =

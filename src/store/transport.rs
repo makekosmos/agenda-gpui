@@ -1,8 +1,15 @@
 use super::{EngineError, ErrorKind};
+#[cfg(not(target_family = "wasm"))]
 use serde::Deserialize;
-use serde_json::{json, Value};
-use std::{path::PathBuf, time::Duration};
+#[cfg(not(target_family = "wasm"))]
+use serde_json::json;
+use serde_json::Value;
+#[cfg(not(target_family = "wasm"))]
+use std::path::PathBuf;
+#[cfg(not(target_family = "wasm"))]
+use std::time::Duration;
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Deserialize)]
 struct Lock {
     format_version: u32,
@@ -11,23 +18,35 @@ struct Lock {
     auth_token: String,
 }
 
+#[cfg(not(target_family = "wasm"))]
 #[derive(Deserialize)]
 struct Version {
     major: u32,
 }
 
 pub struct Engine {
+    /// Overrides discovery; read by the native `rpc`.
+    #[cfg(not(target_family = "wasm"))]
     pub data_dir: Option<PathBuf>,
+    #[cfg(not(target_family = "wasm"))]
     agent: ureq::Agent,
 }
 
 impl Default for Engine {
     fn default() -> Self {
-        Self::with_timeout(Duration::from_secs(15))
+        #[cfg(target_family = "wasm")]
+        {
+            Self {}
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            Self::with_timeout(Duration::from_secs(15))
+        }
     }
 }
 
 impl Engine {
+    #[cfg(not(target_family = "wasm"))]
     pub fn with_timeout(timeout: Duration) -> Self {
         Self {
             data_dir: None,
@@ -38,6 +57,22 @@ impl Engine {
         }
     }
 
+    /// wasm never reaches Engine — demo mode short-circuits before any call;
+    /// this stub exists so the store surface compiles unchanged.
+    #[cfg(target_family = "wasm")]
+    pub fn with_timeout(_timeout: std::time::Duration) -> Self {
+        Self {}
+    }
+
+    #[cfg(target_family = "wasm")]
+    pub fn rpc(&self, _operation: &str, _params: Value) -> Result<Value, EngineError> {
+        Err(EngineError::local(
+            ErrorKind::NotRunning,
+            "engine transport unavailable on wasm",
+        ))
+    }
+
+    #[cfg(not(target_family = "wasm"))]
     pub fn rpc(&self, operation: &str, mut params: Value) -> Result<Value, EngineError> {
         let directory = self
             .data_dir
@@ -124,16 +159,17 @@ impl Engine {
 }
 
 /// Per-OS config dir: `%APPDATA%` (Windows), `~/Library/Application Support`
-/// (macOS), `$XDG_CONFIG_HOME` / `~/.config` (Linux).
-#[cfg(target_os = "windows")]
+/// (macOS), `$XDG_CONFIG_HOME` / `~/.config` (Linux). Discovery is
+/// native-only — the wasm stub `rpc` never consults the filesystem.
+#[cfg(all(target_os = "windows", not(target_family = "wasm")))]
 fn config_base(get: &dyn Fn(&str) -> Option<PathBuf>) -> Option<PathBuf> {
     get("APPDATA")
 }
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(target_family = "wasm")))]
 fn config_base(get: &dyn Fn(&str) -> Option<PathBuf>) -> Option<PathBuf> {
     get("HOME").map(|v| v.join("Library/Application Support"))
 }
-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_family = "wasm")))]
 fn config_base(get: &dyn Fn(&str) -> Option<PathBuf>) -> Option<PathBuf> {
     get("XDG_CONFIG_HOME").or_else(|| get("HOME").map(|v| v.join(".config")))
 }
@@ -141,6 +177,7 @@ fn config_base(get: &dyn Fn(&str) -> Option<PathBuf>) -> Option<PathBuf> {
 /// Engine data-dir candidates in priority order: `MUNDUS_DATA_DIR` →
 /// `KOSMOS_DATA_DIR` (legacy) → `<config>/Mundus` → `<config>/Kosmos` (legacy).
 // MIGRATION(KOS-267): drop the two legacy candidates after 2026-11-01.
+#[cfg(not(target_family = "wasm"))]
 fn candidates(get: &dyn Fn(&str) -> Option<PathBuf>) -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     for key in [
@@ -162,6 +199,7 @@ fn candidates(get: &dyn Fn(&str) -> Option<PathBuf>) -> Vec<PathBuf> {
 /// against a pre-rename Engine that only wrote the legacy dir. With no lock
 /// anywhere the primary candidate is returned so the caller reports a stable
 /// path (and the missing-lock error stays the same).
+#[cfg(not(target_family = "wasm"))]
 pub(super) fn resolve(get: &dyn Fn(&str) -> Option<PathBuf>) -> Result<PathBuf, String> {
     let dirs = candidates(get);
     dirs.iter()
@@ -171,6 +209,7 @@ pub(super) fn resolve(get: &dyn Fn(&str) -> Option<PathBuf>) -> Result<PathBuf, 
         .ok_or_else(|| format!("Не найдена папка данных {}", crate::brand::NAME))
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn data_dir() -> Result<PathBuf, String> {
     resolve(&|key| std::env::var_os(key).map(PathBuf::from))
 }

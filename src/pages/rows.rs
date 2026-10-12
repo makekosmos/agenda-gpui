@@ -65,7 +65,7 @@ impl Agenda {
                 // needs &mut self (hover state) while also borrowing a Todo —
                 // mem::take makes that legal without cloning ~25 rows/frame.
                 // Nothing in the row path reads this.todos back.
-                let rows_t0 = std::time::Instant::now();
+                let rows_t0 = crate::clock::Instant::now();
                 let todos = std::mem::take(&mut this.todos);
                 let today = today_key();
                 let out: Vec<_> = range

@@ -5,6 +5,7 @@ mod appearance;
 mod assets;
 mod brand;
 mod chrome;
+mod clock;
 #[cfg(feature = "e2e")]
 mod e2e;
 mod model;
@@ -65,7 +66,15 @@ fn offscreen() -> bool {
 use app::Agenda;
 use assets::{font_bytes, Assets};
 
+// wasm-only deps that exist to carry features or rename a shim lib —
+// referenced here so the unused-dependency lint stays quiet.
+#[cfg(target_family = "wasm")]
+use {getrandom as _, getrandom_03 as _, getrandom_04 as _, imago_gpui as _, mundus_gpui_kit as _};
+
 fn main() {
+    // wasm: panic hook + tracing to console must precede any platform work.
+    #[cfg(target_family = "wasm")]
+    gpui::platform::web_init();
     gpui::application().with_assets(Assets).run(|cx: &mut App| {
         gpui_component::init(cx);
         cx.text_system()

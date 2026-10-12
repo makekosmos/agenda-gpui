@@ -1,0 +1,16 @@
+[package]
+name = "imago-gpui-wasm"
+version = "0.1.0"
+edition = "2021"
+description = "wasm32 stand-in for imago-gpui (lib name imago_gpui). imago-gpui cannot build for wasm32 — its assets.rs calls `gpui::assets::Assets` as a unit-struct value, which is a fetch-backed struct on wasm. Same public API surface as imago rev c7ae794; sources copied from the upstream crate where they were already wasm-clean."
+
+[lib]
+name = "imago_gpui"
+
+[dependencies]
+gpui = { package = "gpui-kit", version = "=0.6.2" }
+gpui-component = "=0.6.2"
+gpui-base = "=0.6.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+web-time = "1.1"

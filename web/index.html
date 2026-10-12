@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agenda — демо</title>
+    <style>
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #1c1c1e;
+      }
+      /* gpui-web creates its own canvas and appends it to body. */
+      canvas {
+        display: block;
+      }
+      #boot {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #8e8e93;
+        font: 14px/1.4 -apple-system, system-ui, sans-serif;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="boot">Загрузка…</div>
+    <script type="module">
+      import init from "./agenda-gpui.js";
+      const boot = document.getElementById("boot");
+      init()
+        .catch((e) => {
+          boot.textContent = "Ошибка запуска: " + e;
+          boot.style.color = "#ff6961";
+        })
+        .finally(() => (boot.style.display = "none"));
+    </script>
+  </body>
+</html>
