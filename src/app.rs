@@ -827,11 +827,7 @@ impl Agenda {
     pub(crate) fn is_settings_route(r: &Route) -> bool {
         matches!(
             r,
-            Route::Settings
-                | Route::SettingsEnergy
-                | Route::About
-                | Route::Statistics
-                | Route::Dev
+            Route::Settings | Route::SettingsEnergy | Route::About | Route::Statistics | Route::Dev
         )
     }
 
