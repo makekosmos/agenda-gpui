@@ -739,7 +739,7 @@ impl Agenda {
         let pl = closed_inset + (CONTENT_GRID_X - closed_inset) * p;
         let settings_like = matches!(
             self.route,
-            Route::Settings | Route::SettingsFuel | Route::SettingsEnergy
+            Route::Settings | Route::SettingsEnergy
         );
         let (title, title_icon) = self.page_title();
         #[allow(unused_mut)]

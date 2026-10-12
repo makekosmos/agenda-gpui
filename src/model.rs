@@ -60,7 +60,6 @@ pub struct Todo {
     pub billable: bool,
     pub price: Option<f64>,
     pub significance: Option<u8>,
-    pub fuel_cost: Option<f64>,
     pub sort_order: i32,
 }
 
@@ -763,7 +762,6 @@ fn todo(id: impl Into<String>, title: &str) -> Todo {
         billable: false,
         price: None,
         significance: None,
-        fuel_cost: None,
         sort_order: 0,
     }
 }
@@ -783,7 +781,6 @@ pub fn seed_todos() -> Vec<Todo> {
             t.is_today = true;
             t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into(), "dev-tag-focus".into()];
-            t.fuel_cost = Some(35.0);
             t
         },
         {
@@ -810,7 +807,6 @@ pub fn seed_todos() -> Vec<Todo> {
             t.scheduled_date = Some(day_key(-1));
             t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into()];
-            t.fuel_cost = Some(20.0);
             t
         },
         {
@@ -837,7 +833,6 @@ pub fn seed_todos() -> Vec<Todo> {
             t.project_id = Some("dev-proj-release".into());
             t.heading_id = Some("dev-head-polish".into());
             t.significance = Some(7);
-            t.fuel_cost = Some(15.0);
             t
         },
         {
@@ -1009,7 +1004,6 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                 t.notes = Some(rand_chars(&mut rng, 12));
             }
             if rng() % 100 < 30 {
-                t.fuel_cost = Some(5.0 + (rng() % 60) as f64);
                 t.significance = Some(1 + (rng() % 10) as u8);
             }
             t
