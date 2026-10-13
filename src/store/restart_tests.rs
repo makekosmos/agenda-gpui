@@ -109,9 +109,7 @@ fn restart_client() {
                 id: "restart-project".into(),
                 title: "Ремонт".into(),
                 status: 0,
-                deadline: None,
                 sort_order: 0,
-                area_id: None,
             };
             let other = Project {
                 id: "restart-other-project".into(),

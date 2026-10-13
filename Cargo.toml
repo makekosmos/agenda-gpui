@@ -21,8 +21,6 @@ imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae79447
 # the SAME imago rev as imago-gpui so the lockfile holds one source.
 mundus-gpui-kit = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
-image = { version = "0.25.1", default-features = false, features = ["png"] }
-raw-window-handle = "0.6"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.151"
 uuid = { version = "1.26.1", features = ["v4"] }
@@ -51,6 +49,8 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 # Same AccessKit adapter version used by gpui-pre-macos 0.3.6.
 accesskit_macos = "=0.26.3"
+objc = "0.2.7"
+objc_exception = "0.1.2"
 
 # Dev builds: own code compiles fast (opt-level 1, line-table debuginfo);
 # dependencies stay fully optimized without debuginfo — unoptimized

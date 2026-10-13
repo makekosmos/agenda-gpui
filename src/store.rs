@@ -100,7 +100,6 @@ impl Engine {
             }
         }
         snapshot.projects.sort_by_key(|p| p.sort_order);
-        snapshot.tags = collection(props, "tags")?;
         Ok(snapshot)
     }
 
@@ -132,7 +131,7 @@ impl Engine {
         Ok((object, links))
     }
 
-    /// Project links of every task, keyed by task id. Tags are not links (see mapping.rs).
+    /// Project links of every task, keyed by task id.
     fn project_links(&self) -> Result<HashMap<String, Vec<mapping::Link>>, EngineError> {
         let list = self.rpc("list_object_links", json!({}))?;
         let list = list

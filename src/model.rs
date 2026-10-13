@@ -14,52 +14,23 @@ pub enum Status {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RecurrenceRule {
-    /// 0=daily 1=weekly 2=monthly 3=yearly (matches Frequency enum order)
-    pub frequency: u8,
-    pub interval: u32,
-    /// 0=fixed (по расписанию) 1=after completion (после выполнения)
-    #[serde(alias = "recurrenceType", default)]
-    pub recurrence_type: u8,
-    #[serde(alias = "daysOfWeek", default)]
-    pub days_of_week: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ChecklistItem {
-    #[serde(alias = "isCompleted", default)]
-    pub is_completed: bool,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Todo {
     pub id: String,
     pub title: String,
     pub notes: Option<String>,
-    pub priority: u8, // 0 none 1 low 2 medium 3 high
     pub scheduled_date: Option<String>,
-    pub deadline: Option<String>,
-    pub reminder_date: Option<String>,
     pub is_today: bool,
-    pub is_evening: bool,
     pub is_someday: bool,
     pub status: Status,
-    pub system_kind: Option<String>,
     pub is_completed: bool,
     pub completed_at: Option<String>,
     pub is_cancelled: bool,
     pub is_trashed: bool,
     pub created_at: String,
-    pub heading_id: Option<String>,
     pub project_id: Option<String>,
-    pub area_id: Option<String>,
-    pub tag_ids: Vec<String>,
-    pub checklist: Vec<ChecklistItem>,
-    pub recurrence: Option<RecurrenceRule>,
     pub billable: bool,
     pub price: Option<f64>,
-    pub significance: Option<u8>,
     pub sort_order: i32,
 }
 
@@ -75,17 +46,7 @@ pub struct Project {
     pub id: String,
     pub title: String,
     pub status: u8, // 0 active, 1 someday, 2 completed
-    pub deadline: Option<String>,
     pub sort_order: i32,
-    pub area_id: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Tag {
-    pub id: String,
-    pub title: String,
-    pub color: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -149,14 +110,9 @@ pub fn date_only(value: &Option<String>) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// taskDate(): deadline wins over scheduled; different dates = conflict.
+/// Day the board uses: the scheduled day, if it parses.
 pub fn task_date(t: &Todo) -> (Option<String>, bool) {
-    let scheduled = date_only(&t.scheduled_date);
-    let deadline = date_only(&t.deadline);
-    if scheduled.is_some() && deadline.is_some() && scheduled != deadline {
-        return (None, true);
-    }
-    (deadline.or(scheduled), false)
+    (date_only(&t.scheduled_date), false)
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +152,7 @@ pub fn is_deferred(t: &Todo) -> bool {
 }
 
 pub fn is_overdue(t: &Todo, today: &str) -> bool {
-    if !is_active(t) || is_inbox(t) || is_deferred(t) || t.system_kind.is_some() {
+    if !is_active(t) || is_inbox(t) || is_deferred(t) {
         return false;
     }
     let (date, conflict) = task_date(t);
@@ -379,12 +335,6 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey) -> Vec<usiz
                 todos[i].sort_order,
             )
         }),
-        SortKey::Priority => items.sort_by(|&a, &b| {
-            todos[b]
-                .priority
-                .cmp(&todos[a].priority)
-                .then(todos[a].sort_order.cmp(&todos[b].sort_order))
-        }),
         SortKey::Title => {
             items.sort_by_cached_key(|&i| (todos[i].title.to_lowercase(), todos[i].sort_order))
         }
@@ -400,7 +350,6 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey) -> Vec<usiz
 pub enum SortKey {
     Default,
     Date,
-    Priority,
     Title,
 }
 
@@ -428,20 +377,6 @@ pub(crate) const MONTH_SHORT: [&str; 12] = [
     "окт.",
     "нояб.",
     "дек.",
-];
-pub(crate) const MONTH_LONG: [&str; 12] = [
-    "января",
-    "февраля",
-    "марта",
-    "апреля",
-    "мая",
-    "июня",
-    "июля",
-    "августа",
-    "сентября",
-    "октября",
-    "ноября",
-    "декабря",
 ];
 
 /// {day: numeric, month: short} then strip trailing dot → "18 сент"
@@ -678,54 +613,6 @@ fn through_stem(unit: &str) -> Option<u8> {
     })
 }
 
-/// Next occurrence for a completed recurring task (createNextRecurrence
-/// subset). Rules come from Engine data, so interval/weekday values are
-/// untrusted: checked arithmetic keeps absurd rules from panicking or
-/// looping for billions of months — they simply produce no next occurrence.
-pub fn next_recurrence_date(rule: &RecurrenceRule, t: &Todo) -> Option<String> {
-    // recurrenceType=1 ("после выполнения") counts the interval from the
-    // completion day; type=0 ("по расписанию") chains the fixed schedule
-    // regardless of when the task was actually completed.
-    let base = if rule.recurrence_type == 1 {
-        date_only(&t.completed_at)
-            .and_then(|d| parse_key(&d))
-            .unwrap_or_else(|| Local::now().date_naive())
-    } else {
-        task_date(t)
-            .0
-            .and_then(|d| parse_key(&d))
-            .unwrap_or_else(|| Local::now().date_naive())
-    };
-    let interval = i64::from(rule.interval);
-    let next = match rule.frequency {
-        0 => Duration::try_days(interval).and_then(|d| base.checked_add_signed(d)),
-        1 => {
-            if rule.days_of_week.is_empty() {
-                interval
-                    .checked_mul(7)
-                    .and_then(Duration::try_days)
-                    .and_then(|d| base.checked_add_signed(d))
-            } else {
-                // Next selected weekday strictly after base.
-                let mut d = base;
-                let mut found = None;
-                for _ in 0..8 {
-                    d = d.checked_add_signed(Duration::days(1))?;
-                    let wd = d.weekday().num_days_from_monday() as u8 + 1;
-                    if rule.days_of_week.contains(&wd) {
-                        found = Some(d);
-                        break;
-                    }
-                }
-                found
-            }
-        }
-        2 => base.checked_add_months(chrono::Months::new(rule.interval)),
-        _ => base.checked_add_months(chrono::Months::new(rule.interval.checked_mul(12)?)),
-    };
-    next.map(key_of)
-}
-
 // ---------------------------------------------------------------------------
 // Seed data (src/dev/seed.ts + src/dev/pseudoCalendar.ts)
 // ---------------------------------------------------------------------------
@@ -739,29 +626,18 @@ fn todo(id: impl Into<String>, title: &str) -> Todo {
         id: id.into(),
         title: title.into(),
         notes: None,
-        priority: 0,
         scheduled_date: None,
-        deadline: None,
-        reminder_date: None,
         is_today: false,
-        is_evening: false,
         is_someday: false,
         status: Status::Inbox,
-        system_kind: None,
         is_completed: false,
         completed_at: None,
         is_cancelled: false,
         is_trashed: false,
         created_at: String::new(),
-        heading_id: None,
         project_id: None,
-        area_id: None,
-        tag_ids: vec![],
-        checklist: vec![],
-        recurrence: None,
         billable: false,
         price: None,
-        significance: None,
         sort_order: 0,
     }
 }
@@ -769,25 +645,18 @@ fn todo(id: impl Into<String>, title: &str) -> Todo {
 pub fn seed_todos() -> Vec<Todo> {
     let mut v: Vec<Todo> = vec![
         todo("dev-inbox-1", "Перечитать бриф по лендингу"),
-        {
-            let mut t = todo("dev-inbox-2", "Записаться к стоматологу");
-            t.priority = 1;
-            t
-        },
+        todo("dev-inbox-2", "Записаться к стоматологу"),
         todo("dev-inbox-3", "Идея: виджет погоды в сайдбаре"),
         {
             let mut t = todo("dev-today-1", "Созвон по дизайну");
             t.status = Status::Todo;
             t.is_today = true;
-            t.priority = 3;
-            t.tag_ids = vec!["dev-tag-urgent".into(), "dev-tag-focus".into()];
             t
         },
         {
             let mut t = todo("dev-today-2", "Отправить инвойс клиенту");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(0));
-            t.deadline = Some(day_key(0));
             t.billable = true;
             t.price = Some(15000.0);
             t.project_id = Some("dev-proj-release".into());
@@ -797,16 +666,12 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-today-evening", "Почитать главу книги");
             t.status = Status::Todo;
             t.is_today = true;
-            t.is_evening = true;
-            t.area_id = Some("dev-area-life".into());
             t
         },
         {
             let mut t = todo("dev-overdue-1", "Вернуть правки по макетам");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(-1));
-            t.priority = 3;
-            t.tag_ids = vec!["dev-tag-urgent".into()];
             t
         },
         {
@@ -814,16 +679,6 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(1));
             t.project_id = Some("dev-proj-release".into());
-            t.heading_id = Some("dev-head-prep".into());
-            t.checklist = vec![
-                ChecklistItem { is_completed: true },
-                ChecklistItem {
-                    is_completed: false,
-                },
-                ChecklistItem {
-                    is_completed: false,
-                },
-            ];
             t
         },
         {
@@ -831,15 +686,12 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Started;
             t.scheduled_date = Some(day_key(2));
             t.project_id = Some("dev-proj-release".into());
-            t.heading_id = Some("dev-head-polish".into());
-            t.significance = Some(7);
             t
         },
         {
             let mut t = todo("dev-week-3", "Оплатить интернет");
             t.status = Status::Todo;
-            t.deadline = Some(day_key(3));
-            t.reminder_date = Some(iso_at(3, 9, 0));
+            t.scheduled_date = Some(day_key(3));
             t.project_id = Some("dev-proj-home".into());
             t
         },
@@ -847,28 +699,18 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-week-4", "Купить подарок Маше");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(4));
-            t.area_id = Some("dev-area-life".into());
-            t.tag_ids = vec!["dev-tag-home".into()];
             t
         },
         {
             let mut t = todo("dev-recurring-1", "Поливать цветы");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(0));
-            t.area_id = Some("dev-area-life".into());
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 1,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![1, 3, 5],
-            });
             t
         },
         {
             let mut t = todo("dev-next-week-1", "Запланировать отпуск");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(8));
-            t.priority = 2;
             t
         },
         {
@@ -922,7 +764,6 @@ pub fn seed_todos() -> Vec<Todo> {
 /// `dev-gen-{batch}-{i}` so batches never collide.
 pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec<Todo> {
     const PROJECTS: [&str; 3] = ["dev-proj-release", "dev-proj-home", "dev-proj-someday"];
-    const TAGS: [&str; 3] = ["dev-tag-urgent", "dev-tag-focus", "dev-tag-home"];
 
     let mut s = (seed | 1).wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut rng = move || {
@@ -984,27 +825,19 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                 if rng() % 100 < 40 {
                     t.scheduled_date = Some(day_key((rng() % 76) as i64 - 30));
                 }
-                if rng() % 100 < 15 {
-                    t.deadline = Some(day_key((rng() % 61) as i64 - 10));
-                }
                 if rng() % 100 < 3 {
                     t.is_trashed = true;
                 }
             }
-            if rng() % 100 < 30 {
-                t.priority = 1 + (rng() % 3) as u8;
+            if rng() % 100 < 8 {
+                t.billable = true;
+                t.price = Some(1000.0 + (rng() % 20000) as f64);
             }
             if rng() % 100 < 35 {
                 t.project_id = Some(PROJECTS[(rng() % 3) as usize].into());
             }
-            if rng() % 100 < 20 {
-                t.tag_ids = vec![TAGS[(rng() % 3) as usize].into()];
-            }
             if rng() % 100 < 15 {
                 t.notes = Some(rand_chars(&mut rng, 12));
-            }
-            if rng() % 100 < 30 {
-                t.significance = Some(1 + (rng() % 10) as u8);
             }
             t
         })
@@ -1017,45 +850,19 @@ pub fn seed_projects() -> Vec<Project> {
             id: "dev-proj-release".into(),
             title: "Релиз Agenda 1.0".into(),
             status: 0,
-            deadline: Some(day_key(10)),
             sort_order: 0,
-            area_id: Some("dev-area-work".into()),
         },
         Project {
             id: "dev-proj-home".into(),
             title: "Дом и быт".into(),
             status: 0,
-            deadline: None,
             sort_order: 1,
-            area_id: Some("dev-area-life".into()),
         },
         Project {
             id: "dev-proj-someday".into(),
             title: "Путешествие в Японию".into(),
             status: 1,
-            deadline: None,
             sort_order: 2,
-            area_id: Some("dev-area-life".into()),
-        },
-    ]
-}
-
-pub fn seed_tags() -> Vec<Tag> {
-    vec![
-        Tag {
-            id: "dev-tag-urgent".into(),
-            title: "срочно".into(),
-            color: "red".into(),
-        },
-        Tag {
-            id: "dev-tag-focus".into(),
-            title: "фокус".into(),
-            color: "blue".into(),
-        },
-        Tag {
-            id: "dev-tag-home".into(),
-            title: "дом".into(),
-            color: "green".into(),
         },
     ]
 }

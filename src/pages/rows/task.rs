@@ -97,14 +97,8 @@ impl Agenda {
             row = row.child(actions);
         }
 
-        // meta: checklist chip, tag pills, project, date, price — skipped
-        // entirely when the task has none of them.
-        let total = t.checklist.len();
-        let has_meta = total > 0
-            || !t.tag_ids.is_empty()
-            || t.project_id.is_some()
-            || date_val.is_some()
-            || t.billable;
+        // meta: project, date, price — skipped entirely when the task has none.
+        let has_meta = t.project_id.is_some() || date_val.is_some() || t.billable;
         if has_meta {
             let mut meta = div()
                 .flex_none()
@@ -113,29 +107,6 @@ impl Agenda {
                 .gap_2()
                 .text_size(crate::theme::text_px(12.))
                 .text_color(c(MUTED_FG()));
-            if total > 0 {
-                let d = t.checklist.iter().filter(|i| i.is_completed).count();
-                meta = meta.child(format!("{}/{}", d, total));
-            }
-            for tag_id in &t.tag_ids {
-                if let Some(tag) = self.tag(tag_id) {
-                    let dot = tag_color(&tag.color);
-                    meta = meta.child(
-                        div()
-                            .h_5()
-                            .px_2()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.))
-                            .rounded_full()
-                            .bg(fg_mix(0.06))
-                            .text_size(crate::theme::text_px(11.))
-                            .text_color(c(FG()))
-                            .child(div().w(px(6.)).h(px(6.)).rounded_full().bg(c(dot)))
-                            .child(tag.title.clone()),
-                    );
-                }
-            }
             if let Some(pid) = t.project_id.as_deref() {
                 if let Some(p) = self.project(pid) {
                     meta = meta.child(

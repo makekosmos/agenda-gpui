@@ -339,7 +339,7 @@ impl Agenda {
                 SbItem::nav(
                     "statistics",
                     "icons/analytics-01.svg",
-                    "Статистика",
+                    "Активность",
                     self.route == Route::Statistics,
                     Route::Statistics,
                 ),
@@ -784,7 +784,9 @@ impl Agenda {
                     .flex_none()
                     .flex()
                     .items_center()
+                    .gap_1()
                     .pr_2()
+                    .children(self.render_activity_range(cx))
                     .children(self.render_options_button(window, cx)),
             );
         #[cfg(not(target_os = "macos"))]
@@ -966,6 +968,41 @@ impl Agenda {
                     })
                     .a11y_switch("Боковая панель", open),
             )
+    }
+
+    fn render_activity_range(&mut self, cx: &mut Context<Self>) -> Option<gpui::Div> {
+        if self.route != Route::Statistics {
+            return None;
+        }
+        let current = self.activity_range;
+        let mut row = div().flex().items_center().gap_1();
+        for (range, label) in [
+            (crate::app::ActivityRange::Week, "Неделя"),
+            (crate::app::ActivityRange::Month, "Месяц"),
+            (crate::app::ActivityRange::Year, "Год"),
+        ] {
+            let selected = current == range;
+            let weak = cx.weak_entity();
+            row = row.child(
+                div()
+                    .id(SharedString::from(format!("act-range-{label}")))
+                    .px_2()
+                    .h_7()
+                    .flex()
+                    .items_center()
+                    .rounded(px(BASE_RADIUS))
+                    .hover(|s| s.bg(rgba(FG(), 0.08)))
+                    .when(selected, |el| el.bg(rgba(FG(), 0.10)))
+                    .text_size(crate::theme::text_px(12.))
+                    .text_color(c(if selected { FG() } else { MUTED_FG() }))
+                    .child(label)
+                    .on_click(move |_: &ClickEvent, _, cx| {
+                        let _ = weak.update(cx, |this, _| this.activity_range = range);
+                    })
+                    .a11y_button(label),
+            );
+        }
+        Some(row)
     }
 
     /// Display-options button (view / sort / group popover) pinned to the

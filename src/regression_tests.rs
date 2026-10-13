@@ -6,7 +6,7 @@ use std::sync::mpsc;
 use gpui::TestAppContext;
 
 use crate::app::Route;
-use crate::model::{day_key, new_todo, RecurrenceRule, Status};
+use crate::model::{day_key, new_todo, Status};
 use crate::store::{Command, Mutation, Reply, Worker};
 use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
 
@@ -148,16 +148,6 @@ fn quick_entry_strips_project_mention_on_save(cx: &mut TestAppContext) {
 #[gpui::test]
 fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| {
-        a.update_todo("dev-trash-1", |t| {
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 0,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![],
-            });
-        });
-    });
     let count = agenda.read_with(cx, |a, _| a.todos.len());
 
     click(cx, "sb-more");

@@ -21,6 +21,13 @@ pub(crate) mod storage;
 
 gpui::actions!(agenda_app, [ToggleSidebar]);
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivityRange {
+    Week,
+    Month,
+    Year,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
     Inbox,
@@ -135,7 +142,6 @@ pub struct Agenda {
     pub(crate) close_pending: bool,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
-    pub(crate) tags: Vec<Tag>,
 
     pub(crate) route: Route,
     pub(crate) back_route: Route,
@@ -225,8 +231,7 @@ pub struct Agenda {
     pub(crate) quick_query: String,
     pub(crate) quick_sel: usize,
 
-    /// Share-card overlay on the statistics page.
-    pub(crate) share_open: bool,
+    pub(crate) activity_range: ActivityRange,
 
     /// Dev page (settings): 8px design grid overlay + FPS counter + task
     /// generator state.
@@ -318,7 +323,7 @@ impl Agenda {
             close_pending: false,
             todos: if demo { seed_todos() } else { vec![] },
             projects: if demo { seed_projects() } else { vec![] },
-            tags: if demo { seed_tags() } else { vec![] },
+
             route: initial_route(),
             back_route: Route::Inbox,
             sidebar_t: 1.0,
@@ -409,7 +414,7 @@ impl Agenda {
             quick_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quicksearch"),
             quick_query: String::new(),
             quick_sel: 0,
-            share_open: false,
+            activity_range: ActivityRange::Year,
             dev_grid: false,
             dev_fps: std::env::var("AGENDA_FPS").is_ok(),
             dev_gen_batch: 0,
@@ -833,7 +838,6 @@ impl Agenda {
 
     pub(crate) fn navigate(&mut self, route: Route) {
         if self.route != route {
-            self.share_open = false;
             // Only crossing the settings boundary retargets "Назад" —
             // navigating between settings pages must not loop it.
             if Self::is_settings_route(&self.route) != Self::is_settings_route(&route) {
@@ -876,10 +880,6 @@ impl Agenda {
         self.projects.iter().find(|p| p.id == id)
     }
 
-    pub(crate) fn tag<'a>(&'a self, id: &str) -> Option<&'a Tag> {
-        self.tags.iter().find(|t| t.id == id)
-    }
-
     pub(crate) fn todo<'a>(&'a self, id: &str) -> Option<&'a Todo> {
         self.todos.iter().find(|t| t.id == id)
     }
@@ -890,7 +890,7 @@ impl Agenda {
             Route::Week => ("Эта неделя".into(), "icons/calendar-01.svg"),
             Route::NextWeek => ("Следующая неделя".into(), "icons/calendar-02.svg"),
             Route::Someday => ("Потом".into(), "icons/clock-01.svg"),
-            Route::Statistics => ("Статистика".into(), "icons/analytics-01.svg"),
+            Route::Statistics => ("Активность".into(), "icons/analytics-01.svg"),
             Route::Logbook => ("Архив".into(), "icons/book-open.svg"),
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
             Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
@@ -1368,7 +1368,6 @@ impl Agenda {
             id: uuid::Uuid::new_v4().to_string(),
             title: "Новый проект".to_string(),
             status: 0,
-            deadline: None,
             sort_order: self
                 .projects
                 .iter()
@@ -1376,7 +1375,6 @@ impl Agenda {
                 .max()
                 .unwrap_or(0)
                 + 1,
-            area_id: None,
         };
         if !self.demo {
             self.send_storage(crate::store::Command::Project(project.clone()));
@@ -1618,25 +1616,7 @@ impl Agenda {
         todo.is_completed = true;
         todo.is_cancelled = false;
         todo.completed_at = Some(chrono::Utc::now().to_rfc3339());
-        let next = todo.recurrence.as_ref().and_then(|rule| {
-            let mut next = before.clone();
-            next.id = uuid::Uuid::new_v4().to_string();
-            next.status = Status::Todo;
-            next.scheduled_date = Some(next_recurrence_date(rule, &todo)?);
-            next.completed_at = None;
-            next.is_completed = false;
-            next.is_cancelled = false;
-            next.is_today = false;
-            next.is_evening = false;
-            next.is_someday = false;
-            next.deadline = None;
-            next.reminder_date = None;
-            next.checklist.clear();
-            next.created_at = chrono::Utc::now().to_rfc3339();
-            next.sort_order = self.todos.len() as i32;
-            Some(next)
-        });
-        self.save_completion(before, todo, next);
+        self.save_completion(before, todo, None);
     }
 
     pub(crate) fn update_todo(&mut self, id: &str, f: impl FnOnce(&mut Todo)) {
@@ -1653,7 +1633,6 @@ impl Agenda {
         self.update_todo(id, |t| {
             t.status = Status::Todo;
             t.scheduled_date = None;
-            t.deadline = None;
             t.is_today = true;
             t.is_someday = false;
         });
@@ -1704,7 +1683,6 @@ impl Agenda {
             }
             MenuAction::SetDate(id, d) => self.update_todo(&id, |t| {
                 t.scheduled_date = d;
-                t.deadline = None;
             }),
             MenuAction::RestoreTodo(id) => self.update_todo(&id, |t| t.is_trashed = false),
             MenuAction::MoveToWeek(id) => self.move_to_week(&id),
