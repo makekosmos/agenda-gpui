@@ -46,7 +46,10 @@ const PRIORITIES: [&str; 4] = ["none", "low", "medium", "high"];
 const FREQUENCIES: [&str; 4] = ["daily", "weekly", "monthly", "yearly"];
 
 mod write;
-pub use write::{write, write_at};
+pub use write::write;
+// Only the fixture and mapping tests pin a clock; app code always uses `write`.
+#[cfg(test)]
+pub use write::write_at;
 
 pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
     if object["typeId"] != TASK_TYPE || !object["id"].is_string() {
