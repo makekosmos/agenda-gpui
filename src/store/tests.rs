@@ -8,14 +8,21 @@ use std::{
 
 #[test]
 fn mapping_preserves_unrepresented_fields() {
-    let original = json!({"id":"real-id","typeId":mapping::TASK_TYPE,"typeVersion":"1.0.0",
+    let original = json!({"id":"real-id","typeId":mapping::TASK_TYPE,"typeVersion":"0.1.0",
         "title":"From Vue","createdAt":"2026-09-20T10:00:00Z","updatedAt":"2026-09-20T10:00:00Z",
         "contentJson":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Rich notes","marks":[{"type":"bold"}]}]}]},
-        "propsJson":{"status":"inProgress","priority":"high","scheduledAt":today_key(),
-            "checklist":[{"id":"item-1","title":"Keep this","isCompleted":true}],
-            "extensions":{"priority":3,"linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
-                "project_id":"real-project","tag_ids":["real-tag"],"significance":7,"price":150.75}},"deletedAt":null});
-    let before = mapping::read(&original).unwrap();
+        "propsJson":{"state":{"kind":"inProgress","at":null},
+            "planning":{"kind":"date","period":"any","date":today_key()},
+            "priority":"high",
+            "checklist":[{"id":"item-1","text":"Keep this","done":true,"rank":"a0"}],
+            "extensions":{"linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
+                "significance":7,"price":150.75}},"deletedAt":null});
+    let links = [mapping::Link {
+        id: "lnk:real-id:project:real-project".into(),
+        kind: mapping::PROJECT_LINK.into(),
+        target: "real-project".into(),
+    }];
+    let before = mapping::read(&original, &links).unwrap();
     assert_eq!(before.status, Status::Started);
     assert_eq!(before.price, Some(150.75));
     assert_eq!(before.notes.as_deref(), Some("Rich notes"));
@@ -29,13 +36,19 @@ fn mapping_preserves_unrepresented_fields() {
     let written = mapping::write(original.clone(), Some(&before), &edited).unwrap();
     assert_eq!(written["contentJson"], original["contentJson"]);
     assert_eq!(written["propsJson"], original["propsJson"]);
-    assert_eq!(mapping::read(&written).unwrap(), edited);
+    assert_eq!(mapping::read(&written, &links).unwrap(), edited);
     edited.status = Status::Deferred;
     let deferred = mapping::write(written, Some(&before), &edited).unwrap();
-    assert_eq!(mapping::read(&deferred).unwrap().status, Status::Deferred);
+    assert_eq!(
+        mapping::read(&deferred, &links).unwrap().status,
+        Status::Deferred
+    );
     edited.status = Status::Todo;
     let resumed = mapping::write(deferred, None, &edited).unwrap();
-    assert_eq!(mapping::read(&resumed).unwrap().status, Status::Todo);
+    assert_eq!(
+        mapping::read(&resumed, &links).unwrap().status,
+        Status::Todo
+    );
 }
 
 // Called in separate OS processes below: no shared in-memory task state.
@@ -140,6 +153,48 @@ fn restart_client() {
             assert!(persisted.contains(&done));
             assert!(persisted.contains(&next));
         }
+        "project" => {
+            // Projects are objects, and a task's project is an object link that moves with it.
+            let project = Project {
+                id: "restart-project".into(),
+                title: "Ремонт".into(),
+                status: 0,
+                deadline: None,
+                sort_order: 0,
+                area_id: None,
+            };
+            engine.save_project(&project).unwrap();
+            let mut todo = new_todo("restart-linked", "Linked");
+            todo.created_at = "2026-09-20T10:00:00Z".into();
+            todo.project_id = Some(project.id.clone());
+            engine.save(None, &todo).unwrap();
+            let linked = engine.load().unwrap().todos;
+            let before = linked.iter().find(|t| t.id == todo.id).unwrap().clone();
+            assert_eq!(before.project_id.as_deref(), Some("restart-project"));
+            let mut moved = before.clone();
+            moved.project_id = None;
+            engine.save(Some(&before), &moved).unwrap();
+            let loaded = engine.load().unwrap().todos;
+            assert_eq!(
+                loaded.iter().find(|t| t.id == todo.id).unwrap().project_id,
+                None
+            );
+            // A project that is not an object yet is refused before the task is written.
+            let mut unknown = moved.clone();
+            unknown.project_id = Some("missing-project".into());
+            assert!(engine.save(Some(&moved), &unknown).is_err());
+            assert_eq!(
+                engine
+                    .load()
+                    .unwrap()
+                    .todos
+                    .iter()
+                    .find(|t| t.id == todo.id)
+                    .unwrap()
+                    .project_id,
+                None
+            );
+        }
         _ => panic!("unknown test mode"),
     }
 }
@@ -194,6 +249,19 @@ fn persistence_across_client_processes() {
             let response = match request["operation"].as_str().unwrap() {
                 "list_objects_by_type" => json!({"ok":true,"data":objects.values().filter(|v| v["typeId"] == request["type_id"]).collect::<Vec<_>>()}),
                 "get_object" => json!({"ok":true,"data":objects.get(request["id"].as_str().unwrap())}),
+                // Links are kept beside objects; only links carry `linkType`.
+                "list_object_links" => json!({"ok":true,"data":objects.values().filter(|v| v.get("linkType").is_some()).collect::<Vec<_>>()}),
+                "upsert_object_link" => {
+                    let link = &request["object_link"];
+                    objects.insert(link["id"].as_str().unwrap().into(), link.clone());
+                    std::fs::write(&path, serde_json::to_vec(&objects).unwrap()).unwrap();
+                    json!({"ok":true,"data":true})
+                }
+                "delete_object_link" => {
+                    objects.remove(request["id"].as_str().unwrap());
+                    std::fs::write(&path, serde_json::to_vec(&objects).unwrap()).unwrap();
+                    json!({"ok":true,"data":true})
+                }
                 "upsert_object" if request["object"]["title"] == "REJECT" => json!({"ok":false,"error":"rejected"}),
                 "upsert_object" => {
                     let object = &request["object"];
@@ -216,6 +284,7 @@ fn persistence_across_client_processes() {
         "rejected",
         "conflict",
         "recurrence",
+        "project",
     ] {
         let output = Process::new(std::env::current_exe().unwrap())
             .args([

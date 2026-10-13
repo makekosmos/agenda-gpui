@@ -189,10 +189,10 @@ fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
 
 /// bug-hunt 2026-10-04: canceling a task stamped `completed_at` as
 /// `"{today}T12:00:00"` — no UTC offset — and `mapping::write` copied it
-/// verbatim into canonical `completedAt`, which the com.kosmos.task 1.1.0
-/// schema declares `format: "date-time"` (the offset is mandatory). Engine
-/// validation rejects the upsert, so the cancel silently failed to persist.
-/// It must be a real RFC 3339 instant like `complete_todo` produces.
+/// verbatim into canonical `completedAt` (com.kosmos.task 1.1.0, which declared
+/// `format: "date-time"`). Engine validation rejected the upsert, so the cancel
+/// silently failed to persist. core.task keeps the instant in `state.at`, and it
+/// must still be a real RFC 3339 instant like `complete_todo` produces.
 #[gpui::test]
 fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
@@ -203,12 +203,12 @@ fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     assert_eq!(t.status, Status::Canceled);
 
     let object = crate::store::mapping::write(serde_json::Value::Null, None, &t).unwrap();
-    let stamp = object["propsJson"]["completedAt"]
+    let stamp = object["propsJson"]["state"]["at"]
         .as_str()
-        .expect("cancel must stamp completedAt");
+        .expect("cancel must stamp state.at");
     assert!(
         chrono::DateTime::parse_from_rfc3339(stamp).is_ok(),
-        "completedAt must be RFC 3339 date-time, got {stamp:?}"
+        "state.at must be RFC 3339 date-time, got {stamp:?}"
     );
 }
 
