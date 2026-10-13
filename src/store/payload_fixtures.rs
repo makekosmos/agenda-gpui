@@ -79,8 +79,25 @@ fn cases() -> Vec<(&'static str, Todo)> {
     ]
 }
 
+/// Keys sorted at every level. Output must not depend on whether serde_json
+/// keeps insertion order, which other crates in the real build turn on.
+fn sorted(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let ordered: std::collections::BTreeMap<_, _> =
+                map.iter().map(|(k, v)| (k.clone(), sorted(v))).collect();
+            Value::Object(ordered.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
+        other => other.clone(),
+    }
+}
+
 fn emit(name: &str, object: &Value) {
-    let produced = format!("{}\n", serde_json::to_string_pretty(object).unwrap());
+    let produced = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&sorted(object)).unwrap()
+    );
     let path = fixture_dir().join(format!("{name}.json"));
     if std::env::var_os("AGENDA_EMIT_FIXTURES").is_some() {
         std::fs::create_dir_all(fixture_dir()).unwrap();
