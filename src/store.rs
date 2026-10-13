@@ -206,7 +206,10 @@ impl Engine {
             .as_array()
             .ok_or_else(|| Self::mapping_err("links not an array".into()))?;
         let mut by_task: HashMap<String, Vec<mapping::Link>> = HashMap::new();
-        for link in list.iter().filter(|l| l["linkType"] == mapping::PROJECT_LINK) {
+        for link in list
+            .iter()
+            .filter(|l| l["linkType"] == mapping::PROJECT_LINK)
+        {
             let (Some(id), Some(source), Some(target)) = (
                 link["id"].as_str(),
                 link["sourceObjectId"].as_str(),
