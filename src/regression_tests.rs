@@ -210,12 +210,12 @@ fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
         &LocalDay::now(),
     )
     .unwrap();
-    let stamp = object["propsJson"]["completedAt"]
+    let stamp = object["propsJson"]["state"]["at"]
         .as_str()
-        .expect("cancel must stamp completedAt");
+        .expect("cancel must stamp state.at");
     assert!(
         chrono::DateTime::parse_from_rfc3339(stamp).is_ok(),
-        "completedAt must be RFC 3339 date-time, got {stamp:?}"
+        "state.at must be RFC 3339 date-time, got {stamp:?}"
     );
 }
 

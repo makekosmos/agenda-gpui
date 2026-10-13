@@ -96,7 +96,7 @@ fn engine_canonical_priority_string_maps_to_level() {
             "propsJson": {"status": "todo", "priority": priority},
             "deletedAt": null,
         });
-        let t = mapping::read(&object).unwrap();
+        let t = mapping::read(&object, &[]).unwrap();
         assert_eq!(
             t.priority, level,
             "priority '{priority}' must map to {level}"

@@ -140,7 +140,7 @@ fn engine_payload_fixtures_match_write_output() {
         // Edits to an existing object produce the same contract shape; the
         // KOS-295 regression (Engine-owned `dayOfMonth` leaking into
         // `recurrence`) was an edit-path write.
-        let before = mapping::read(&object).unwrap();
+        let before = mapping::read(&object, &[]).unwrap();
         let mut edited = before.clone();
         edited.title = format!("{name} edited");
         let rewritten = mapping::write_at(object, Some(&before), &edited, NOW, &day()).unwrap();

@@ -1,10 +1,13 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
 
+mod links;
 #[cfg(test)]
 mod mapping_tests;
 #[cfg(test)]
 mod payload_fixtures;
 mod projects;
+#[cfg(test)]
+mod restart_tests;
 #[cfg(test)]
 mod tests;
 mod transport;
@@ -102,8 +105,9 @@ impl Engine {
             return Ok(());
         }
         // A lost acknowledgement may still mean the next occurrence was saved.
-        let stored = self.rpc("get_object", json!({"id":next.id}))?;
-        if !stored.is_null() && mapping::read(&stored).map_err(Self::mapping_err)? == *next {
+        let (stored, links) = self.stored_task(&next.id)?;
+        if !stored.is_null() && mapping::read(&stored, &links).map_err(Self::mapping_err)? == *next
+        {
             return Ok(());
         }
         if stored.is_null() {
@@ -132,12 +136,15 @@ impl Engine {
         let list = list
             .as_array()
             .ok_or_else(|| Self::mapping_err("list not an array".into()))?;
+        let links = self.project_links()?;
         let mut snapshot = Snapshot::default();
         for object in list {
             if object["typeId"] == mapping::TASK_TYPE {
+                let id = object["id"].as_str().unwrap_or_default();
+                let own = links.get(id).map(Vec::as_slice).unwrap_or(&[]);
                 snapshot
                     .todos
-                    .push(mapping::read(object).map_err(Self::mapping_err)?);
+                    .push(mapping::read(object, own).map_err(Self::mapping_err)?);
             }
         }
         snapshot.todos.sort_by_key(|t| t.sort_order);
@@ -187,9 +194,11 @@ impl Engine {
     }
 
     pub fn save(&self, before: Option<&Todo>, todo: &Todo) -> Result<(), EngineError> {
-        let current = self.rpc("get_object", json!({"id":todo.id}))?;
+        let (current, stored) = self.stored_task(&todo.id)?;
         if let Some(before) = before {
-            if current.is_null() || mapping::read(&current).map_err(Self::mapping_err)? != *before {
+            if current.is_null()
+                || mapping::read(&current, &stored).map_err(Self::mapping_err)? != *before
+            {
                 return Err(EngineError {
                     kind: ErrorKind::Conflict,
                     detail: "local: precondition failed (stale or missing)".into(),
@@ -201,6 +210,18 @@ impl Engine {
                 detail: "local: object already exists".into(),
             });
         }
+        let linked = stored.iter().find(|l| l.kind == mapping::PROJECT_LINK);
+        let project = todo.project_id.as_deref();
+        let relink = linked.map(|l| l.target.as_str()) != project;
+        if let (true, Some(project)) = (relink, project) {
+            // The Engine enforces the link's foreign keys: the project must be an object first.
+            if self.rpc("get_object", json!({"id":project}))?.is_null() {
+                return Err(EngineError {
+                    kind: ErrorKind::InvalidRequest,
+                    detail: "local: project is not saved yet".into(),
+                });
+            }
+        }
         let object = mapping::write_at(
             current,
             before,
@@ -209,7 +230,11 @@ impl Engine {
             &LocalDay::now(),
         )
         .map_err(Self::mapping_err)?;
-        self.upsert(object)
+        self.upsert(object)?;
+        if relink {
+            self.relink_project(&todo.id, linked, project)?;
+        }
+        Ok(())
     }
 
     fn upsert(&self, object: Value) -> Result<(), EngineError> {

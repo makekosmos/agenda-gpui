@@ -1,13 +1,17 @@
 use super::*;
+use agenda_core::Status;
 
-/// `reminderAt`/`completedAt` are `date-time` under com.kosmos.task 1.1.0.
+/// core.task 0.1.0 keeps the completion instant in `state.at` and reminders in
+/// `reminders[].at`; both must be real RFC 3339 instants, never bare days.
 #[test]
 fn write_keeps_canonical_instant_when_new_value_is_a_bare_day() {
-    let original = json!({"id":"t1","typeId":mapping::TASK_TYPE,"typeVersion":"1.1.0","title":"Task",
+    let original = json!({"id":"t1","typeId":mapping::TASK_TYPE,"typeVersion":"0.1.0","title":"Task",
         "createdAt":"2026-09-20T10:00:00Z","updatedAt":"2026-09-20T10:00:00Z","deletedAt":null,
-        "propsJson":{"status":"todo","completedAt":"2026-09-20T12:00:00Z",
-            "extensions":{"completed_at":"2026-09-20T12:00:00Z"}}});
-    let before = mapping::read(&original).unwrap();
+        "propsJson":{"state":{"kind":"done","at":"2026-09-20T12:00:00Z"},
+            "planning":{"kind":"anytime","period":"any","date":null},
+            "extensions":{"status":"done"}}});
+    let before = mapping::read(&original, &[]).unwrap();
+    assert_eq!(before.completed_at.as_deref(), Some("2026-09-20T12:00:00Z"));
     let mut edited = before.clone();
     edited.completed_at = Some("2026-09-21".into()); // malformed day-only value
     edited.reminder_date = Some("2026-09-22".into());
@@ -20,11 +24,13 @@ fn write_keeps_canonical_instant_when_new_value_is_a_bare_day() {
     )
     .unwrap();
     assert_eq!(
-        written["propsJson"]["completedAt"],
-        json!("2026-09-20T12:00:00Z")
+        written["propsJson"]["state"],
+        json!({"kind":"done","at":"2026-09-20T12:00:00Z"})
     );
-    assert!(written["propsJson"]["reminderAt"].is_null()); // malformed value not written
-    edited.completed_at = None; // clearing still writes null
+    assert_eq!(written["propsJson"]["reminders"], json!([])); // malformed value not written
+    edited.status = Status::Todo; // reopening and clearing the instant writes null
+    edited.is_completed = false;
+    edited.completed_at = None;
     let cleared = mapping::write_at(
         written,
         Some(&before),
@@ -33,7 +39,10 @@ fn write_keeps_canonical_instant_when_new_value_is_a_bare_day() {
         &LocalDay::now(),
     )
     .unwrap();
-    assert_eq!(cleared["propsJson"]["completedAt"], json!(null));
+    assert_eq!(
+        cleared["propsJson"]["state"],
+        json!({"kind":"open","at":null})
+    );
 }
 
 #[test]
