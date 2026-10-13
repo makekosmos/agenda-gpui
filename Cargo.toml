@@ -49,6 +49,7 @@ windows = { version = "0.62", features = [
 [target.'cfg(target_os = "macos")'.dependencies]
 # Same AccessKit adapter version used by gpui-pre-macos 0.3.6.
 accesskit_macos = "=0.26.3"
+# Menu Close must call NSWindow performClose:, not GPUI remove_window.
 objc = "0.2.7"
 objc_exception = "0.1.2"
 
