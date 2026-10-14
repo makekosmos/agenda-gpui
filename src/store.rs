@@ -205,13 +205,16 @@ impl Engine {
         linked: Option<&mapping::Link>,
         project: Option<&str>,
     ) -> Result<(), EngineError> {
-        if let Some(link) = linked {
-            self.rpc("delete_object_link", json!({"id":link.id}))?;
-        }
         let Some(project) = project else {
+            // Leaving the project has no new link to write, so the old one is removed alone.
+            if let Some(link) = linked {
+                self.rpc("delete_object_link", json!({"id":link.id}))?;
+            }
             return Ok(());
         };
         // Id from the endpoints, so a link added twice (or from two devices) is one row.
+        // One Engine transaction drops the other project links of this task and writes
+        // this one, so a sync device never sees the task in no project or in two.
         let link = json!({
             "id": format!("lnk:{task}:{}:{project}", mapping::PROJECT_LINK),
             "sourceObjectId": task,
@@ -219,7 +222,7 @@ impl Engine {
             "linkType": mapping::PROJECT_LINK,
             "createdAt": chrono::Utc::now().to_rfc3339(),
         });
-        self.rpc("upsert_object_link", json!({"object_link":link}))?;
+        self.rpc("replace_object_link", json!({"object_link":link}))?;
         Ok(())
     }
 

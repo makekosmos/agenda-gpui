@@ -103,11 +103,18 @@ fn persistence_across_client_processes() {
                 "get_object" => json!({"ok":true,"data":objects.get(request["id"].as_str().unwrap())}),
                 // Links are kept beside objects; only links carry `linkType`.
                 "list_object_links" => json!({"ok":true,"data":objects.values().filter(|v| v.get("linkType").is_some()).collect::<Vec<_>>()}),
-                "upsert_object_link" => {
+                // Like the Engine: the other links of this source and type go, then the new one is written.
+                "replace_object_link" => {
                     let link = &request["object_link"];
-                    objects.insert(link["id"].as_str().unwrap().into(), link.clone());
+                    let id = link["id"].as_str().unwrap();
+                    objects.retain(|key, value| {
+                        key == id
+                            || value.get("linkType") != Some(&link["linkType"])
+                            || value["sourceObjectId"] != link["sourceObjectId"]
+                    });
+                    objects.insert(id.into(), link.clone());
                     std::fs::write(&path, serde_json::to_vec(&objects).unwrap()).unwrap();
-                    json!({"ok":true,"data":true})
+                    json!({"ok":true,"data":link})
                 }
                 "delete_object_link" => {
                     objects.remove(request["id"].as_str().unwrap());
