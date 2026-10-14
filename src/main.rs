@@ -144,7 +144,7 @@ fn main() {
         native_menu::install(cx);
         #[cfg(feature = "e2e")]
         if e2e::requested() {
-            e2e::run(window.into(), agenda, cx);
+            e2e::run(window, agenda, cx);
         }
         #[cfg(not(feature = "e2e"))]
         let _ = (window, agenda);
