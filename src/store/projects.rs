@@ -96,3 +96,25 @@ pub(super) fn read_project(object: &Value) -> Project {
         area_id: ext["areaId"].as_str().map(str::to_string),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn project_round_trips_as_canonical_object() {
+        let project = Project {
+            id: "p1".into(),
+            title: "Ремонт".into(),
+            status: 1,
+            deadline: Some("2026-12-01".into()),
+            sort_order: 3,
+            area_id: Some("a1".into()),
+        };
+        let object = project_object(Value::Null, &project, "2026-10-05T00:00:00Z");
+        assert_eq!(object["typeId"], "com.kosmos.project");
+        assert_eq!(object["propsJson"]["status"], "someday");
+        assert_eq!(object["propsJson"]["dueAt"], "2026-12-01");
+        assert_eq!(read_project(&object), project);
+    }
+}

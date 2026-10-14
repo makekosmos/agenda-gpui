@@ -90,13 +90,17 @@ fn engine_canonical_priority_string_maps_to_level() {
         let object = json!({
             "id": "prio-task",
             "typeId": mapping::TASK_TYPE,
-            "typeVersion": "1.0.0",
+            "typeVersion": "0.1.0",
             "title": "x",
             "createdAt": "2026-09-20T10:00:00Z",
-            "propsJson": {"status": "todo", "priority": priority},
+            "propsJson": {
+                "state": {"kind": "open", "at": null},
+                "planning": {"kind": "anytime"},
+                "priority": priority,
+            },
             "deletedAt": null,
         });
-        let t = mapping::read(&object).unwrap();
+        let t = mapping::read(&object, &[]).unwrap();
         assert_eq!(
             t.priority, level,
             "priority '{priority}' must map to {level}"

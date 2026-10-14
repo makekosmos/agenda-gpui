@@ -6,6 +6,7 @@ use std::path::PathBuf;
 // Engine contract fixtures (KOS-297).
 //
 // These are the exact objects `mapping::write` sends to `upsert_object`.
+// The project link is not in them: `store.rs` writes it as an object link.
 // They are committed under `fixtures/engine/` and consumed by the ark-core
 // contract test in cortex (`phase3_agenda_contract`), which validates them
 // against the real `canonical_ingress`. The two repos cannot share code, so
@@ -33,12 +34,6 @@ fn cases() -> Vec<(&'static str, Todo)> {
         ("task-date", {
             let mut t = base();
             t.scheduled_date = Some("2026-05-20".into());
-            t.status = Status::Todo;
-            t
-        }),
-        ("task-project", {
-            let mut t = base();
-            t.project_id = Some("p1".into());
             t.status = Status::Todo;
             t
         }),
@@ -84,8 +79,25 @@ fn cases() -> Vec<(&'static str, Todo)> {
     ]
 }
 
+/// Keys sorted at every level. Output must not depend on whether serde_json
+/// keeps insertion order, which other crates in the real build turn on.
+fn sorted(value: &Value) -> Value {
+    match value {
+        Value::Object(map) => {
+            let ordered: std::collections::BTreeMap<_, _> =
+                map.iter().map(|(k, v)| (k.clone(), sorted(v))).collect();
+            Value::Object(ordered.into_iter().collect())
+        }
+        Value::Array(items) => Value::Array(items.iter().map(sorted).collect()),
+        other => other.clone(),
+    }
+}
+
 fn emit(name: &str, object: &Value) {
-    let produced = format!("{}\n", serde_json::to_string_pretty(object).unwrap());
+    let produced = format!(
+        "{}\n",
+        serde_json::to_string_pretty(&sorted(object)).unwrap()
+    );
     let path = fixture_dir().join(format!("{name}.json"));
     if std::env::var_os("AGENDA_EMIT_FIXTURES").is_some() {
         std::fs::create_dir_all(fixture_dir()).unwrap();
@@ -119,19 +131,21 @@ fn engine_payload_fixtures_match_write_output() {
             "{name}"
         );
         // The day fields must be bare dates whenever present.
-        for key in ["scheduledAt", "dueAt"] {
-            if let Some(value) = object["propsJson"][key].as_str() {
-                assert!(
-                    parse_key(value).is_some() && value.len() == 10,
-                    "{name}: {key} is not a bare date: {value}"
-                );
-            }
+        let days = [
+            object["propsJson"]["planning"]["date"].as_str(),
+            object["propsJson"]["deadline"].as_str(),
+        ];
+        for value in days.into_iter().flatten() {
+            assert!(
+                parse_key(value).is_some() && value.len() == 10,
+                "{name}: day field is not a bare date: {value}"
+            );
         }
         emit(name, &object);
         // Edits to an existing object produce the same contract shape; the
         // KOS-295 regression (Engine-owned `dayOfMonth` leaking into
         // `recurrence`) was an edit-path write.
-        let before = mapping::read(&object).unwrap();
+        let before = mapping::read(&object, &[]).unwrap();
         let mut edited = before.clone();
         edited.title = format!("{name} edited");
         let rewritten = mapping::write_at(object, Some(&before), &edited, NOW).unwrap();
