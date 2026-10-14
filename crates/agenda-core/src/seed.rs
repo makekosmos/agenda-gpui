@@ -27,7 +27,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.is_today = true;
             t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into(), "dev-tag-focus".into()];
-            t.fuel_cost = Some(35.0);
             t
         },
         {
@@ -54,7 +53,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.scheduled_date = Some(day.day_key(-1));
             t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into()];
-            t.fuel_cost = Some(20.0);
             t
         },
         {
@@ -81,7 +79,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.project_id = Some("dev-proj-release".into());
             t.heading_id = Some("dev-head-polish".into());
             t.significance = Some(7);
-            t.fuel_cost = Some(15.0);
             t
         },
         {

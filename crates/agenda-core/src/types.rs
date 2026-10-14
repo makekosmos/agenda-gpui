@@ -59,7 +59,6 @@ pub struct Todo {
     pub billable: bool,
     pub price: Option<f64>,
     pub significance: Option<u8>,
-    pub fuel_cost: Option<f64>,
     pub sort_order: i32,
 }
 
@@ -116,7 +115,6 @@ pub fn new_todo(id: impl Into<String>, title: &str) -> Todo {
         billable: false,
         price: None,
         significance: None,
-        fuel_cost: None,
         sort_order: 0,
     }
 }

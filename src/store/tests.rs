@@ -28,7 +28,7 @@ fn mapping_preserves_unrepresented_fields() {
             "deadline":null,"reminders":[],"recurrence":null,"priority":"high",
             "checklist":[{"id":"item-1","text":"Keep this","done":true,"rank":"a0"}],
             "extensions":{"status":"todo","linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
-                "tag_ids":["real-tag"],"significance":7,"fuel_cost":12.5,"price":150.75}},"deletedAt":null});
+                "tag_ids":["real-tag"],"significance":7,"price":150.75}},"deletedAt":null});
     let links = [mapping::Link {
         id: "lnk:real-id:project:real-project".into(),
         kind: mapping::PROJECT_LINK.into(),
@@ -36,7 +36,6 @@ fn mapping_preserves_unrepresented_fields() {
     }];
     let before = mapping::read(&original, &links).unwrap();
     assert_eq!(before.status, Status::Started);
-    assert_eq!(before.fuel_cost, Some(12.5));
     assert_eq!(before.price, Some(150.75));
     assert_eq!(before.notes.as_deref(), Some("Rich notes"));
     assert_eq!(before.project_id.as_deref(), Some("real-project"));

@@ -60,7 +60,6 @@ impl AssetSource for Assets {
         "icons/share.svg",
         "icons/sidebar-left.svg",
         "icons/sliders.svg",
-        "icons/star.svg",
         "icons/status-check.svg",
         "icons/status-x.svg",
         "icons/tag.svg",

@@ -101,7 +101,6 @@ pub fn gen_random_todos_at(
                 t.notes = Some(rand_chars(&mut rng, 12));
             }
             if rng() % 100 < 30 {
-                t.fuel_cost = Some(5.0 + (rng() % 60) as f64);
                 t.significance = Some(1 + (rng() % 10) as u8);
             }
             t

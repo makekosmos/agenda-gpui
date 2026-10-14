@@ -737,10 +737,7 @@ impl Agenda {
         let p = ease_emphasized(self.sidebar_t.clamp(0.0, 1.0));
         let closed_inset = drag_inset(window);
         let pl = closed_inset + (CONTENT_GRID_X - closed_inset) * p;
-        let settings_like = matches!(
-            self.route,
-            Route::Settings | Route::SettingsFuel | Route::SettingsEnergy
-        );
+        let settings_like = matches!(self.route, Route::Settings | Route::SettingsEnergy);
         let (title, title_icon) = self.page_title();
         #[allow(unused_mut)]
         let mut drag = div()
