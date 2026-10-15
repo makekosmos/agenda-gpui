@@ -61,7 +61,7 @@ const PROJECT_STATUS: [&str; 3] = ["active", "someday", "completed"];
 pub(super) fn project_object(current: Value, project: &Project, now: &str) -> Value {
     let mut object = if current.is_null() {
         json!({"id":project.id,"typeId":PROJECT_TYPE,"typeVersion":"1.1.0","createdAt":now,
-            "propsJson":{"scheduledAt":null,"color":null,"extensions":{}},
+            "propsJson":{"scheduledAt":null,"dueAt":null,"color":null,"extensions":{}},
             "contentJson":{"type":"doc","content":[{"type":"paragraph"}]},"deletedAt":null})
     } else {
         current
