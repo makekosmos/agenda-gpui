@@ -1,257 +1,181 @@
 use super::*;
+use gpui::{linear_color_stop, linear_gradient};
+use gpui_component::chart::AreaChart;
 
-mod clipboard;
-mod share;
+const DOT: f32 = 8.0;
+const DOT_GAP: f32 = 5.0;
+const WEEK_DOTS: usize = 5;
+/// btop default graph stops: `cpu_start` / `cpu_mid` / `cpu_end`.
+const BTOP_GREEN: u32 = 0x8ec07c;
+const BTOP_YELLOW: u32 = 0xd79921;
+const BTOP_RED: u32 = 0xfb4934;
+
+fn week_monday(date: NaiveDate) -> NaiveDate {
+    date - Duration::days(date.weekday().num_days_from_monday() as i64)
+}
+
+fn lerp_rgb(a: u32, b: u32, t: f32) -> u32 {
+    let t = t.clamp(0.0, 1.0);
+    let ch = |shift: u32| {
+        let av = ((a >> shift) & 0xff) as f32;
+        let bv = ((b >> shift) & 0xff) as f32;
+        (av + (bv - av) * t).round() as u32
+    };
+    (ch(16) << 16) | (ch(8) << 8) | ch(0)
+}
+
+/// Color of a lit circle by its place in the stack, bottom = 0. Green at the
+/// base, yellow through the middle, red on the top two — btop's cpu gradient.
+fn btop_color(from_bottom: usize) -> u32 {
+    if from_bottom >= WEEK_DOTS - 2 {
+        return BTOP_RED;
+    }
+    let t = from_bottom as f32 / (WEEK_DOTS - 3) as f32;
+    if t < 0.5 {
+        lerp_rgb(BTOP_GREEN, BTOP_YELLOW, t / 0.5)
+    } else {
+        lerp_rgb(BTOP_YELLOW, BTOP_RED, (t - 0.5) / 0.5)
+    }
+}
+
+/// One column per week, ten circles each, edges flush with `width`. Circles
+/// fill from the bottom by completed tasks that week (one circle, one task,
+/// capped at ten). Unlit circles stay dim so the column does not disappear.
+#[derive(Clone)]
+struct WeekPoint {
+    label: SharedString,
+    planned: f64,
+    done: f64,
+}
+
+fn range_len(range: crate::app::ActivityRange) -> (usize, bool) {
+    match range {
+        crate::app::ActivityRange::Week => (7, false),
+        crate::app::ActivityRange::Month => (30, false),
+        crate::app::ActivityRange::Year => (52, true),
+    }
+}
+
+/// Fixed window for the selected range: 7 days, 30 days, or 52 weeks.
+/// The count does not depend on when the first task appeared.
+fn range_points(
+    todos: &[Todo],
+    today: NaiveDate,
+    range: crate::app::ActivityRange,
+) -> Vec<WeekPoint> {
+    let (len, weekly) = range_len(range);
+    let step = if weekly { 7 } else { 1 };
+    let end = if weekly { week_monday(today) } else { today };
+    let first = end - Duration::days(step * (len - 1) as i64);
+    let mut planned = vec![0f64; len];
+    let mut done = vec![0f64; len];
+    for todo in todos {
+        if todo.is_trashed || task_status(todo) == Status::Canceled {
+            continue;
+        }
+        let planned_day = date_only(&todo.scheduled_date)
+            .and_then(|k| parse_key(&k))
+            .or_else(|| todo.is_today.then_some(today));
+        if let Some(day) = planned_day {
+            if let Some(index) = bucket_index(day, first, step, len) {
+                planned[index] += 1.0;
+            }
+        }
+        if let Some(day) = completed_day(todo) {
+            if let Some(index) = bucket_index(day, first, step, len) {
+                done[index] += 1.0;
+            }
+        }
+    }
+    (0..len)
+        .map(|i| {
+            let start = first + Duration::days(step * i as i64);
+            WeekPoint {
+                label: format!(
+                    "{} {}",
+                    start.day(),
+                    MONTH_SHORT[(start.month() - 1) as usize]
+                )
+                .into(),
+                planned: planned[i],
+                done: done[i],
+            }
+        })
+        .collect()
+}
+
+fn bucket_index(day: NaiveDate, first: NaiveDate, step: i64, len: usize) -> Option<usize> {
+    let origin = if step == 7 { week_monday(day) } else { day };
+    let index = (origin - first).num_days() / step;
+    (0..len as i64).contains(&index).then_some(index as usize)
+}
+
+fn fade_to_baseline(color: u32, alpha: f32) -> gpui::Background {
+    linear_gradient(
+        180.,
+        linear_color_stop(rgba(color, alpha), 0.),
+        linear_color_stop(rgba(color, 0.), 1.),
+    )
+}
+
+fn activity_area(points: Vec<WeekPoint>) -> impl IntoElement {
+    let ticks = (points.len() / 8).max(1);
+    AreaChart::new(points)
+        .id("activity-area")
+        .x(|point: &WeekPoint| point.label.clone())
+        .y(|point: &WeekPoint| point.planned)
+        .stroke(rgba(BTOP_YELLOW, 0.95))
+        .fill(fade_to_baseline(BTOP_YELLOW, 0.4))
+        .name("Запланировано")
+        .linear()
+        .y(|point: &WeekPoint| point.done)
+        .stroke(rgba(BTOP_GREEN, 0.95))
+        .fill(fade_to_baseline(BTOP_GREEN, 0.45))
+        .name("Выполнено")
+        .linear()
+        .grid(true)
+        .tick_margin(ticks)
+}
+
+/// One column per bucket of the selected range, always the same count,
+/// spread edge to edge. Five circles, filled from the bottom by completed tasks.
+fn activity_chart(points: &[WeekPoint]) -> AnyElement {
+    let mut cols = div().w_full().flex().justify_between().items_end();
+    for (i, point) in points.iter().enumerate() {
+        let count = point.done.max(0.0) as usize;
+        let shown = count.min(WEEK_DOTS);
+        let mut col = div().flex().flex_col().gap(px(DOT_GAP)).items_center();
+        for row in 0..WEEK_DOTS {
+            let from_bottom = WEEK_DOTS - 1 - row;
+            let lit = from_bottom < shown;
+            col = col.child(div().size(px(DOT)).flex_none().rounded_full().bg(if lit {
+                rgba(btop_color(from_bottom), 0.95)
+            } else {
+                fg_mix(0.12)
+            }));
+        }
+        let caption = format!("{} выполнено, {}", count, point.label);
+        cols = cols.child(
+            div()
+                .id(SharedString::from(format!("act-{i}")))
+                .flex_none()
+                .tooltip(text_tooltip(caption))
+                .child(col),
+        );
+    }
+    cols.into_any_element()
+}
 
 impl Agenda {
     pub(crate) fn statistics_page(
         &mut self,
-        window: &mut Window,
-        cx: &mut Context<Self>,
+        _window: &mut Window,
+        _cx: &mut Context<Self>,
     ) -> AnyElement {
-        let day = LocalDay::now();
-        let today = day.today;
-
-        // Per-day completed counts for all history.
-        let mut days = std::collections::BTreeMap::<NaiveDate, i64>::new();
-        for t in &self.todos {
-            if let Some(d) = completed_day(t, &day) {
-                *days.entry(d).or_insert(0) += 1;
-            }
-        }
-        let total_done: i64 = days.values().sum();
-        let last7: i64 = days
-            .iter()
-            .filter(|(d, _)| **d > today - Duration::days(7))
-            .map(|(_, c)| c)
-            .sum();
-        let last30: i64 = days
-            .iter()
-            .filter(|(d, _)| **d > today - Duration::days(30))
-            .map(|(_, c)| c)
-            .sum();
-
-        // Streaks: current streak may start yesterday if today is still empty.
-        let mut cur_streak = 0i64;
-        let mut d = today;
-        if !days.contains_key(&d) {
-            d -= Duration::days(1);
-        }
-        while days.contains_key(&d) {
-            cur_streak += 1;
-            d -= Duration::days(1);
-        }
-        let mut best_streak = 0i64;
-        let mut run = 0i64;
-        let mut prev: Option<NaiveDate> = None;
-        for day in days.keys() {
-            run = if prev == Some(*day - Duration::days(1)) {
-                run + 1
-            } else {
-                1
-            };
-            best_streak = best_streak.max(run);
-            prev = Some(*day);
-        }
-
-        // Summary strip (bordered card, one row, thin separators).
-        let stat_items = [
-            (format!("{total_done}"), "Всего выполнено"),
-            (format!("{last7}"), "За 7 дней"),
-            (format!("{last30}"), "За 30 дней"),
-            (format!("{cur_streak}"), "Текущая серия"),
-            (format!("{best_streak}"), "Лучшая серия"),
-        ];
-        let mut card = div()
-            .flex()
-            .items_stretch()
-            .rounded_lg()
-            .border_1()
-            .border_color(c(BORDER()))
-            .py_3();
-        let last_i = stat_items.len() - 1;
-        for (i, (value, label)) in stat_items.into_iter().enumerate() {
-            card = card.child(
-                div()
-                    .flex_1()
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .gap_0p5()
-                    .child(
-                        div()
-                            .text_size(crate::theme::text_px(16.))
-                            .font_weight(gpui::FontWeight::SEMIBOLD)
-                            .text_color(c(FG()))
-                            .child(value),
-                    )
-                    .child(
-                        div()
-                            .text_size(crate::theme::text_px(12.))
-                            .text_color(c(MUTED_FG()))
-                            .child(label),
-                    ),
-            );
-            if i != last_i {
-                card = card.child(div().w(px(1.)).my_1().bg(fg_mix(0.08)));
-            }
-        }
-
-        // GitHub-style contribution heatmap: columns = calendar weeks
-        // (Mon–Sun), rows = weekday. The last column is the current week and
-        // the first one starts on the Monday `weeks-1` weeks ago. Width adapts
-        // to the viewport (~a year on a wide window).
-        const CELL: f32 = 12.0;
-        const GAP: f32 = 3.0;
-        let grid_w = (window.viewport_size().width - px(240.0 + 64.0)).min(px(832.));
-        let weeks = ((grid_w / px(CELL + GAP)) as usize).clamp(4, 53);
-
-        let dow = today.weekday().num_days_from_monday() as i64;
-        let last_monday = today - Duration::days(dow);
-        let start = last_monday - Duration::days(7 * (weeks as i64 - 1));
-        let total = weeks * 7;
-
-        let mut vals = vec![0f64; total];
-        let mut max_v = 0f64;
-        for (day, count) in &days {
-            let idx = (*day - start).num_days();
-            if (0..total as i64).contains(&idx) {
-                vals[idx as usize] = *count as f64;
-                max_v = max_v.max(*count as f64);
-            }
-        }
-
-        let cell_bg = |v: f64| {
-            if v <= 0.0 {
-                fg_mix(0.06)
-            } else {
-                rgba(
-                    ACCENT(),
-                    0.25 + 0.75 * ((v / max_v.max(1.0)).min(1.0) as f32),
-                )
-            }
-        };
-
-        // Month captions under the week containing the 1st of a month
-        // (3-letter). A label is written only when the month fits: its 1st
-        // day must lie inside the grid and two columns must remain so the
-        // text does not overflow the right edge.
-        let mut months = div().flex().gap(px(GAP)).h(px(16.)).mt_3().flex_none();
-        for w in 0..weeks {
-            let monday = start + Duration::days(7 * w as i64);
-            let sunday = monday + Duration::days(6);
-            // The 1st of a month falls inside this week.
-            let first = if monday.day() == 1 {
-                Some(monday)
-            } else if sunday.month() != monday.month() {
-                NaiveDate::from_ymd_opt(sunday.year(), sunday.month(), 1)
-            } else {
-                None
-            };
-            let label = match first {
-                Some(f) if f >= start && w + 2 <= weeks => MONTH_SHORT[(f.month() - 1) as usize]
-                    .chars()
-                    .take(3)
-                    .collect::<String>(),
-                _ => String::new(),
-            };
-            months = months.child(
-                div()
-                    .w(px(CELL))
-                    .flex_none()
-                    .text_size(crate::theme::text_px(10.))
-                    .font_weight(gpui::FontWeight::MEDIUM)
-                    .text_color(c(MUTED_FG()))
-                    .whitespace_nowrap()
-                    .child(label),
-            );
-        }
-
-        let mut cols = div().flex().gap(px(GAP)).flex_none();
-        for w in 0..weeks {
-            let mut col = div().flex().flex_col().gap(px(GAP));
-            for row in 0..7usize {
-                let idx = w * 7 + row;
-                let date = start + Duration::days(idx as i64);
-                if date > today {
-                    break; // the grid ends at today, no future cells
-                }
-                let v = vals[idx];
-                let caption = format!(
-                    "{} задач {} {}",
-                    v as i64,
-                    date.day(),
-                    MONTH_LONG[(date.month() - 1) as usize]
-                );
-                col = col.child(
-                    div()
-                        .id(SharedString::from(format!("heat-{idx}")))
-                        .size(px(CELL))
-                        .flex_none()
-                        .rounded(px(2.5))
-                        .bg(cell_bg(v))
-                        .tooltip(text_tooltip(caption.clone())),
-                );
-            }
-            cols = cols.child(col);
-        }
-
-        let grid = div().mt_3().flex().gap_0().child(cols);
-
-        // "Поделиться" button, top-right like the reference header.
-        let share_t = self.hover_t(window, "stat-share");
-        let weak = cx.weak_entity();
-        let share_btn = div()
-            .id("el-stat-share")
-            .debug_selector(|| "stat-share".to_string())
-            .size(px(32.))
-            .flex()
-            .items_center()
-            .justify_center()
-            .rounded_md()
-            .bg(fg_mix(0.05 + 0.05 * share_t))
-            .child(icon("icons/share.svg", 16., rgba(FG(), 0.9)))
-            .on_hover(move |hovered, _, cx| {
-                let _ = weak.update(cx, |this, _| this.set_hover("stat-share", *hovered));
-            })
-            .on_click({
-                let weak = cx.weak_entity();
-                move |_: &ClickEvent, _, cx| {
-                    let _ = weak.update(cx, |this, _| this.share_open = true);
-                }
-            })
-            .a11y_button("Поделиться");
-
-        let share_overlay = self.statistics_share_overlay(
-            today,
-            &days,
-            cell_bg,
-            [total_done, last7, cur_streak, best_streak],
-            cx,
-        );
-
-        // Profile header: empty avatar placeholder + stub name (wired up later).
-        let profile = div()
-            .mt_2()
-            .flex()
-            .flex_col()
-            .items_center()
-            .child(
-                div()
-                    .size(px(72.))
-                    .rounded_full()
-                    .border_1()
-                    .border_color(fg_mix(0.12))
-                    .bg(fg_mix(0.06)),
-            )
-            .child(
-                div()
-                    .mt_3()
-                    .text_size(crate::theme::text_px(20.))
-                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                    .text_color(c(FG()))
-                    .child("Имя Фамилия"),
-            );
+        let today = Local::now().date_naive();
+        let points = range_points(&self.todos, today, self.activity_range);
+        let chart = activity_chart(&points);
+        let area = activity_area(points);
 
         div()
             .flex_1()
@@ -269,28 +193,18 @@ impl Agenda {
                     .child(
                         div()
                             .w_full()
-                            .max_w(px(896.))
+                            .max_w(px(720.))
                             .mx_auto()
+                            .px_7()
                             .pt_4()
-                            .px_8()
+                            .pb_8()
                             .flex()
                             .flex_col()
-                            .child(div().flex().justify_end().child(share_btn))
-                            .child(profile)
-                            .child(div().mt_4().child(card))
-                            .child(
-                                div()
-                                    .mt_6()
-                                    .text_size(crate::theme::text_px(15.))
-                                    .font_weight(gpui::FontWeight::SEMIBOLD)
-                                    .child("Активность"),
-                            )
-                            .child(grid)
-                            .child(months)
-                            .child(div().pb_8()),
+                            .gap(px(28.))
+                            .child(chart)
+                            .child(div().h(px(220.)).w_full().child(area)),
                     ),
             )
-            .when_some(share_overlay, |el, overlay| el.child(overlay))
             .into_any_element()
     }
 }

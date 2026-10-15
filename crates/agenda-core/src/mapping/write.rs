@@ -1,4 +1,3 @@
-use super::recurrence::write_recurrence;
 use super::{TASK_TYPE, TASK_VERSION};
 use crate::dates::{date_only, LocalDay};
 use crate::filters::task_status;
@@ -7,14 +6,11 @@ use serde_json::{json, Value};
 
 /// Fields `write_at` never copies into `extensions`: canonical props, the
 /// project link, or the object row itself own them.
-const NOT_EXTENSION: [&str; 19] = [
+const NOT_EXTENSION: [&str; 16] = [
     "id",
     "title",
     "notes",
     "checklist",
-    "recurrence",
-    "priority",
-    "deadline",
     "reminder_date",
     "project_id",
     "created_at",
@@ -28,8 +24,6 @@ const NOT_EXTENSION: [&str; 19] = [
     "completed_at",
     "scheduled_date",
 ];
-
-const PRIORITIES: [&str; 4] = ["none", "low", "medium", "high"];
 
 /// Patch a fresh Engine object, retaining fields this UI does not understand.
 /// The caller owns the clock (`now` stamps `updatedAt`, `deletedAt` and new
@@ -87,12 +81,6 @@ pub fn write_at(
     if planning_inputs.iter().any(|key| changed(key)) {
         write_state_and_planning(&mut object, todo, now, day);
     }
-    if changed("priority") {
-        object["propsJson"]["priority"] = json!(PRIORITIES[todo.priority.min(3) as usize]);
-    }
-    if changed("deadline") {
-        object["propsJson"]["deadline"] = json!(date_only(&todo.deadline, day));
-    }
     if changed("reminder_date") {
         // A bare day is not a core.task instant: keep the stored reminder.
         match todo.reminder_date.as_deref() {
@@ -102,9 +90,6 @@ pub fn write_at(
     }
     if changed("checklist") {
         write_checklist(&mut object["propsJson"], &todo.checklist, &todo.id);
-    }
-    if changed("recurrence") {
-        write_recurrence(&mut object["propsJson"], todo);
     }
     if changed("is_trashed") {
         object["deletedAt"] = if todo.is_trashed {

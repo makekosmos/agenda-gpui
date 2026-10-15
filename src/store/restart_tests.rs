@@ -1,5 +1,5 @@
 use super::*;
-use agenda_core::{is_due_this_week, is_inbox, new_todo, LocalDay, Status};
+use crate::model::{is_due_this_week, is_inbox, new_todo, today_key, week_bounds, Status};
 
 // Run as a child process by `tests::persistence_across_client_processes`: no shared in-memory task state.
 #[test]
@@ -26,15 +26,17 @@ fn restart_client() {
             todo.title = "After restart".into();
             todo.notes = Some("Saved notes".into());
             todo.status = Status::Todo;
-            todo.scheduled_date = Some(LocalDay::now().today_key());
+            todo.scheduled_date = Some(today_key());
             engine.save(Some(before), &todo).unwrap();
         }
         "complete" => {
             let before = &tasks[0];
             assert_eq!(before.title, "After restart");
             assert_eq!(before.notes.as_deref(), Some("Saved notes"));
-            let day = LocalDay::now();
-            assert!(is_due_this_week(before, &day.week_bounds().unwrap(), &day));
+            assert!(is_due_this_week(
+                before,
+                &week_bounds(&today_key()).unwrap()
+            ));
             let mut todo = before.clone();
             todo.status = Status::Done;
             todo.is_completed = true;
@@ -107,11 +109,15 @@ fn restart_client() {
                 id: "restart-project".into(),
                 title: "Ремонт".into(),
                 status: 0,
-                deadline: None,
                 sort_order: 0,
-                area_id: None,
+            };
+            let other = Project {
+                id: "restart-other-project".into(),
+                title: "Дача".into(),
+                ..project.clone()
             };
             engine.save_project(&project).unwrap();
+            engine.save_project(&other).unwrap();
             let mut todo = new_todo("restart-linked", "Linked");
             todo.created_at = "2026-09-20T10:00:00Z".into();
             todo.project_id = Some(project.id.clone());
@@ -119,9 +125,34 @@ fn restart_client() {
             let linked = engine.load().unwrap().todos;
             let before = linked.iter().find(|t| t.id == todo.id).unwrap().clone();
             assert_eq!(before.project_id.as_deref(), Some("restart-project"));
-            let mut moved = before.clone();
+            // A move replaces the link in one Engine call: the task keeps exactly one project link.
+            let mut to_other = before.clone();
+            to_other.project_id = Some(other.id.clone());
+            engine.save(Some(&before), &to_other).unwrap();
+            assert_eq!(
+                engine
+                    .load()
+                    .unwrap()
+                    .todos
+                    .iter()
+                    .find(|t| t.id == todo.id)
+                    .unwrap()
+                    .project_id
+                    .as_deref(),
+                Some("restart-other-project")
+            );
+            let own_links = engine
+                .rpc("list_object_links", json!({}))
+                .unwrap()
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|l| l["sourceObjectId"] == todo.id)
+                .count();
+            assert_eq!(own_links, 1);
+            let mut moved = to_other.clone();
             moved.project_id = None;
-            engine.save(Some(&before), &moved).unwrap();
+            engine.save(Some(&to_other), &moved).unwrap();
             let loaded = engine.load().unwrap().todos;
             assert_eq!(
                 loaded.iter().find(|t| t.id == todo.id).unwrap().project_id,

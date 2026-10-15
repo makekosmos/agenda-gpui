@@ -7,8 +7,10 @@ use std::{
 use gpui::AsyncApp;
 
 use super::{Run, NOTE, PROJECT, RAPID, TITLES};
-use crate::app::{MenuAction, Route};
-use agenda_core::{is_due_this_week, is_inbox, LocalDay};
+use crate::{
+    app::{MenuAction, Route},
+    model::{is_due_this_week, is_inbox, today_key, week_bounds},
+};
 
 pub(super) async fn create(run: &Run, cx: &mut AsyncApp) {
     if !run.ready(cx).await {
@@ -48,12 +50,7 @@ pub(super) async fn create(run: &Run, cx: &mut AsyncApp) {
         "Week: task is listed in this week",
         run.read(cx, |a| {
             a.todos.iter().any(|t| {
-                t.title == TITLES[1]
-                    && is_due_this_week(
-                        t,
-                        &LocalDay::now().week_bounds().unwrap(),
-                        &LocalDay::now(),
-                    )
+                t.title == TITLES[1] && is_due_this_week(t, &week_bounds(&today_key()).unwrap())
             })
         }),
     );
@@ -150,12 +147,7 @@ pub(super) async fn persist(run: &Run, cx: &mut AsyncApp) {
         "Restart: week task still in this week",
         run.read(cx, |a| {
             a.todos.iter().any(|t| {
-                t.title == TITLES[1]
-                    && is_due_this_week(
-                        t,
-                        &LocalDay::now().week_bounds().unwrap(),
-                        &LocalDay::now(),
-                    )
+                t.title == TITLES[1] && is_due_this_week(t, &week_bounds(&today_key()).unwrap())
             })
         }),
     );

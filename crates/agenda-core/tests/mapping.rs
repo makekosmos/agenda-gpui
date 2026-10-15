@@ -47,9 +47,7 @@ fn read_maps_core_task_state_planning_and_links() {
     assert_eq!(todo.status, Status::Done);
     assert!(todo.is_completed && todo.is_today && todo.is_evening && !todo.is_someday);
     assert_eq!(todo.completed_at.as_deref(), Some("2026-09-20T12:00:00Z"));
-    assert_eq!(todo.deadline.as_deref(), Some("2026-09-22"));
     assert_eq!(todo.reminder_date.as_deref(), Some("2026-09-21T09:00:00Z"));
-    assert_eq!(todo.priority, 3);
     assert_eq!(todo.project_id.as_deref(), Some("p1"));
     assert_eq!(todo.tag_ids, vec!["g1".to_string()]);
     assert_eq!(todo.notes.as_deref(), Some("заметка"));
@@ -88,17 +86,9 @@ fn write_then_read_round_trips_every_status() {
         todo.is_completed = status == Status::Done;
         todo.is_cancelled = status == Status::Canceled;
         todo.completed_at = (status == Status::Done).then(|| "2026-10-12T09:30:00Z".to_owned());
-        todo.priority = 2;
-        todo.deadline = Some("2026-10-20".into());
         todo.reminder_date = Some("2026-10-19T08:00:00Z".into());
         todo.notes = Some("заметка".into());
         todo.tag_ids = vec!["g1".into()];
-        todo.recurrence = Some(RecurrenceRule {
-            frequency: 1,
-            interval: 2,
-            recurrence_type: 0,
-            days_of_week: vec![1, 3],
-        });
         let object = write(Value::Null, None, &todo);
         assert_eq!(object["typeId"], json!("core.task"));
         assert_eq!(object["typeVersion"], json!("0.1.0"));
@@ -231,39 +221,43 @@ fn project_link_with_id(id: &str, target: &str) -> Link {
 }
 
 #[test]
-fn recurrence_end_and_time_zone_are_owned_by_the_engine() {
+fn legacy_deadline_recurrence_and_priority_still_load_and_survive_writes() {
+    // Agenda no longer has deadlines, repeats or importance (KOS-397 / #34),
+    // but tasks stored before that keep those props. They must still load,
+    // and an edit must leave them untouched in the Engine object.
     let original = stored(json!({
-        "recurrence":{"kind":"calendar","frequency":"weekly","interval":1,
-            "daysOfWeek":[2],"timeZone":"Europe/Moscow",
-            "end":{"kind":"count","date":null,"count":3}}}));
+        "state":{"kind":"open","at":null},
+        "planning":{"kind":"date","period":"any","date":"2026-09-25"},
+        "deadline":"2026-09-22",
+        "priority":"high",
+        "recurrence":{"kind":"calendar","frequency":"weekly","interval":2,
+            "daysOfWeek":[1,3],"timeZone":"Europe/Moscow","end":{"kind":"never"}},
+        "reminders":[],"checklist":[],
+        "extensions":{"significance":7,"priority":3,"deadline":"2026-09-22",
+            "recurrence":{"frequency":1,"interval":2}}}));
     let before = mapping::read(&original, &[]).unwrap();
+    assert_eq!(before.title, "Task");
+    assert_eq!(before.scheduled_date.as_deref(), Some("2026-09-25"));
     let mut edited = before.clone();
-    edited.recurrence.as_mut().unwrap().interval = 2;
-    edited.recurrence.as_mut().unwrap().recurrence_type = 1;
-    let written = write(original, Some(&before), &edited);
-    let rule = &written["propsJson"]["recurrence"];
-    assert_eq!(rule["kind"], "afterCompletion");
-    assert_eq!(rule["interval"], 2);
-    assert_eq!(rule["timeZone"], "Europe/Moscow");
-    assert_eq!(rule["end"], json!({"kind":"count","date":null,"count":3}));
-}
-
-#[test]
-fn days_of_week_stay_within_iso_range() {
-    let mut todo = new_todo("t1", "Задача");
-    todo.recurrence = Some(RecurrenceRule {
-        frequency: 1,
-        interval: 1,
-        recurrence_type: 0,
-        days_of_week: vec![5, 0, 8, 1, 5],
-    });
-    let object = write(Value::Null, None, &todo);
-    assert_eq!(
-        object["propsJson"]["recurrence"]["daysOfWeek"],
-        json!([1, 5])
-    );
-    assert_eq!(object["propsJson"]["recurrence"]["kind"], "calendar");
-    assert_eq!(object["propsJson"]["recurrence"]["frequency"], "weekly");
+    edited.title = "Новое".into();
+    let written = write(original.clone(), Some(&before), &edited);
+    for key in ["deadline", "priority", "recurrence", "extensions"] {
+        if key == "extensions" {
+            for ext in ["significance", "priority", "deadline", "recurrence"] {
+                assert_eq!(
+                    written["propsJson"]["extensions"][ext],
+                    original["propsJson"]["extensions"][ext],
+                    "extensions.{ext}"
+                );
+            }
+        } else {
+            assert_eq!(
+                written["propsJson"][key], original["propsJson"][key],
+                "{key}"
+            );
+        }
+    }
+    assert_eq!(mapping::read(&written, &[]).unwrap().title, "Новое");
 }
 
 #[test]

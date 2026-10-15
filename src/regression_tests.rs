@@ -6,9 +6,9 @@ use std::sync::mpsc;
 use gpui::TestAppContext;
 
 use crate::app::Route;
+use crate::model::{day_key, new_todo, Status};
 use crate::store::{Command, Mutation, Reply, Worker};
 use crate::ui_tests::{click, launch, redraw, route_of, todo_of, type_text};
-use agenda_core::{new_todo, LocalDay, RecurrenceRule, Status};
 
 /// A saved quick-entry draft must not survive reopening: the overlay kept the
 /// previous title/notes text, so Enter on a reopened form silently duplicated
@@ -59,7 +59,7 @@ fn quick_entry_fab_resets_stale_chips(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
 
     agenda.update(cx, |a, _| {
-        a.qe_date = Some(LocalDay::now().day_key(3));
+        a.qe_date = Some(day_key(3));
         a.qe_date_touched = true;
         a.qe_someday = true;
     });
@@ -148,16 +148,6 @@ fn quick_entry_strips_project_mention_on_save(cx: &mut TestAppContext) {
 #[gpui::test]
 fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| {
-        a.update_todo("dev-trash-1", |t| {
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 0,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![],
-            });
-        });
-    });
     let count = agenda.read_with(cx, |a, _| a.todos.len());
 
     click(cx, "sb-more");
@@ -189,10 +179,10 @@ fn trashed_task_ring_does_not_toggle(cx: &mut TestAppContext) {
 
 /// bug-hunt 2026-10-04: canceling a task stamped `completed_at` as
 /// `"{today}T12:00:00"` — no UTC offset — and `mapping::write` copied it
-/// verbatim into canonical `completedAt`, which the com.kosmos.task 1.1.0
-/// schema declares `format: "date-time"` (the offset is mandatory). Engine
-/// validation rejects the upsert, so the cancel silently failed to persist.
-/// It must be a real RFC 3339 instant like `complete_todo` produces.
+/// verbatim into canonical `completedAt` (com.kosmos.task 1.1.0, which declared
+/// `format: "date-time"`). Engine validation rejected the upsert, so the cancel
+/// silently failed to persist. core.task keeps the instant in `state.at`, and it
+/// must still be a real RFC 3339 instant like `complete_todo` produces.
 #[gpui::test]
 fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     let (agenda, cx) = launch(cx);
@@ -202,14 +192,7 @@ fn canceled_completed_at_is_rfc3339(cx: &mut TestAppContext) {
     let t = todo_of(cx, &agenda, "dev-inbox-1");
     assert_eq!(t.status, Status::Canceled);
 
-    let object = agenda_core::mapping::write_at(
-        serde_json::Value::Null,
-        None,
-        &t,
-        &chrono::Utc::now().to_rfc3339(),
-        &LocalDay::now(),
-    )
-    .unwrap();
+    let object = crate::store::mapping::write(serde_json::Value::Null, None, &t).unwrap();
     let stamp = object["propsJson"]["state"]["at"]
         .as_str()
         .expect("cancel must stamp state.at");

@@ -7,8 +7,8 @@
 use gpui::TestAppContext;
 
 use crate::app::Route;
+use crate::model::date_only;
 use crate::ui_tests::{click, launch, redraw};
-use agenda_core::{date_only, LocalDay};
 
 /// The status chip on a task row did open its dropdown — but the click then
 /// «На неделю» moves the task into the week list — but the bubbled click also fired the
@@ -98,7 +98,7 @@ fn task_date_clear_does_not_reopen_dropdown(cx: &mut TestAppContext) {
             .iter()
             .find(|t| t.id == "dev-today-2")
             .expect("dev-today-2 missing");
-        assert!(t.scheduled_date.is_none() && t.deadline.is_none());
+        assert!(t.scheduled_date.is_none());
         assert!(
             a.dropdown.is_none(),
             "clearing the date must not reopen the picker"
@@ -128,16 +128,16 @@ fn unknown_project_shows_no_tasks(cx: &mut TestAppContext) {
 fn malformed_date_stamps_do_not_parse() {
     let some = |v: &str| Some(v.to_string());
     assert_eq!(
-        date_only(&some("2026-06-01"), &LocalDay::now()).as_deref(),
+        date_only(&some("2026-06-01")).as_deref(),
         Some("2026-06-01")
     );
     assert_eq!(
-        date_only(&some("2026-06-01T10:00:00"), &LocalDay::now()).as_deref(),
+        date_only(&some("2026-06-01T10:00:00")).as_deref(),
         Some("2026-06-01")
     );
-    assert_eq!(date_only(&some("понедельник"), &LocalDay::now()), None);
-    assert_eq!(date_only(&some("not-a-date!!"), &LocalDay::now()), None);
-    assert_eq!(date_only(&some("2026-02-30"), &LocalDay::now()), None);
-    assert_eq!(date_only(&some("коротко"), &LocalDay::now()), None);
-    assert_eq!(date_only(&some(""), &LocalDay::now()), None);
+    assert_eq!(date_only(&some("понедельник")), None);
+    assert_eq!(date_only(&some("not-a-date!!")), None);
+    assert_eq!(date_only(&some("2026-02-30")), None);
+    assert_eq!(date_only(&some("коротко")), None);
+    assert_eq!(date_only(&some("")), None);
 }

@@ -6,7 +6,6 @@
 use crate::dates::LocalDay;
 use crate::filters::task_status;
 use crate::quick_entry::{parse_project_mention, parse_quick_entry_capture};
-use crate::recurrence::next_recurrence_date;
 use crate::types::{Project, Status, Todo};
 
 /// `set_todo_status` non-Done arm: status plus every derived flag.
@@ -32,41 +31,10 @@ pub fn complete_fields(t: &mut Todo, now: &str) {
     t.completed_at = Some(now.to_string());
 }
 
-/// The next instance `complete_todo` spawns for a recurring task, or None
-/// when the rule yields no date. `before` is the pre-completion snapshot —
-/// the clone source, exactly as desktop builds it.
-pub fn next_recurrence_todo(
-    before: &Todo,
-    completed: &Todo,
-    day: &LocalDay,
-    id: String,
-    sort_order: i32,
-    now: &str,
-) -> Option<Todo> {
-    let rule = completed.recurrence.as_ref()?;
-    let mut next = before.clone();
-    next.id = id;
-    next.status = Status::Todo;
-    next.scheduled_date = Some(next_recurrence_date(rule, completed, day)?);
-    next.completed_at = None;
-    next.is_completed = false;
-    next.is_cancelled = false;
-    next.is_today = false;
-    next.is_evening = false;
-    next.is_someday = false;
-    next.deadline = None;
-    next.reminder_date = None;
-    next.checklist.clear();
-    next.created_at = now.to_string();
-    next.sort_order = sort_order;
-    Some(next)
-}
-
 /// «На неделю» — into the week list, no precise date (Dorofeev week).
 pub fn move_to_week(t: &mut Todo) {
     t.status = Status::Todo;
     t.scheduled_date = None;
-    t.deadline = None;
     t.is_today = true;
     t.is_someday = false;
 }
@@ -81,10 +49,9 @@ pub fn move_to_project(t: &mut Todo, project_id: Option<String>) {
     t.is_someday = false;
 }
 
-/// `SetDate`: pick or clear the scheduled date; deadline resets with it.
+/// `SetDate`: pick or clear the scheduled date.
 pub fn set_scheduled_date(t: &mut Todo, date: Option<String>) {
     t.scheduled_date = date;
-    t.deadline = None;
 }
 
 /// Trash / restore (`TrashTodo` / `RestoreTodo`).

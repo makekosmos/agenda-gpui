@@ -1,7 +1,7 @@
 //! Dev seed data (src/dev/seed.ts + src/dev/pseudoCalendar.ts) — the
 //! `AGENDA_DEMO`/`AGENDA_DEVTASKS` fixtures. Shared by the desktop app and
 //! the Android parity gate, so every clock read takes a [`LocalDay`].
-use crate::{new_todo, ChecklistItem, LocalDay, Project, RecurrenceRule, Status, Tag, Todo};
+use crate::{new_todo, ChecklistItem, LocalDay, Project, Status, Tag, Todo};
 
 fn todo(id: impl Into<String>, title: &str) -> Todo {
     new_todo(id, title)
@@ -15,17 +15,12 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
     let day = *day;
     let mut v: Vec<Todo> = vec![
         todo("dev-inbox-1", "Перечитать бриф по лендингу"),
-        {
-            let mut t = todo("dev-inbox-2", "Записаться к стоматологу");
-            t.priority = 1;
-            t
-        },
+        todo("dev-inbox-2", "Записаться к стоматологу"),
         todo("dev-inbox-3", "Идея: виджет погоды в сайдбаре"),
         {
             let mut t = todo("dev-today-1", "Созвон по дизайну");
             t.status = Status::Todo;
             t.is_today = true;
-            t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into(), "dev-tag-focus".into()];
             t
         },
@@ -33,7 +28,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             let mut t = todo("dev-today-2", "Отправить инвойс клиенту");
             t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(0));
-            t.deadline = Some(day.day_key(0));
             t.billable = true;
             t.price = Some(15000.0);
             t.project_id = Some("dev-proj-release".into());
@@ -51,7 +45,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             let mut t = todo("dev-overdue-1", "Вернуть правки по макетам");
             t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(-1));
-            t.priority = 3;
             t.tag_ids = vec!["dev-tag-urgent".into()];
             t
         },
@@ -78,13 +71,11 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.scheduled_date = Some(day.day_key(2));
             t.project_id = Some("dev-proj-release".into());
             t.heading_id = Some("dev-head-polish".into());
-            t.significance = Some(7);
             t
         },
         {
             let mut t = todo("dev-week-3", "Оплатить интернет");
             t.status = Status::Todo;
-            t.deadline = Some(day.day_key(3));
             t.reminder_date = Some(day.iso_at(3, 9, 0));
             t.project_id = Some("dev-proj-home".into());
             t
@@ -102,19 +93,12 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(0));
             t.area_id = Some("dev-area-life".into());
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 1,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![1, 3, 5],
-            });
             t
         },
         {
             let mut t = todo("dev-next-week-1", "Запланировать отпуск");
             t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(8));
-            t.priority = 2;
             t
         },
         {
@@ -169,14 +153,12 @@ pub fn seed_projects() -> Vec<Project> {
     seed_projects_at(&LocalDay::now())
 }
 
-pub fn seed_projects_at(day: &LocalDay) -> Vec<Project> {
-    let day = *day;
+pub fn seed_projects_at(_day: &LocalDay) -> Vec<Project> {
     vec![
         Project {
             id: "dev-proj-release".into(),
             title: "Релиз Agenda 1.0".into(),
             status: 0,
-            deadline: Some(day.day_key(10)),
             sort_order: 0,
             area_id: Some("dev-area-work".into()),
         },
@@ -184,7 +166,6 @@ pub fn seed_projects_at(day: &LocalDay) -> Vec<Project> {
             id: "dev-proj-home".into(),
             title: "Дом и быт".into(),
             status: 0,
-            deadline: None,
             sort_order: 1,
             area_id: Some("dev-area-life".into()),
         },
@@ -192,7 +173,6 @@ pub fn seed_projects_at(day: &LocalDay) -> Vec<Project> {
             id: "dev-proj-someday".into(),
             title: "Путешествие в Японию".into(),
             status: 1,
-            deadline: None,
             sort_order: 2,
             area_id: Some("dev-area-life".into()),
         },
@@ -202,7 +182,6 @@ pub fn seed_projects_at(day: &LocalDay) -> Vec<Project> {
             id: "dev-proj-archive".into(),
             title: "Старый сайт".into(),
             status: 2,
-            deadline: None,
             sort_order: 3,
             area_id: Some("dev-area-work".into()),
         },

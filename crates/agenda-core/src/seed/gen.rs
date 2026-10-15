@@ -81,15 +81,9 @@ pub fn gen_random_todos_at(
                 if rng() % 100 < 40 {
                     t.scheduled_date = Some(day.day_key((rng() % 76) as i64 - 30));
                 }
-                if rng() % 100 < 15 {
-                    t.deadline = Some(day.day_key((rng() % 61) as i64 - 10));
-                }
                 if rng() % 100 < 3 {
                     t.is_trashed = true;
                 }
-            }
-            if rng() % 100 < 30 {
-                t.priority = 1 + (rng() % 3) as u8;
             }
             if rng() % 100 < 35 {
                 t.project_id = Some(PROJECTS[(rng() % 3) as usize].into());
@@ -99,9 +93,6 @@ pub fn gen_random_todos_at(
             }
             if rng() % 100 < 15 {
                 t.notes = Some(rand_chars(&mut rng, 12));
-            }
-            if rng() % 100 < 30 {
-                t.significance = Some(1 + (rng() % 10) as u8);
             }
             t
         })

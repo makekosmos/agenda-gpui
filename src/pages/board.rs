@@ -32,9 +32,8 @@ impl Agenda {
                 std::rc::Rc::clone(&self.row_cache.as_ref().unwrap().rows)
             } else {
                 // Index pipeline: positions into self.todos, no Todo clones.
-                let day = LocalDay::now();
-                let items = filter_idx(list, &self.todos, &day);
-                let items = sort_idx(&self.todos, items, opts.sort, &day);
+                let items = filter_idx(list, &self.todos);
+                let items = sort_idx(&self.todos, items, opts.sort);
 
                 // grouping (same shapes, over indices)
                 let groups: Vec<(Option<String>, Vec<usize>)> = match opts.group {
@@ -81,7 +80,7 @@ impl Agenda {
                     GroupKey::Date => {
                         let mut keys: Vec<Option<String>> = vec![];
                         for &i in &items {
-                            let k = task_date(&self.todos[i], &day).0;
+                            let k = task_date(&self.todos[i]).0;
                             if !keys.contains(&k) {
                                 keys.push(k);
                             }
@@ -98,7 +97,7 @@ impl Agenda {
                                     items
                                         .iter()
                                         .copied()
-                                        .filter(|&i| task_date(&self.todos[i], &day).0 == k)
+                                        .filter(|&i| task_date(&self.todos[i]).0 == k)
                                         .collect::<Vec<usize>>(),
                                 )
                             })

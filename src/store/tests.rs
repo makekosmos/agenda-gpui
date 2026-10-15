@@ -1,17 +1,5 @@
 use super::*;
-use agenda_core::{is_due_this_week, LocalDay, Status};
-/// `mapping::write` equivalent for tests: the app no longer has a
-/// clock-reading wrapper, so tests stamp `now`/`LocalDay` here.
-fn write(object: Value, before: Option<&Todo>, todo: &Todo) -> Result<Value, String> {
-    mapping::write_at(
-        object,
-        before,
-        todo,
-        &chrono::Utc::now().to_rfc3339(),
-        &LocalDay::now(),
-    )
-}
-
+use crate::model::{is_due_this_week, today_key, week_bounds, Status};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::TcpListener,
@@ -24,11 +12,11 @@ fn mapping_preserves_unrepresented_fields() {
         "title":"From Vue","createdAt":"2026-09-20T10:00:00Z","updatedAt":"2026-09-20T10:00:00Z",
         "contentJson":{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"Rich notes","marks":[{"type":"bold"}]}]}]},
         "propsJson":{"state":{"kind":"inProgress","at":null},
-            "planning":{"kind":"date","period":"evening","date":LocalDay::now().today_key()},
-            "deadline":null,"reminders":[],"recurrence":null,"priority":"high",
+            "planning":{"kind":"date","period":"any","date":today_key()},
+            "priority":"high",
             "checklist":[{"id":"item-1","text":"Keep this","done":true,"rank":"a0"}],
-            "extensions":{"status":"todo","linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
-                "tag_ids":["real-tag"],"significance":7,"price":150.75}},"deletedAt":null});
+            "extensions":{"linked_todo_ids":["other-task"],"foreign":{"secret":"preserved"},
+                "significance":7,"price":150.75}},"deletedAt":null});
     let links = [mapping::Link {
         id: "lnk:real-id:project:real-project".into(),
         kind: mapping::PROJECT_LINK.into(),
@@ -39,22 +27,24 @@ fn mapping_preserves_unrepresented_fields() {
     assert_eq!(before.price, Some(150.75));
     assert_eq!(before.notes.as_deref(), Some("Rich notes"));
     assert_eq!(before.project_id.as_deref(), Some("real-project"));
-    let day = LocalDay::now();
-    assert!(is_due_this_week(&before, &day.week_bounds().unwrap(), &day));
+    assert!(is_due_this_week(
+        &before,
+        &week_bounds(&today_key()).unwrap()
+    ));
     let mut edited = before.clone();
     edited.title = "Renamed".into();
-    let written = write(original.clone(), Some(&before), &edited).unwrap();
+    let written = mapping::write(original.clone(), Some(&before), &edited).unwrap();
     assert_eq!(written["contentJson"], original["contentJson"]);
     assert_eq!(written["propsJson"], original["propsJson"]);
     assert_eq!(mapping::read(&written, &links).unwrap(), edited);
     edited.status = Status::Deferred;
-    let deferred = write(written, Some(&before), &edited).unwrap();
+    let deferred = mapping::write(written, Some(&before), &edited).unwrap();
     assert_eq!(
         mapping::read(&deferred, &links).unwrap().status,
         Status::Deferred
     );
     edited.status = Status::Todo;
-    let resumed = write(deferred, None, &edited).unwrap();
+    let resumed = mapping::write(deferred, None, &edited).unwrap();
     assert_eq!(
         mapping::read(&resumed, &links).unwrap().status,
         Status::Todo
@@ -113,11 +103,18 @@ fn persistence_across_client_processes() {
                 "get_object" => json!({"ok":true,"data":objects.get(request["id"].as_str().unwrap())}),
                 // Links are kept beside objects; only links carry `linkType`.
                 "list_object_links" => json!({"ok":true,"data":objects.values().filter(|v| v.get("linkType").is_some()).collect::<Vec<_>>()}),
-                "upsert_object_link" => {
+                // Like the Engine: the other links of this source and type go, then the new one is written.
+                "replace_object_link" => {
                     let link = &request["object_link"];
-                    objects.insert(link["id"].as_str().unwrap().into(), link.clone());
+                    let id = link["id"].as_str().unwrap();
+                    objects.retain(|key, value| {
+                        key == id
+                            || value.get("linkType") != Some(&link["linkType"])
+                            || value["sourceObjectId"] != link["sourceObjectId"]
+                    });
+                    objects.insert(id.into(), link.clone());
                     std::fs::write(&path, serde_json::to_vec(&objects).unwrap()).unwrap();
-                    json!({"ok":true,"data":true})
+                    json!({"ok":true,"data":link})
                 }
                 "delete_object_link" => {
                     objects.remove(request["id"].as_str().unwrap());

@@ -20,7 +20,6 @@ pub fn project_object(current: &Value, project: &Project, now: &str) -> Value {
     props["status"] = json!(PROJECT_STATUS
         .get(usize::from(project.status))
         .unwrap_or(&"active"));
-    props["dueAt"] = json!(project.deadline);
     if !props["extensions"].is_object() {
         props["extensions"] = json!({});
     }
@@ -39,7 +38,6 @@ pub fn read_project(object: &Value) -> Project {
             .iter()
             .position(|s| props["status"] == *s)
             .unwrap_or(0) as u8,
-        deadline: props["dueAt"].as_str().map(str::to_string),
         sort_order: ext["sortOrder"].as_i64().unwrap_or(0) as i32,
         area_id: ext["areaId"].as_str().map(str::to_string),
     }

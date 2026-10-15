@@ -115,7 +115,6 @@ impl Agenda {
         for (v, l) in [
             (SortKey::Default, "По умолчанию"),
             (SortKey::Date, "По дате"),
-            (SortKey::Priority, "По приоритету"),
             (SortKey::Title, "По названию"),
         ] {
             sec = sec.child(item(

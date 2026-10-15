@@ -11,9 +11,8 @@ use gpui_component::input::{InputState, TextareaState};
 use crate::appearance::{
     Poller as AppearancePoller, Response as AppearanceResponse, Writer as AppearanceWriter,
 };
-use crate::seed::{gen_random_todos, seed_projects, seed_tags, seed_todos};
+use crate::model::*;
 use crate::theme::*;
-use agenda_core::*;
 use serde_json::Value;
 
 const HOVER_MS: f32 = 120.0;
@@ -21,6 +20,13 @@ mod projects;
 pub(crate) mod storage;
 
 gpui::actions!(agenda_app, [ToggleSidebar]);
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivityRange {
+    Week,
+    Month,
+    Year,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Route {
@@ -136,7 +142,6 @@ pub struct Agenda {
     pub(crate) close_pending: bool,
     pub(crate) todos: Vec<Todo>,
     pub(crate) projects: Vec<Project>,
-    pub(crate) tags: Vec<Tag>,
 
     pub(crate) route: Route,
     pub(crate) back_route: Route,
@@ -226,8 +231,7 @@ pub struct Agenda {
     pub(crate) quick_query: String,
     pub(crate) quick_sel: usize,
 
-    /// Share-card overlay on the statistics page.
-    pub(crate) share_open: bool,
+    pub(crate) activity_range: ActivityRange,
 
     /// Dev page (settings): 8px design grid overlay + FPS counter + task
     /// generator state.
@@ -319,7 +323,7 @@ impl Agenda {
             close_pending: false,
             todos: if demo { seed_todos() } else { vec![] },
             projects: if demo { seed_projects() } else { vec![] },
-            tags: if demo { seed_tags() } else { vec![] },
+
             route: initial_route(),
             back_route: Route::Inbox,
             sidebar_t: 1.0,
@@ -410,7 +414,7 @@ impl Agenda {
             quick_open: std::env::var("AGENDA_OVERLAY").ok().as_deref() == Some("quicksearch"),
             quick_query: String::new(),
             quick_sel: 0,
-            share_open: false,
+            activity_range: ActivityRange::Year,
             dev_grid: false,
             dev_fps: std::env::var("AGENDA_FPS").is_ok(),
             dev_gen_batch: 0,
@@ -834,7 +838,6 @@ impl Agenda {
 
     pub(crate) fn navigate(&mut self, route: Route) {
         if self.route != route {
-            self.share_open = false;
             // Only crossing the settings boundary retargets "Назад" —
             // navigating between settings pages must not loop it.
             if Self::is_settings_route(&self.route) != Self::is_settings_route(&route) {
@@ -877,10 +880,6 @@ impl Agenda {
         self.projects.iter().find(|p| p.id == id)
     }
 
-    pub(crate) fn tag<'a>(&'a self, id: &str) -> Option<&'a Tag> {
-        self.tags.iter().find(|t| t.id == id)
-    }
-
     pub(crate) fn todo<'a>(&'a self, id: &str) -> Option<&'a Todo> {
         self.todos.iter().find(|t| t.id == id)
     }
@@ -891,7 +890,7 @@ impl Agenda {
             Route::Week => ("Эта неделя".into(), "icons/calendar-01.svg"),
             Route::NextWeek => ("Следующая неделя".into(), "icons/calendar-02.svg"),
             Route::Someday => ("Потом".into(), "icons/clock-01.svg"),
-            Route::Statistics => ("Статистика".into(), "icons/analytics-01.svg"),
+            Route::Statistics => ("Активность".into(), "icons/analytics-01.svg"),
             Route::Logbook => ("Архив".into(), "icons/book-open.svg"),
             Route::Trash => ("Корзина".into(), "icons/delete.svg"),
             Route::Settings => ("Отображение".into(), "icons/sliders.svg"),
@@ -1369,7 +1368,6 @@ impl Agenda {
             id: uuid::Uuid::new_v4().to_string(),
             title: "Новый проект".to_string(),
             status: 0,
-            deadline: None,
             sort_order: self
                 .projects
                 .iter()
@@ -1377,7 +1375,6 @@ impl Agenda {
                 .max()
                 .unwrap_or(0)
                 + 1,
-            area_id: None,
         };
         if !self.demo {
             self.send_storage(crate::store::Command::Project(project.clone()));
@@ -1408,31 +1405,43 @@ impl Agenda {
         if title.is_empty() {
             return;
         }
-        // Field logic lives in agenda-core so Android writes the same task.
-        let d = agenda_core::quick_entry_decision(
-            &title,
-            self.qe_date.clone(),
-            self.qe_week,
-            self.qe_someday,
-            self.qe_project.clone(),
-            self.qe_project_touched,
-            &self.projects,
-            &LocalDay::now(),
-        );
-        let mut t = new_todo(uuid::Uuid::new_v4().to_string(), &d.title);
+        let captured = parse_quick_entry_capture(&title, self.qe_date.clone());
+        let scheduled = captured.1;
+        // The @mention is markup regardless of how qe_project got set (chip,
+        // route default, or this title) — it must always be stripped from the
+        // saved title. Parsed project wins only when no chip was chosen —
+        // and «Входящие» IS a choice: qe_project_touched marks an explicit
+        // pick, so a cleared chip must not be overridden by the mention.
+        let (clean_title, parsed_pid) = parse_project_mention(&captured.0, &self.projects);
+        let project = if self.qe_project_touched {
+            self.qe_project.clone()
+        } else {
+            self.qe_project.clone().or(parsed_pid)
+        };
+        // «Эта неделя» is a commitment too: an Inbox task never shows in Week.
+        let status = if scheduled.is_some() || project.is_some() || self.qe_week {
+            Status::Todo
+        } else {
+            Status::Inbox
+        };
+        let mut t = new_todo(uuid::Uuid::new_v4().to_string(), &clean_title);
         t.notes = if notes.trim().is_empty() {
             None
         } else {
             Some(notes.trim().to_string())
         };
-        t.scheduled_date = d.scheduled_date;
-        t.project_id = d.project_id;
-        t.status = d.status;
+        t.scheduled_date = scheduled;
+        t.project_id = project;
+        t.status = status;
         t.billable = false;
         t.sort_order = self.todos.len() as i32;
         t.created_at = chrono::Utc::now().to_rfc3339();
-        t.is_today = d.is_today;
-        t.is_someday = d.is_someday;
+        t.is_today = self.qe_week;
+        if self.qe_someday {
+            t.status = Status::Deferred;
+            t.is_someday = true;
+            t.scheduled_date = None;
+        }
         if self.save_todo(None, t) {
             self.set_quick_entry(false, cx);
         }
@@ -1495,7 +1504,10 @@ impl Agenda {
             Some(notes)
         };
         self.update_todo(&id, |t| {
-            agenda_core::edit_title_notes(t, &title, notes.clone())
+            if !title.is_empty() {
+                t.title = title.clone();
+            }
+            t.notes = notes.clone();
         });
     }
 
@@ -1575,10 +1587,21 @@ impl Agenda {
             self.complete_todo(id);
             return;
         }
-        // `completedAt` is a `date-time` instant under task 1.1.0 — a naive
-        // "{day}T12:00:00" stamp has no offset and the Engine rejects it.
-        let now = chrono::Utc::now().to_rfc3339();
-        self.update_todo(id, |t| agenda_core::set_status(t, status, &now));
+        self.update_todo(id, |t| {
+            t.status = status;
+            t.is_completed = false;
+            t.completed_at = if status == Status::Canceled {
+                // The stamp is a `date-time` instant (core.task `state.at`) —
+                // a naive "{day}T12:00:00" stamp has no offset and the Engine
+                // rejects the upsert.
+                Some(chrono::Utc::now().to_rfc3339())
+            } else {
+                None
+            };
+            t.is_cancelled = status == Status::Canceled;
+            t.is_someday = status == Status::Deferred;
+            t.is_today = false;
+        });
     }
 
     pub(crate) fn complete_todo(&mut self, id: &str) {
@@ -1589,16 +1612,11 @@ impl Agenda {
             return;
         }
         let mut todo = before.clone();
-        agenda_core::complete_fields(&mut todo, &chrono::Utc::now().to_rfc3339());
-        let next = agenda_core::next_recurrence_todo(
-            &before,
-            &todo,
-            &LocalDay::now(),
-            uuid::Uuid::new_v4().to_string(),
-            self.todos.len() as i32,
-            &chrono::Utc::now().to_rfc3339(),
-        );
-        self.save_completion(before, todo, next);
+        todo.status = Status::Done;
+        todo.is_completed = true;
+        todo.is_cancelled = false;
+        todo.completed_at = Some(chrono::Utc::now().to_rfc3339());
+        self.save_completion(before, todo, None);
     }
 
     pub(crate) fn update_todo(&mut self, id: &str, f: impl FnOnce(&mut Todo)) {
@@ -1612,11 +1630,22 @@ impl Agenda {
 
     /// «На неделю» — into the week list, no precise date (Dorofeev week).
     pub(crate) fn move_to_week(&mut self, id: &str) {
-        self.update_todo(id, agenda_core::move_to_week);
+        self.update_todo(id, |t| {
+            t.status = Status::Todo;
+            t.scheduled_date = None;
+            t.is_today = true;
+            t.is_someday = false;
+        });
     }
 
     pub(crate) fn move_to_project(&mut self, id: &str, pid: Option<String>) {
-        self.update_todo(id, |t| agenda_core::move_to_project(t, pid));
+        self.update_todo(id, |t| {
+            t.project_id = pid;
+            if task_status(t) == Status::Inbox {
+                t.status = Status::Todo;
+            }
+            t.is_someday = false;
+        });
     }
 
     pub(crate) fn run_menu_action(&mut self, action: MenuAction) {
@@ -1631,9 +1660,7 @@ impl Agenda {
             self.qe_focused = false;
         }
         match action {
-            MenuAction::TrashTodo(id) => {
-                self.update_todo(&id, |t| agenda_core::set_trashed(t, true))
-            }
+            MenuAction::TrashTodo(id) => self.update_todo(&id, |t| t.is_trashed = true),
             MenuAction::RestoreProject(id) => {
                 self.set_project_status(&id, 0);
             }
@@ -1654,12 +1681,10 @@ impl Agenda {
                 });
                 self.move_to_project(&id, p);
             }
-            MenuAction::SetDate(id, d) => {
-                self.update_todo(&id, |t| agenda_core::set_scheduled_date(t, d))
-            }
-            MenuAction::RestoreTodo(id) => {
-                self.update_todo(&id, |t| agenda_core::set_trashed(t, false))
-            }
+            MenuAction::SetDate(id, d) => self.update_todo(&id, |t| {
+                t.scheduled_date = d;
+            }),
+            MenuAction::RestoreTodo(id) => self.update_todo(&id, |t| t.is_trashed = false),
             MenuAction::MoveToWeek(id) => self.move_to_week(&id),
             MenuAction::CompleteTodo(id) => {
                 let done = self

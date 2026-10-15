@@ -1,7 +1,6 @@
 //! core.task 0.1.0 mapping (KOS-397): `read` turns an Engine object and its
 //! links into a `Todo`; `write_at` patches an Engine object from a `Todo`.
 mod read;
-mod recurrence;
 mod write;
 
 pub use read::read;

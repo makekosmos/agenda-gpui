@@ -1,4 +1,3 @@
-use super::recurrence::read_recurrence;
 use super::{Link, PROJECT_LINK, TASK_TYPE};
 use crate::types::{Status, Todo};
 use serde_json::{json, Value};
@@ -64,17 +63,7 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
         fields.get("scheduled_date").cloned().unwrap_or(Value::Null)
     };
     fields.insert("scheduled_date".into(), scheduled);
-    fields.insert("deadline".into(), props["deadline"].clone());
     fields.insert("reminder_date".into(), props["reminders"][0]["at"].clone());
-    fields.insert(
-        "priority".into(),
-        json!(match props["priority"].as_str() {
-            Some("low") => 1,
-            Some("medium") => 2,
-            Some("high" | "urgent") => 3,
-            _ => 0,
-        }),
-    );
     fields.insert(
         "project_id".into(),
         json!(links
@@ -89,7 +78,6 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
         .map(|item| json!({"is_completed": item["done"] == true}))
         .collect();
     fields.insert("checklist".into(), json!(checklist));
-    fields.insert("recurrence".into(), read_recurrence(&props["recurrence"]));
     serde_json::from_value(Value::Object(fields)).map_err(|e| e.to_string())
 }
 

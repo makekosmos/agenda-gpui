@@ -11,7 +11,6 @@ fn project(id: &str, title: &str) -> Project {
         id: id.into(),
         title: title.into(),
         status: 0,
-        deadline: None,
         sort_order: 0,
         area_id: None,
     }

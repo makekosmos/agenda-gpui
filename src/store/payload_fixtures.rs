@@ -1,11 +1,12 @@
 use super::*;
-use agenda_core::{mapping, new_todo, parse_key, LocalDay, RecurrenceRule, Status, Todo};
+use crate::model::{new_todo, parse_key, Status, Todo};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
 // Engine contract fixtures (KOS-297).
 //
-// These are the exact objects `mapping::write_at` sends to `upsert_object`.
+// These are the exact objects `mapping::write` sends to `upsert_object`.
+// The project link is not in them: `store.rs` writes it as an object link.
 // They are committed under `fixtures/engine/` and consumed by the ark-core
 // contract test in cortex (`phase3_agenda_contract`), which validates them
 // against the real `canonical_ingress`. The two repos cannot share code, so
@@ -15,15 +16,6 @@ use std::path::PathBuf;
 // ---------------------------------------------------------------------------
 
 const NOW: &str = "2026-05-15T10:00:00.000Z";
-
-/// Fixtures pin the clock: the offset only steers `date_only` on RFC 3339
-/// inputs, and the canned todos carry bare dates — UTC is fine.
-fn day() -> LocalDay {
-    LocalDay::new(
-        chrono::NaiveDate::from_ymd_opt(2026, 5, 15).unwrap(),
-        chrono::FixedOffset::east_opt(0).unwrap(),
-    )
-}
 
 fn fixture_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -45,31 +37,9 @@ fn cases() -> Vec<(&'static str, Todo)> {
             t.status = Status::Todo;
             t
         }),
-        ("task-project", {
-            let mut t = base();
-            t.project_id = Some("p1".into());
-            t.status = Status::Todo;
-            t
-        }),
         ("task-note", {
             let mut t = base();
             t.notes = Some("заметка".into());
-            t
-        }),
-        ("task-deadline", {
-            let mut t = base();
-            t.deadline = Some("2026-05-22".into());
-            t
-        }),
-        ("task-recurrence", {
-            let mut t = base();
-            t.status = Status::Todo;
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 0,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![1, 3],
-            });
             t
         }),
         ("task-completed", {
@@ -83,11 +53,6 @@ fn cases() -> Vec<(&'static str, Todo)> {
             let mut t = base();
             t.status = Status::Canceled;
             t.is_cancelled = true;
-            t
-        }),
-        ("task-significance-unset", {
-            let mut t = base();
-            t.significance = None;
             t
         }),
     ]
@@ -138,20 +103,22 @@ fn emit(name: &str, object: &Value) {
 #[test]
 fn engine_payload_fixtures_match_write_output() {
     for (name, todo) in cases() {
-        let object = mapping::write_at(Value::Null, None, &todo, NOW, &day()).unwrap();
+        let object = mapping::write_at(Value::Null, None, &todo, NOW).unwrap();
         assert_eq!(
             object["typeVersion"],
             json!(mapping::TASK_VERSION),
             "{name}"
         );
         // The day fields must be bare dates whenever present.
-        for key in ["scheduledAt", "dueAt"] {
-            if let Some(value) = object["propsJson"][key].as_str() {
-                assert!(
-                    parse_key(value).is_some() && value.len() == 10,
-                    "{name}: {key} is not a bare date: {value}"
-                );
-            }
+        let days = [
+            object["propsJson"]["planning"]["date"].as_str(),
+            object["propsJson"]["deadline"].as_str(),
+        ];
+        for value in days.into_iter().flatten() {
+            assert!(
+                parse_key(value).is_some() && value.len() == 10,
+                "{name}: day field is not a bare date: {value}"
+            );
         }
         emit(name, &object);
         // Edits to an existing object produce the same contract shape; the
@@ -160,7 +127,7 @@ fn engine_payload_fixtures_match_write_output() {
         let before = mapping::read(&object, &[]).unwrap();
         let mut edited = before.clone();
         edited.title = format!("{name} edited");
-        let rewritten = mapping::write_at(object, Some(&before), &edited, NOW, &day()).unwrap();
+        let rewritten = mapping::write_at(object, Some(&before), &edited, NOW).unwrap();
         emit(&format!("{name}-edited"), &rewritten);
     }
 }

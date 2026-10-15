@@ -1,6 +1,5 @@
 //! Engine is the only owner of task persistence. No database or local task mirror.
-
-mod links;
+pub mod mapping;
 #[cfg(test)]
 mod mapping_tests;
 #[cfg(test)]
@@ -14,81 +13,13 @@ mod transport;
 #[cfg(test)]
 mod transport_tests;
 
-use agenda_core::{mapping, LocalDay, Project, Tag, Todo};
+use crate::model::{Project, Todo};
 pub use mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
-use std::sync::mpsc::{self, Receiver, Sender};
+use std::collections::HashMap;
 pub use transport::Engine;
-
-#[derive(Default)]
-pub struct Snapshot {
-    pub todos: Vec<Todo>,
-    pub projects: Vec<Project>,
-    pub tags: Vec<Tag>,
-}
-
-pub struct Mutation {
-    pub before: Option<Todo>,
-    pub todo: Todo,
-    pub next: Option<Todo>,
-}
-
-pub enum Command {
-    Load,
-    Save(Box<Mutation>),
-    Project(Project),
-    /// Deletes the project after moving its tasks (`todos`, already edited)
-    /// back to Inbox — no task is left pointing at a deleted project.
-    DeleteProject {
-        project: Project,
-        todos: Vec<(Todo, Todo)>,
-    },
-}
-
-pub enum Reply {
-    Loaded(Result<Snapshot, EngineError>),
-    Saved(Box<Mutation>, Result<(), EngineError>),
-    Project(Result<Project, EngineError>),
-    ProjectDeleted(Result<(String, Vec<Todo>), EngineError>),
-}
-
-pub struct Worker {
-    pub commands: Sender<Command>,
-    pub replies: Receiver<Reply>,
-}
-
-impl Worker {
-    pub fn start() -> Self {
-        let (commands, requests) = mpsc::channel();
-        let (results, replies) = mpsc::channel();
-        std::thread::spawn(move || {
-            let engine = Engine::default();
-            for request in requests {
-                let reply = match request {
-                    Command::Load => Reply::Loaded(engine.load()),
-                    Command::Save(mutation) => {
-                        let result = engine.save_with_next(
-                            mutation.before.as_ref(),
-                            &mutation.todo,
-                            mutation.next.as_ref(),
-                        );
-                        Reply::Saved(mutation, result)
-                    }
-                    Command::Project(project) => {
-                        Reply::Project(engine.save_project(&project).map(|()| project))
-                    }
-                    Command::DeleteProject { project, todos } => {
-                        Reply::ProjectDeleted(engine.delete_project(&project, todos))
-                    }
-                };
-                if results.send(reply).is_err() {
-                    break;
-                }
-            }
-        });
-        Self { commands, replies }
-    }
-}
+mod worker;
+pub use worker::{Command, Mutation, Reply, Snapshot, Worker};
 
 impl Engine {
     fn save_with_next(
@@ -136,15 +67,15 @@ impl Engine {
         let list = list
             .as_array()
             .ok_or_else(|| Self::mapping_err("list not an array".into()))?;
-        let links = self.project_links()?;
+        let mut links = self.project_links()?;
         let mut snapshot = Snapshot::default();
         for object in list {
             if object["typeId"] == mapping::TASK_TYPE {
                 let id = object["id"].as_str().unwrap_or_default();
-                let own = links.get(id).map(Vec::as_slice).unwrap_or(&[]);
+                let own = links.remove(id).unwrap_or_default();
                 snapshot
                     .todos
-                    .push(mapping::read(object, own).map_err(Self::mapping_err)?);
+                    .push(mapping::read(object, &own).map_err(Self::mapping_err)?);
             }
         }
         snapshot.todos.sort_by_key(|t| t.sort_order);
@@ -169,9 +100,6 @@ impl Engine {
             }
         }
         snapshot.projects.sort_by_key(|p| p.sort_order);
-        let (_, tags) =
-            agenda_core::projects::read_references(&object).map_err(Self::mapping_err)?;
-        snapshot.tags = tags;
         Ok(snapshot)
     }
 
@@ -191,6 +119,46 @@ impl Engine {
             return Ok(object.clone());
         }
         self.rpc("get_object", json!({"id":"agenda:references"}))
+    }
+
+    /// The stored task object and its project link, read the way `load` reads them.
+    fn stored_task(&self, id: &str) -> Result<(Value, Vec<mapping::Link>), EngineError> {
+        let object = self.rpc("get_object", json!({"id":id}))?;
+        if object.is_null() {
+            return Ok((object, Vec::new()));
+        }
+        let links = self.project_links()?.remove(id).unwrap_or_default();
+        Ok((object, links))
+    }
+
+    /// Project links of every task, keyed by task id.
+    fn project_links(&self) -> Result<HashMap<String, Vec<mapping::Link>>, EngineError> {
+        let list = self.rpc("list_object_links", json!({}))?;
+        let list = list
+            .as_array()
+            .ok_or_else(|| Self::mapping_err("links not an array".into()))?;
+        let mut by_task: HashMap<String, Vec<mapping::Link>> = HashMap::new();
+        for link in list
+            .iter()
+            .filter(|l| l["linkType"] == mapping::PROJECT_LINK)
+        {
+            let (Some(id), Some(source), Some(target)) = (
+                link["id"].as_str(),
+                link["sourceObjectId"].as_str(),
+                link["targetObjectId"].as_str(),
+            ) else {
+                return Err(Self::mapping_err("link without id or endpoints".into()));
+            };
+            by_task
+                .entry(source.to_owned())
+                .or_default()
+                .push(mapping::Link {
+                    id: id.to_owned(),
+                    kind: mapping::PROJECT_LINK.to_owned(),
+                    target: target.to_owned(),
+                });
+        }
+        Ok(by_task)
     }
 
     pub fn save(&self, before: Option<&Todo>, todo: &Todo) -> Result<(), EngineError> {
@@ -222,18 +190,38 @@ impl Engine {
                 });
             }
         }
-        let object = mapping::write_at(
-            current,
-            before,
-            todo,
-            &chrono::Utc::now().to_rfc3339(),
-            &LocalDay::now(),
-        )
-        .map_err(Self::mapping_err)?;
+        let object = mapping::write(current, before, todo).map_err(Self::mapping_err)?;
         self.upsert(object)?;
         if relink {
             self.relink_project(&todo.id, linked, project)?;
         }
+        Ok(())
+    }
+
+    fn relink_project(
+        &self,
+        task: &str,
+        linked: Option<&mapping::Link>,
+        project: Option<&str>,
+    ) -> Result<(), EngineError> {
+        let Some(project) = project else {
+            // Leaving the project has no new link to write, so the old one is removed alone.
+            if let Some(link) = linked {
+                self.rpc("delete_object_link", json!({"id":link.id}))?;
+            }
+            return Ok(());
+        };
+        // Id from the endpoints, so a link added twice (or from two devices) is one row.
+        // One Engine transaction drops the other project links of this task and writes
+        // this one, so a sync device never sees the task in no project or in two.
+        let link = json!({
+            "id": format!("lnk:{task}:{}:{project}", mapping::PROJECT_LINK),
+            "sourceObjectId": task,
+            "targetObjectId": project,
+            "linkType": mapping::PROJECT_LINK,
+            "createdAt": chrono::Utc::now().to_rfc3339(),
+        });
+        self.rpc("replace_object_link", json!({"object_link":link}))?;
         Ok(())
     }
 

@@ -203,12 +203,6 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey, day: &Local
                 todos[i].sort_order,
             )
         }),
-        SortKey::Priority => items.sort_by(|&a, &b| {
-            todos[b]
-                .priority
-                .cmp(&todos[a].priority)
-                .then(todos[a].sort_order.cmp(&todos[b].sort_order))
-        }),
         SortKey::Title => {
             items.sort_by_cached_key(|&i| (todos[i].title.to_lowercase(), todos[i].sort_order))
         }
@@ -224,7 +218,6 @@ pub fn sort_idx(todos: &[Todo], mut items: Vec<usize>, key: SortKey, day: &Local
 pub enum SortKey {
     Default,
     Date,
-    Priority,
     Title,
 }
 

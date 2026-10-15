@@ -95,14 +95,9 @@ pub fn date_only(value: &Option<String>, day: &LocalDay) -> Option<String> {
         .map(str::to_owned)
 }
 
-/// taskDate(): deadline wins over scheduled; different dates = conflict.
+/// taskDate(): the scheduled day, if it parses.
 pub fn task_date(t: &Todo, day: &LocalDay) -> (Option<String>, bool) {
-    let scheduled = date_only(&t.scheduled_date, day);
-    let deadline = date_only(&t.deadline, day);
-    if scheduled.is_some() && deadline.is_some() && scheduled != deadline {
-        return (None, true);
-    }
-    (deadline.or(scheduled), false)
+    (date_only(&t.scheduled_date, day), false)
 }
 
 /// Next ISO week bounds (Monday..=Sunday) as day keys.

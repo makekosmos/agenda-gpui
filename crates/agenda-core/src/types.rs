@@ -13,18 +13,6 @@ pub enum Status {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RecurrenceRule {
-    /// 0=daily 1=weekly 2=monthly 3=yearly (matches Frequency enum order)
-    pub frequency: u8,
-    pub interval: u32,
-    /// 0=fixed (по расписанию) 1=after completion (после выполнения)
-    #[serde(alias = "recurrenceType", default)]
-    pub recurrence_type: u8,
-    #[serde(alias = "daysOfWeek", default)]
-    pub days_of_week: Vec<u8>,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ChecklistItem {
     #[serde(alias = "isCompleted", default)]
     pub is_completed: bool,
@@ -36,9 +24,7 @@ pub struct Todo {
     pub id: String,
     pub title: String,
     pub notes: Option<String>,
-    pub priority: u8, // 0 none 1 low 2 medium 3 high
     pub scheduled_date: Option<String>,
-    pub deadline: Option<String>,
     pub reminder_date: Option<String>,
     pub is_today: bool,
     pub is_evening: bool,
@@ -55,10 +41,8 @@ pub struct Todo {
     pub area_id: Option<String>,
     pub tag_ids: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
-    pub recurrence: Option<RecurrenceRule>,
     pub billable: bool,
     pub price: Option<f64>,
-    pub significance: Option<u8>,
     pub sort_order: i32,
 }
 
@@ -74,7 +58,6 @@ pub struct Project {
     pub id: String,
     pub title: String,
     pub status: u8, // 0 active, 1 someday, 2 completed
-    pub deadline: Option<String>,
     pub sort_order: i32,
     pub area_id: Option<String>,
 }
@@ -92,9 +75,7 @@ pub fn new_todo(id: impl Into<String>, title: &str) -> Todo {
         id: id.into(),
         title: title.into(),
         notes: None,
-        priority: 0,
         scheduled_date: None,
-        deadline: None,
         reminder_date: None,
         is_today: false,
         is_evening: false,
@@ -111,10 +92,8 @@ pub fn new_todo(id: impl Into<String>, title: &str) -> Todo {
         area_id: None,
         tag_ids: vec![],
         checklist: vec![],
-        recurrence: None,
         billable: false,
         price: None,
-        significance: None,
         sort_order: 0,
     }
 }
