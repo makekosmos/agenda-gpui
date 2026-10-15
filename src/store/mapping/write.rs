@@ -1,7 +1,7 @@
 //! Write side of the core.task mapping: patches a stored Engine object with the
 //! edited task and keeps every field this app does not own.
-use super::{FREQUENCIES, NOT_EXTENSION, PRIORITIES, TASK_TYPE, TASK_VERSION};
-use crate::model::{date_only, ChecklistItem, Status, Todo};
+use super::{NOT_EXTENSION, TASK_TYPE, TASK_VERSION};
+use crate::model::{date_only, Status, Todo};
 use serde_json::{json, Value};
 
 /// Patch a fresh Engine object, retaining fields this UI does not understand.
@@ -52,7 +52,6 @@ pub fn write_at(
         "status",
         "is_today",
         "is_someday",
-        "is_evening",
         "is_completed",
         "is_cancelled",
         "completed_at",
@@ -60,25 +59,6 @@ pub fn write_at(
     ];
     if planning_inputs.iter().any(|key| changed(key)) {
         write_state_and_planning(&mut object, todo, now);
-    }
-    if changed("priority") {
-        object["propsJson"]["priority"] = json!(PRIORITIES[todo.priority.min(3) as usize]);
-    }
-    if changed("deadline") {
-        object["propsJson"]["deadline"] = json!(date_only(&todo.deadline));
-    }
-    if changed("reminder_date") {
-        // A bare day is not a core.task instant: keep the stored reminder instead.
-        match todo.reminder_date.as_deref() {
-            Some(at) if !is_instant(at) => {}
-            reminder => write_reminder(&mut object["propsJson"], reminder),
-        }
-    }
-    if changed("checklist") {
-        write_checklist(&mut object["propsJson"], &todo.checklist, &todo.id);
-    }
-    if changed("recurrence") {
-        write_recurrence(&mut object["propsJson"], todo);
     }
     if changed("is_trashed") {
         object["deletedAt"] = if todo.is_trashed {
@@ -94,23 +74,6 @@ pub fn write_at(
 
 fn is_instant(value: &str) -> bool {
     chrono::DateTime::parse_from_rfc3339(value).is_ok()
-}
-
-/// Items keep the id, text and rank the Engine gave them; Agenda only toggles `done`.
-fn write_checklist(props: &mut Value, items: &[ChecklistItem], task: &str) {
-    let stored = props["checklist"].as_array().cloned().unwrap_or_default();
-    let next: Vec<Value> = items
-        .iter()
-        .enumerate()
-        .map(|(index, item)| {
-            let mut entry = stored.get(index).cloned().unwrap_or_else(|| {
-                json!({"id":format!("{task}:item:{index}"),"text":"","rank":format!("{index:06}")})
-            });
-            entry["done"] = json!(item.is_completed);
-            entry
-        })
-        .collect();
-    props["checklist"] = json!(next);
 }
 
 fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str) {
@@ -147,10 +110,15 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str) {
         _ => json!({"kind":"open","at":null}),
     };
     let props = &mut object["propsJson"];
+    // Agenda does not edit the period; keep whatever the object carries.
+    let period = props["planning"]["period"]
+        .as_str()
+        .unwrap_or("any")
+        .to_owned();
     props["state"] = state;
     props["planning"] = json!({
         "kind": planning_kind,
-        "period": if todo.is_evening { "evening" } else { "any" },
+        "period": period,
         "date": if planning_kind == "date" { scheduled.clone() } else { None },
     });
     // A scheduled day that the planning kind cannot hold stays in extensions,
@@ -163,38 +131,4 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str) {
         props["extensions"]["scheduled_date"] = json!(scheduled);
     }
     props["extensions"]["status"] = json!(todo.status);
-}
-
-fn write_reminder(props: &mut Value, reminder: Option<&str>) {
-    let mut reminders = props["reminders"].as_array().cloned().unwrap_or_default();
-    match reminder {
-        Some(at) => {
-            let entry = json!({"kind":"floating","at":at,"timeZone":null});
-            match reminders.first_mut() {
-                Some(first) => *first = entry,
-                None => reminders.push(entry),
-            }
-        }
-        None => {
-            if !reminders.is_empty() {
-                reminders.remove(0);
-            }
-        }
-    }
-    props["reminders"] = json!(reminders);
-}
-
-fn write_recurrence(props: &mut Value, todo: &Todo) {
-    let current = props["recurrence"].clone();
-    props["recurrence"] = match todo.recurrence.as_ref() {
-        None => Value::Null,
-        Some(rule) => json!({
-            "kind": if rule.recurrence_type == 1 { "afterCompletion" } else { "calendar" },
-            "frequency": FREQUENCIES[rule.frequency.min(3) as usize],
-            "interval": rule.interval.max(1),
-            "daysOfWeek": rule.days_of_week,
-            "timeZone": current["timeZone"].clone(),
-            "end": current["end"].clone(),
-        }),
-    };
 }

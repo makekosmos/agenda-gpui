@@ -1,14 +1,13 @@
 //! The background thread that owns the Engine client. The UI sends a `Command`
 //! and reads a `Reply`; no Engine call runs on the UI thread.
 use super::{Engine, EngineError};
-use crate::model::{Project, Tag, Todo};
+use crate::model::{Project, Todo};
 use std::sync::mpsc::{self, Receiver, Sender};
 
 #[derive(Default)]
 pub struct Snapshot {
     pub todos: Vec<Todo>,
     pub projects: Vec<Project>,
-    pub tags: Vec<Tag>,
 }
 
 pub struct Mutation {

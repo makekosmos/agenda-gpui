@@ -98,7 +98,7 @@ fn task_date_clear_does_not_reopen_dropdown(cx: &mut TestAppContext) {
             .iter()
             .find(|t| t.id == "dev-today-2")
             .expect("dev-today-2 missing");
-        assert!(t.scheduled_date.is_none() && t.deadline.is_none());
+        assert!(t.scheduled_date.is_none());
         assert!(
             a.dropdown.is_none(),
             "clearing the date must not reopen the picker"

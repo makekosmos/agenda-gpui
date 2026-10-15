@@ -1,7 +1,6 @@
 //! Regression tests for KOS-295: Engine error classes reach the UI, a failed
-//! write no longer wedges storage, the error banner is a dismissible toast
-//! that auto-hides and never covers the FAB, and quick entry has no
-//! significance card.
+//! write no longer wedges storage, and the error banner is a dismissible toast
+//! that auto-hides and never covers the FAB.
 //! Reuses the headless helpers from `ui_tests`.
 
 use std::sync::mpsc;
@@ -10,9 +9,9 @@ use std::time::Duration;
 use gpui::TestAppContext;
 
 use crate::app::storage::StorageFault;
-use crate::model::{new_todo, Status, Todo};
+use crate::model::{new_todo, Todo};
 use crate::store::{Command, EngineError, ErrorKind, Mutation, Reply, Snapshot, Worker};
-use crate::ui_tests::{click, launch, redraw, todo_of, type_text};
+use crate::ui_tests::{click, launch, redraw};
 
 fn engine_error(kind: ErrorKind) -> EngineError {
     EngineError {
@@ -228,47 +227,4 @@ fn write_toast_auto_hides_and_restarts(cx: &mut TestAppContext) {
     agenda.read_with(cx, |a, _| {
         assert!(a.storage_error.is_none(), "toast must auto-hide")
     });
-}
-
-/// Quick entry has no significance card, and a task created from it has
-/// `significance == None` — significance lives only in task properties.
-#[gpui::test]
-fn quick_entry_has_no_significance_card(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-
-    cx.simulate_keystrokes("ctrl-n");
-    redraw(cx);
-    assert!(cx.debug_bounds("qe-sig-slider").is_none());
-
-    type_text(cx, "Купить молоко");
-    cx.simulate_keystrokes("enter");
-    agenda.read_with(cx, |a, _| {
-        let t = a
-            .todos
-            .iter()
-            .find(|t| t.title == "Купить молоко")
-            .expect("created task missing");
-        assert_eq!(t.significance, None);
-        assert_eq!(t.status, Status::Inbox);
-    });
-}
-
-/// Significance still works from task properties (chip → dropdown → value).
-#[gpui::test]
-fn task_props_set_significance(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-
-    click(cx, "tr-dev-inbox-1");
-    agenda.read_with(cx, |a, _| {
-        assert!(
-            a.quick_entry_open && a.qe_task.as_deref() == Some("dev-inbox-1"),
-            "row click must open the task in the right panel"
-        );
-    });
-    agenda.update(cx, |a, _| {
-        a.update_todo("dev-inbox-1", |t| t.significance = Some(7))
-    });
-
-    let t = todo_of(cx, &agenda, "dev-inbox-1");
-    assert_eq!(t.significance, Some(7));
 }

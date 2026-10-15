@@ -2,10 +2,8 @@
 //! Reuses the headless helpers from `ui_tests`.
 
 use gpui::TestAppContext;
-use serde_json::json;
 
 use crate::model::{filter_idx, is_deferred, task_status, SmartList, Status};
-use crate::store::mapping;
 use crate::ui_tests::{click, launch, redraw, type_text};
 
 /// «Входящие» is an explicit project choice, not "no choice": the
@@ -78,32 +76,4 @@ fn completed_someday_task_leaves_someday(cx: &mut TestAppContext) {
             "completed task still listed in «Потом»"
         );
     });
-}
-
-/// `write` stores canonical `priority` as a string ("none"/"low"/"medium"/
-/// "high"), but `read` only tried `as_u64` on it — tasks written by clients
-/// that keep only the canonical field (no `extensions.priority` mirror) came
-/// back with priority 0: silent data loss of a user-visible field.
-#[test]
-fn engine_canonical_priority_string_maps_to_level() {
-    for (priority, level) in [("none", 0), ("low", 1), ("medium", 2), ("high", 3)] {
-        let object = json!({
-            "id": "prio-task",
-            "typeId": mapping::TASK_TYPE,
-            "typeVersion": "0.1.0",
-            "title": "x",
-            "createdAt": "2026-09-20T10:00:00Z",
-            "propsJson": {
-                "state": {"kind": "open", "at": null},
-                "planning": {"kind": "anytime"},
-                "priority": priority,
-            },
-            "deletedAt": null,
-        });
-        let t = mapping::read(&object, &[]).unwrap();
-        assert_eq!(
-            t.priority, level,
-            "priority '{priority}' must map to {level}"
-        );
-    }
 }

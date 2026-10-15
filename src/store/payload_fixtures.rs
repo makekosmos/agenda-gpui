@@ -1,5 +1,5 @@
 use super::*;
-use crate::model::{new_todo, parse_key, RecurrenceRule, Status, Todo};
+use crate::model::{new_todo, parse_key, Status, Todo};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
@@ -42,22 +42,6 @@ fn cases() -> Vec<(&'static str, Todo)> {
             t.notes = Some("заметка".into());
             t
         }),
-        ("task-deadline", {
-            let mut t = base();
-            t.deadline = Some("2026-05-22".into());
-            t
-        }),
-        ("task-recurrence", {
-            let mut t = base();
-            t.status = Status::Todo;
-            t.recurrence = Some(RecurrenceRule {
-                frequency: 0,
-                interval: 1,
-                recurrence_type: 0,
-                days_of_week: vec![1, 3],
-            });
-            t
-        }),
         ("task-completed", {
             let mut t = base();
             t.status = Status::Done;
@@ -69,11 +53,6 @@ fn cases() -> Vec<(&'static str, Todo)> {
             let mut t = base();
             t.status = Status::Canceled;
             t.is_cancelled = true;
-            t
-        }),
-        ("task-significance-unset", {
-            let mut t = base();
-            t.significance = None;
             t
         }),
     ]

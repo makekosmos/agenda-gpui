@@ -3,8 +3,8 @@ use serde_json::{json, Value};
 
 /// core.task 0.1.0 (KOS-397). The project is an object link, not a prop; the
 /// Engine returns links separately, and `store.rs` diffs the link on save.
-/// Tags stay in `extensions.tag_ids`: Agenda does not write `com.kosmos.tag`
-/// objects yet, so there is nothing for a tag link to point at.
+/// Fields Agenda does not show (deadline, reminders, priority, checklist,
+/// recurrence, tags, evening period) stay on the object untouched.
 pub const TASK_TYPE: &str = "core.task";
 pub const TASK_VERSION: &str = "0.1.0";
 pub const PROJECT_LINK: &str = "project";
@@ -20,30 +20,21 @@ pub struct Link {
 
 /// Fields the write path never copies into `extensions`: they live in
 /// canonical props, links, or the object row itself.
-const NOT_EXTENSION: [&str; 19] = [
+const NOT_EXTENSION: [&str; 13] = [
     "id",
     "title",
     "notes",
-    "checklist",
-    "recurrence",
-    "priority",
-    "deadline",
-    "reminder_date",
     "project_id",
     "created_at",
     "status",
     "is_today",
     "is_someday",
-    "is_evening",
     "is_trashed",
     "is_completed",
     "is_cancelled",
     "completed_at",
     "scheduled_date",
 ];
-
-const PRIORITIES: [&str; 4] = ["none", "low", "medium", "high"];
-const FREQUENCIES: [&str; 4] = ["daily", "weekly", "monthly", "yearly"];
 
 mod write;
 pub use write::write;
@@ -91,10 +82,6 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
     fields.insert("is_today".into(), json!(planning == "today"));
     fields.insert("is_someday".into(), json!(planning == "someday"));
     fields.insert(
-        "is_evening".into(),
-        json!(props["planning"]["period"] == "evening"),
-    );
-    fields.insert(
         "completed_at".into(),
         if state == "done" {
             props["state"]["at"].clone()
@@ -108,17 +95,6 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
         fields.get("scheduled_date").cloned().unwrap_or(Value::Null)
     };
     fields.insert("scheduled_date".into(), scheduled);
-    fields.insert("deadline".into(), props["deadline"].clone());
-    fields.insert("reminder_date".into(), props["reminders"][0]["at"].clone());
-    fields.insert(
-        "priority".into(),
-        json!(match props["priority"].as_str() {
-            Some("low") => 1,
-            Some("medium") => 2,
-            Some("high" | "urgent") => 3,
-            _ => 0,
-        }),
-    );
     fields.insert(
         "project_id".into(),
         json!(links
@@ -126,31 +102,7 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
             .find(|l| l.kind == PROJECT_LINK)
             .map(|l| l.target.clone())),
     );
-    let checklist: Vec<Value> = props["checklist"]
-        .as_array()
-        .into_iter()
-        .flatten()
-        .map(|item| json!({"is_completed": item["done"] == true}))
-        .collect();
-    fields.insert("checklist".into(), json!(checklist));
-    fields.insert("recurrence".into(), read_recurrence(&props["recurrence"]));
     serde_json::from_value(Value::Object(fields)).map_err(|e| e.to_string())
-}
-
-fn read_recurrence(value: &Value) -> Value {
-    let Some(rule) = value.as_object() else {
-        return Value::Null;
-    };
-    let frequency = FREQUENCIES
-        .iter()
-        .position(|f| Some(*f) == rule.get("frequency").and_then(Value::as_str))
-        .unwrap_or(0);
-    json!({
-        "frequency": frequency,
-        "interval": rule.get("interval").cloned().unwrap_or(json!(1)),
-        "recurrence_type": u8::from(rule.get("kind") == Some(&json!("afterCompletion"))),
-        "days_of_week": rule.get("daysOfWeek").cloned().unwrap_or(json!([])),
-    })
 }
 
 fn plain_text(value: &Value) -> Option<String> {

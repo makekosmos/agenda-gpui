@@ -72,12 +72,10 @@ pub(super) fn project_object(current: Value, project: &Project, now: &str) -> Va
     props["status"] = json!(PROJECT_STATUS
         .get(usize::from(project.status))
         .unwrap_or(&"active"));
-    props["dueAt"] = json!(project.deadline);
     if !props["extensions"].is_object() {
         props["extensions"] = json!({});
     }
     props["extensions"]["sortOrder"] = json!(project.sort_order);
-    props["extensions"]["areaId"] = json!(project.area_id);
     object
 }
 
@@ -91,9 +89,7 @@ pub(super) fn read_project(object: &Value) -> Project {
             .iter()
             .position(|s| props["status"] == *s)
             .unwrap_or(0) as u8,
-        deadline: props["dueAt"].as_str().map(str::to_string),
         sort_order: ext["sortOrder"].as_i64().unwrap_or(0) as i32,
-        area_id: ext["areaId"].as_str().map(str::to_string),
     }
 }
 
@@ -107,14 +103,11 @@ mod tests {
             id: "p1".into(),
             title: "Ремонт".into(),
             status: 1,
-            deadline: Some("2026-12-01".into()),
             sort_order: 3,
-            area_id: Some("a1".into()),
         };
         let object = project_object(Value::Null, &project, "2026-10-05T00:00:00Z");
         assert_eq!(object["typeId"], "com.kosmos.project");
         assert_eq!(object["propsJson"]["status"], "someday");
-        assert_eq!(object["propsJson"]["dueAt"], "2026-12-01");
         assert_eq!(read_project(&object), project);
     }
 }

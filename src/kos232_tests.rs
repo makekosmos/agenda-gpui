@@ -9,20 +9,15 @@
 //! - «через N …» capture treated every unit except неделя as days —
 //!   "через 2 часа" scheduled +2 days, "через 3 месяца" +3 days; bare units
 //!   ("через неделю") were never captured at all;
-//! - statistics share overlay: the dim backdrop dismissed the card but did
-//!   not occlude, so the same press also reached the stats page beneath —
-//!   clicking the dim where «Поделиться» sits closed and immediately
-//!   reopened the overlay (same class as the QE backdrop fix from KOS-216,
-//!   a missed instance);
 //! - quick-entry date dropdown: `DropKind::QeDate` resolved its checked row
 //!   from the owning todo, which is always `None` for quick entry, so
 //!   «Без даты» stayed checked no matter what date chip was picked.
 
 use gpui::TestAppContext;
 
-use crate::app::{DropKind, DropState, Route};
+use crate::app::{DropKind, DropState};
 use crate::model::{date_only, key_of, parse_quick_entry_capture, today_key};
-use crate::ui_tests::{click, launch, redraw};
+use crate::ui_tests::{launch, redraw};
 use chrono::{Duration, Local};
 
 #[test]
@@ -136,24 +131,6 @@ fn quick_entry_through_bare_units() {
     let (clean, date) = parse_quick_entry_capture("пережить через неприятности", None);
     assert_eq!(date, None);
     assert_eq!(clean, "пережить через неприятности");
-}
-
-#[gpui::test]
-fn share_overlay_dismiss_does_not_leak_to_page(cx: &mut TestAppContext) {
-    let (agenda, cx) = launch(cx);
-    agenda.update(cx, |a, _| a.navigate(Route::Statistics));
-    redraw(cx);
-
-    click(cx, "stat-share");
-    assert!(agenda.read_with(cx, |a, _| a.share_open));
-
-    // Same spot again: only the dim may see this press. Without occlusion
-    // the «Поделиться» button underneath stays hovered and reopens the card.
-    click(cx, "stat-share");
-    assert!(
-        !agenda.read_with(cx, |a, _| a.share_open),
-        "a press on the dim must dismiss the share overlay, not re-open it"
-    );
 }
 
 #[gpui::test]

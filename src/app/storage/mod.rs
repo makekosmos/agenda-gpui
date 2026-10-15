@@ -100,7 +100,6 @@ impl Agenda {
             Reply::Loaded(Ok(data)) => {
                 self.todos = data.todos;
                 self.projects = data.projects;
-                self.tags = data.tags;
                 self.storage_ready = true;
                 if self
                     .storage_error

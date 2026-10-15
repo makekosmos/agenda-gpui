@@ -53,17 +53,6 @@ impl Agenda {
         if before.as_ref() == Some(&todo) {
             return true;
         }
-        if let Some(before) = before.as_ref().filter(|t| t.system_kind.is_some()) {
-            let mut allowed = before.clone();
-            allowed.significance = todo.significance;
-            if allowed != todo {
-                self.raise(StorageError::notice(
-                    StorageFault::Write,
-                    "Эта служебная задача управляется Agenda автоматически.",
-                ));
-                return false;
-            }
-        }
         if !self.demo {
             return self.send_storage(Command::Save(Box::new(Mutation {
                 before,
@@ -85,9 +74,6 @@ impl Agenda {
     }
 
     pub(crate) fn save_completion(&mut self, before: Todo, todo: Todo, next: Option<Todo>) {
-        if before.system_kind.is_some() {
-            return;
-        }
         if !self.can_save() {
             return;
         }

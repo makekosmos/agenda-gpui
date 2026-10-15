@@ -20,16 +20,11 @@
     "checklist": [],
     "deadline": null,
     "extensions": {
-      "area_id": null,
       "billable": false,
       "description": null,
-      "heading_id": null,
       "price": null,
-      "significance": null,
       "sort_order": 0,
-      "status": "todo",
-      "system_kind": null,
-      "tag_ids": []
+      "status": "todo"
     },
     "planning": {
       "date": "2026-05-20",
