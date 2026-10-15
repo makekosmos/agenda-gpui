@@ -13,6 +13,7 @@ mod e2e;
 #[cfg(target_os = "macos")]
 mod macos_close;
 mod model;
+#[cfg(any(target_os = "macos", test))]
 mod native_menu;
 mod pages;
 mod palettes;
