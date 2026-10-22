@@ -25,8 +25,8 @@ imago-gpui = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae79447
 mundus-gpui-kit = { git = "https://github.com/makekosmos/imago.git", rev = "c7ae7944782af5ec903c6332bfef362bb03e03b8" }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-uuid = { version = "1.26.1", features = ["v4"] }
+serde_json = "1.0.154"
+uuid = { version = "1.28.0", features = ["v4"] }
 ureq = { version = "2.12", default-features = false, features = ["json"] }
 
 # a11y-tree + UI autotests: #[gpui::test] + TestAppContext/VisualTestContext
