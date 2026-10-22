@@ -20,9 +20,7 @@
     "checklist": [],
     "deadline": null,
     "extensions": {
-      "billable": false,
       "description": null,
-      "price": null,
       "sort_order": 0,
       "status": "todo"
     },

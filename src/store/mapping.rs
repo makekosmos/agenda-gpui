@@ -20,7 +20,7 @@ pub struct Link {
 
 /// Fields the write path never copies into `extensions`: they live in
 /// canonical props, links, or the object row itself.
-const NOT_EXTENSION: [&str; 13] = [
+const NOT_EXTENSION: [&str; 12] = [
     "id",
     "title",
     "notes",
@@ -31,7 +31,6 @@ const NOT_EXTENSION: [&str; 13] = [
     "is_someday",
     "is_trashed",
     "is_completed",
-    "is_cancelled",
     "completed_at",
     "scheduled_date",
 ];
@@ -64,23 +63,24 @@ pub fn read(object: &Value, links: &[Link]) -> Result<Todo, String> {
 
     let state = props["state"]["kind"].as_str().unwrap_or("open");
     let planning = props["planning"]["kind"].as_str().unwrap_or("inbox");
-    let ext_status = fields
-        .get("status")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let legacy_deferred = fields.get("status") == Some(&json!("deferred"));
+    // Agenda has two states. Legacy states other clients wrote still open:
+    // `canceled` reads as done (closed, but no completion stamp, so it stays
+    // out of statistics), `inProgress` as not done. `write` keeps them stored
+    // until the user toggles the task.
+    let closed = matches!(state, "done" | "canceled");
     let status = match state {
-        "done" => Status::Done,
-        "canceled" => Status::Canceled,
-        "inProgress" => Status::Started,
+        _ if closed => Status::Done,
         _ if planning == "inbox" => Status::Inbox,
-        _ if ext_status == "deferred" => Status::Deferred,
         _ => Status::Todo,
     };
     fields.insert("status".into(), json!(status));
-    fields.insert("is_completed".into(), json!(state == "done"));
-    fields.insert("is_cancelled".into(), json!(state == "canceled"));
+    fields.insert("is_completed".into(), json!(closed));
     fields.insert("is_today".into(), json!(planning == "today"));
-    fields.insert("is_someday".into(), json!(planning == "someday"));
+    fields.insert(
+        "is_someday".into(),
+        json!(planning == "someday" || legacy_deferred),
+    );
     fields.insert(
         "completed_at".into(),
         if state == "done" {

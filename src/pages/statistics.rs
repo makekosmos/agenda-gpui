@@ -70,7 +70,7 @@ fn range_points(
     let mut planned = vec![0f64; len];
     let mut done = vec![0f64; len];
     for todo in todos {
-        if todo.is_trashed || task_status(todo) == Status::Canceled {
+        if todo.is_trashed {
             continue;
         }
         let planned_day = date_only(&todo.scheduled_date)

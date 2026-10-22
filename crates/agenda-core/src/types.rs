@@ -4,12 +4,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
+    /// Not done, not yet placed (the Inbox list).
     Inbox,
+    /// Not done, placed in a list, a date or a project.
     Todo,
-    Started,
-    Deferred,
     Done,
-    Canceled,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -33,7 +32,6 @@ pub struct Todo {
     pub system_kind: Option<String>,
     pub is_completed: bool,
     pub completed_at: Option<String>,
-    pub is_cancelled: bool,
     pub is_trashed: bool,
     pub created_at: String,
     pub heading_id: Option<String>,
@@ -41,8 +39,6 @@ pub struct Todo {
     pub area_id: Option<String>,
     pub tag_ids: Vec<String>,
     pub checklist: Vec<ChecklistItem>,
-    pub billable: bool,
-    pub price: Option<f64>,
     pub sort_order: i32,
 }
 
@@ -84,7 +80,6 @@ pub fn new_todo(id: impl Into<String>, title: &str) -> Todo {
         system_kind: None,
         is_completed: false,
         completed_at: None,
-        is_cancelled: false,
         is_trashed: false,
         created_at: String::new(),
         heading_id: None,
@@ -92,8 +87,6 @@ pub fn new_todo(id: impl Into<String>, title: &str) -> Todo {
         area_id: None,
         tag_ids: vec![],
         checklist: vec![],
-        billable: false,
-        price: None,
         sort_order: 0,
     }
 }

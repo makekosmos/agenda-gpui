@@ -16,7 +16,7 @@ impl Agenda {
     ) -> gpui::Stateful<gpui::Div> {
         let id = t.id.to_string();
         let status = task_status(t);
-        let done = status == Status::Done || status == Status::Canceled;
+        let done = status == Status::Done;
         let hid = format!("row-{}", t.id);
         let t_h = self.hover_t(window, &hid);
         let (date_val, _) = task_date(t);
@@ -95,45 +95,6 @@ impl Agenda {
                 ));
             }
             row = row.child(actions);
-        }
-
-        // meta: project, date, price — skipped entirely when the task has none.
-        let has_meta = t.project_id.is_some() || date_val.is_some() || t.billable;
-        if has_meta {
-            let mut meta = div()
-                .flex_none()
-                .flex()
-                .items_center()
-                .gap_2()
-                .text_size(crate::theme::text_px(12.))
-                .text_color(c(MUTED_FG()));
-            if let Some(pid) = t.project_id.as_deref() {
-                if let Some(p) = self.project(pid) {
-                    meta = meta.child(
-                        div()
-                            .max_w(px(140.))
-                            .overflow_hidden()
-                            .whitespace_nowrap()
-                            .text_ellipsis()
-                            .child(p.title.clone()),
-                    );
-                }
-            }
-            if let Some(d) = &date_val {
-                meta = meta.child(
-                    div()
-                        .text_color(if overdue {
-                            c(DESTRUCTIVE())
-                        } else {
-                            c(MUTED_FG())
-                        })
-                        .child(fmt_day_month(d)),
-                );
-            }
-            if t.billable {
-                meta = meta.child(format!("${}", t.price.unwrap_or(0.0)));
-            }
-            row = row.child(meta);
         }
 
         let weak = cx.weak_entity();

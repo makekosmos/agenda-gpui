@@ -6,7 +6,7 @@ use serde_json::{json, Value};
 
 /// Fields `write_at` never copies into `extensions`: canonical props, the
 /// project link, or the object row itself own them.
-const NOT_EXTENSION: [&str; 16] = [
+const NOT_EXTENSION: [&str; 15] = [
     "id",
     "title",
     "notes",
@@ -20,7 +20,6 @@ const NOT_EXTENSION: [&str; 16] = [
     "is_evening",
     "is_trashed",
     "is_completed",
-    "is_cancelled",
     "completed_at",
     "scheduled_date",
 ];
@@ -74,7 +73,6 @@ pub fn write_at(
         "is_someday",
         "is_evening",
         "is_completed",
-        "is_cancelled",
         "completed_at",
         "scheduled_date",
     ];
@@ -145,6 +143,9 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str, day: &Lo
         "anytime"
     };
     let state = match status {
+        // Legacy states keep their kind while the done/not-done bit holds.
+        Status::Done if stored["kind"] == "canceled" => stored,
+        Status::Inbox | Status::Todo if stored["kind"] == "inProgress" => stored,
         Status::Done => {
             let at = todo
                 .completed_at
@@ -155,10 +156,7 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str, day: &Lo
                 .unwrap_or_else(|| now.to_owned());
             json!({"kind":"done","at":at})
         }
-        Status::Canceled => json!({"kind":"canceled",
-            "at":stored_instant(&stored, "canceled").unwrap_or_else(|| now.to_owned())}),
-        Status::Started => json!({"kind":"inProgress","at":null}),
-        _ => json!({"kind":"open","at":null}),
+        Status::Inbox | Status::Todo => json!({"kind":"open","at":null}),
     };
     let props = &mut object["propsJson"];
     props["state"] = state;

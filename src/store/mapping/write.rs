@@ -53,7 +53,6 @@ pub fn write_at(
         "is_today",
         "is_someday",
         "is_completed",
-        "is_cancelled",
         "completed_at",
         "scheduled_date",
     ];
@@ -94,8 +93,11 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str) {
     } else {
         "anytime"
     };
+    let stored_state = object["propsJson"]["state"].clone();
     let state = match todo.status {
-        Status::Canceled => json!({"kind":"canceled","at":now}),
+        // Legacy states keep their kind while the done/not-done bit holds.
+        Status::Done if stored_state["kind"] == "canceled" => stored_state,
+        Status::Inbox | Status::Todo if stored_state["kind"] == "inProgress" => stored_state,
         Status::Done => {
             let at = todo
                 .completed_at
@@ -106,8 +108,7 @@ fn write_state_and_planning(object: &mut Value, todo: &Todo, now: &str) {
                 .unwrap_or_else(|| now.to_owned());
             json!({"kind":"done","at":at})
         }
-        Status::Started => json!({"kind":"inProgress","at":null}),
-        _ => json!({"kind":"open","at":null}),
+        Status::Inbox | Status::Todo => json!({"kind":"open","at":null}),
     };
     let props = &mut object["propsJson"];
     // Agenda does not edit the period; keep whatever the object carries.
