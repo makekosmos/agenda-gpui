@@ -9,6 +9,12 @@ ignore = [
     "RUSTSEC-2025-0134", # rustls-pemfile
     "RUSTSEC-2026-0192", # ttf-parser
     "RUSTSEC-2026-0206", # rustybuzz
+    # Present on origin/main too: gpui-kit's pinned Linux/AT-SPI dependency graph
+    # brings zbus 5.x; these crates were merged into zbus 6 and have no safe
+    # standalone upgrade. Recheck by 2027-04-23 or when the pinned GPUI/Imago stack moves to zbus 6.
+    "RUSTSEC-2026-0370", # zvariant
+    "RUSTSEC-2026-0371", # zbus_names
+    "RUSTSEC-2026-0372", # zvariant_derive
 ]
 
 [bans]
