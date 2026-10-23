@@ -48,6 +48,8 @@ mod settings_a11y_tests;
 mod window_tests;
 
 use gpui::{px, size, App, AppContext, Bounds, Styled, WindowBounds, WindowOptions};
+#[cfg(target_os = "windows")]
+use gpui_fast_backend as _;
 
 /// `AGENDA_OFFSCREEN=1` parks the window far outside the desktop so automated
 /// soak runs (FPS/scroll benchmarks) don't pop a window on the user's screen.

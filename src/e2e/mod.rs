@@ -50,6 +50,7 @@ pub fn run(window: AnyWindowHandle, agenda: Entity<Agenda>, cx: &mut App) {
     eprintln!("[e2e] scenario {scenario} → {}", run.out.display());
     cx.spawn(async move |cx| {
         match scenario.as_str() {
+            "baseline" => run.baseline(cx).await,
             "create" => create(&run, cx).await,
             "persist" => persist(&run, cx).await,
             "offline" => offline(&run, cx).await,
@@ -70,6 +71,27 @@ struct Run {
 }
 
 impl Run {
+    async fn baseline(&self, cx: &mut AsyncApp) {
+        self.shot(cx, "inbox").await;
+        for (name, route) in [
+            ("week", Route::Week),
+            ("next-week", Route::NextWeek),
+            ("someday", Route::Someday),
+            ("statistics", Route::Statistics),
+            ("logbook", Route::Logbook),
+            ("trash", Route::Trash),
+            ("settings", Route::Settings),
+            ("settings-energy", Route::SettingsEnergy),
+            ("dev", Route::Dev),
+            ("about", Route::About),
+            ("project", Route::Project("dev-proj-release".into())),
+        ] {
+            self.navigate(cx, route).await;
+            self.shot(cx, name).await;
+        }
+        self.check("captured all Agenda screens", true);
+    }
+
     fn check(&self, name: &str, ok: bool) {
         let _ = writeln!(
             self.report.borrow_mut(),

@@ -1,8 +1,8 @@
 //! Accessibility-tree tests (KOS-142).
 //!
-//! The vendored gpui `TestWindow` activates accessibility immediately
-//! (vendor/gpui-pre-0.3.5-patched/PATCH.md), so every drawn frame's accesskit
-//! nodes are readable through `Window::debug_a11y_tree_json`. These tests
+//! The gpui-kit test platform activates accessibility immediately, so every
+//! drawn frame's accesskit nodes are readable through
+//! `Window::debug_a11y_tree_json`. These tests
 //! render the real Agenda shell on the test platform and assert that every
 //! interactive node carries a Russian accessible name, plus a checked-in
 //! snapshot of the whole inbox tree.
@@ -68,7 +68,7 @@ pub(crate) fn a11y_tree(cx: &mut VisualTestContext) -> Value {
     cx.run_until_parked();
     let json = cx
         .update(|window, _| window.debug_a11y_tree_json())
-        .expect("vendored TestWindow activates a11y; a frame must capture a tree");
+        .expect("TestWindow activates a11y; a frame must capture a tree");
     serde_json::from_str(&json).expect("a11y tree is valid JSON")
 }
 

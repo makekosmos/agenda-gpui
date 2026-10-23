@@ -260,13 +260,8 @@ pub struct Agenda {
     /// Don't sample until this instant: startup/enable spikes would poison
     /// the avg/1%/0.1% window before the app is fully warmed up.
     pub(crate) fps_warmup: Option<Instant>,
-    /// Frame-pipeline load: fraction of wall time the pump spent serving
-    /// frame work (callbacks + draw + submit), recomputed with the stats.
-    pub(crate) fps_load: f32,
-    /// Accumulators for `fps_load` — GPUI-side busy nanos + wall time between
-    /// stat recomputes.
-    pub(crate) fps_busy_ns: u64,
-    pub(crate) fps_busy_t0: Instant,
+    /// Stats recompute timestamp.
+    pub(crate) fps_stats_t0: Instant,
     /// The FPS meter as its own view: its per-frame `notify` dirties only this
     /// subtree, so idle frames replay the main UI's cached paint instead of
     /// re-laying out the whole window.
@@ -433,15 +428,14 @@ impl Agenda {
             } else {
                 None
             },
-            fps_load: 0.0,
-            fps_busy_ns: 0,
-            fps_busy_t0: Instant::now(),
+            fps_stats_t0: Instant::now(),
             fps_view: {
                 let agenda = cx.weak_entity();
                 cx.new(|_| FpsOverlay {
                     agenda,
                     armed: false,
                     last_update: Instant::now(),
+                    last_sample: Instant::now(),
                 })
             },
             sidebar_view: {
@@ -628,7 +622,7 @@ impl Agenda {
     /// view's `on_next_frame` callback; drains the present-to-present deltas
     /// recorded at successful swapchain presents (RTSS-style: stats reflect
     /// real presented frames, not message-loop timing).
-    pub(crate) fn sample_frame(&mut self) {
+    pub(crate) fn sample_frame(&mut self, dt: f32) {
         // Warmup: keep the frame loop alive but don't record — startup spikes
         // (font/atlas/devtask seeding) would poison the stats window.
         if let Some(until) = self.fps_warmup {
@@ -639,36 +633,21 @@ impl Agenda {
             self.fps_hist.clear();
             self.fps_span = 0.0;
             self.fps_ema = 0.0;
-            gpui::drain_present_deltas();
-            gpui::take_frame_busy_ns();
-            self.fps_busy_ns = 0;
-            self.fps_busy_t0 = Instant::now();
+            self.fps_stats_t0 = Instant::now();
         }
-        self.fps_busy_ns += gpui::take_frame_busy_ns();
-        for dt in gpui::drain_present_deltas() {
-            if dt > 0.010 && self.fps_log {
-                gpui::log_frame_diagnostic(format!(
-                    "[slow] dt={:.1}ms render={:.1} rows={:.1}",
-                    dt * 1000.0,
-                    self.render_ms,
-                    self.rows_ms
-                ));
-            }
-            if dt > 0.0 {
-                let f = 1.0 / dt;
-                self.fps_ema = if self.fps_ema <= 0.0 {
-                    f
-                } else {
-                    // Time-based smoothing also converges immediately at the 1 Hz idle cadence.
-                    let alpha = 1.0 - (-dt / 0.1).exp();
-                    self.fps_ema * (1.0 - alpha) + f * alpha
-                };
-                self.fps_hist.push_back(dt);
-                self.fps_span += dt;
-                while self.fps_span > 60.0 && self.fps_hist.len() > 1 {
-                    if let Some(old) = self.fps_hist.pop_front() {
-                        self.fps_span -= old;
-                    }
+        if dt > 0.0 {
+            let f = 1.0 / dt;
+            self.fps_ema = if self.fps_ema <= 0.0 {
+                f
+            } else {
+                let alpha = 1.0 - (-dt / 0.1).exp();
+                self.fps_ema * (1.0 - alpha) + f * alpha
+            };
+            self.fps_hist.push_back(dt);
+            self.fps_span += dt;
+            while self.fps_span > 60.0 && self.fps_hist.len() > 1 {
+                if let Some(old) = self.fps_hist.pop_front() {
+                    self.fps_span -= old;
                 }
             }
         }
@@ -676,7 +655,7 @@ impl Agenda {
         // Recompute window stats ~once a second: sort a copy of the dt window
         // (worst-case tails) — cheap relative to frame budget and off the
         // render path.
-        if self.fps_busy_t0.elapsed().as_secs_f32() >= 1.0 && !self.fps_hist.is_empty() {
+        if self.fps_stats_t0.elapsed().as_secs_f32() >= 1.0 && !self.fps_hist.is_empty() {
             let mut v: Vec<f32> = self.fps_hist.iter().copied().collect();
             v.sort_unstable_by(|a, b| a.total_cmp(b));
             let n = v.len();
@@ -685,19 +664,12 @@ impl Agenda {
             self.fps_avg = n as f32 / self.fps_span.max(1e-4);
             self.fps_low1 = 1.0 / v[p99].max(1e-4);
             self.fps_low01 = 1.0 / v[p999].max(1e-4);
-            let wall_ns = self.fps_busy_t0.elapsed().as_nanos() as f64;
-            self.fps_load = (self.fps_busy_ns as f64 / wall_ns.max(1.0)) as f32;
-            self.fps_busy_ns = 0;
-            self.fps_busy_t0 = Instant::now();
+            self.fps_stats_t0 = Instant::now();
             if self.fps_log {
-                gpui::log_frame_diagnostic(format!(
-                    "[fps] avg={:.1} 1%={:.1} 0.1%={:.1} load={:.0}% render={:.1}ms",
-                    self.fps_avg,
-                    self.fps_low1,
-                    self.fps_low01,
-                    self.fps_load * 100.0,
-                    self.render_ms
-                ));
+                eprintln!(
+                    "[fps] avg={:.1} 1%={:.1} 0.1%={:.1} render={:.1}ms",
+                    self.fps_avg, self.fps_low1, self.fps_low01, self.render_ms
+                );
             }
         }
     }
@@ -915,10 +887,6 @@ impl Agenda {
 impl Render for Agenda {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let render_t0 = Instant::now();
-        window.set_frame_pacing(self.vsync_enabled);
-        // Windows controls the tick source itself: full cadence during activity,
-        // one genuinely rendered frame per second while idle/background.
-        window.set_continuous_present(cfg!(target_os = "windows") || self.dev_fps);
         if !self.focused_once {
             self.focused_once = true;
             self.root_focus.focus(window, cx);
@@ -1776,6 +1744,7 @@ pub(crate) struct FpsOverlay {
     armed: bool,
     /// Repaint at most ~33 Hz, but update on every 1 Hz idle tick.
     last_update: Instant,
+    last_sample: Instant,
 }
 
 impl FpsOverlay {
@@ -1785,18 +1754,18 @@ impl FpsOverlay {
         window.on_next_frame(move |window, cx| {
             let alive = weak
                 .update(cx, |this, cx| {
-                    let enabled = agenda
+                    let Some(dt) = agenda
                         .update(cx, |ag, _| {
-                            if ag.dev_fps {
-                                ag.sample_frame();
-                            }
-                            ag.dev_fps
+                            ag.dev_fps.then(|| this.last_sample.elapsed().as_secs_f32())
                         })
-                        .unwrap_or(false);
-                    if !enabled {
+                        .ok()
+                        .flatten()
+                    else {
                         this.armed = false;
                         return false;
-                    }
+                    };
+                    this.last_sample = Instant::now();
+                    let _ = agenda.update(cx, |ag, _| ag.sample_frame(dt));
                     if this.last_update.elapsed().as_millis() >= 30 {
                         this.last_update = Instant::now();
                         cx.notify();
@@ -1815,10 +1784,11 @@ impl gpui::Render for FpsOverlay {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         if !self.armed {
             self.armed = true;
+            self.last_sample = Instant::now();
             Self::arm(cx.weak_entity(), self.agenda.clone(), window);
         }
 
-        let (ema, avg, low1, low01, load, tail, warming) = self
+        let (ema, avg, low1, low01, tail, warming) = self
             .agenda
             .upgrade()
             .map(|e| {
@@ -1839,7 +1809,6 @@ impl gpui::Render for FpsOverlay {
                     a.fps_avg,
                     a.fps_low1,
                     a.fps_low01,
-                    a.fps_load,
                     tail,
                     a.fps_warmup.is_some(),
                 )
@@ -1935,13 +1904,7 @@ impl gpui::Render for FpsOverlay {
                             .child(if warming {
                                 "замер начнётся после загрузки".to_string()
                             } else {
-                                format!(
-                                    "avg {:.0} · 1% {:.0} · 0.1% {:.0} · load {:.0}%",
-                                    avg,
-                                    low1,
-                                    low01,
-                                    load * 100.0
-                                )
+                                format!("avg {:.0} · 1% {:.0} · 0.1% {:.0}", avg, low1, low01)
                             }),
                     ),
             )
