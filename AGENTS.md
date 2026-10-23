@@ -1,7 +1,7 @@
-# AGENTS.md — agenda-gpui
+# AGENTS.md — agenda-unified
 
-Нативное GPUI-приложение Agenda (задачи и календарь) для Mundus. Один бинарный
-крейт `agenda-gpui`. Главная платформа — Windows; Linux и macOS собираются и
+Нативное GPUI-приложение Agenda (задачи и календарь) для Mundus. Репозиторий `agenda-unified` (бывший `agenda-gpui`), один бинарный
+крейт `agenda-gpui` (имя крейта, бинаря и релизных артефактов не менять: по ним Store находит релизы). Главная платформа — Windows; Linux и macOS собираются и
 проверяются в CI. Приложение ставится Engine из GitHub Releases этого репо.
 
 ## Карта

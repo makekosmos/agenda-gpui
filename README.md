@@ -1,4 +1,6 @@
-# agenda-gpui
+# agenda-unified
+
+Репозиторий называется `agenda-unified` (раньше `agenda-gpui`); крейт, бинарь `agenda-gpui` и имена релизных артефактов не менялись.
 
 Native GPUI-приложение Agenda для Mundus. Правила для агентов: [AGENTS.md](AGENTS.md).
 
@@ -111,8 +113,8 @@ seed-карточки при этом не рисуются.
 переименовать → закрыть/открыть → завершить → закрыть/открыть.
 
 ```bash
-git clone git@github.com:makekosmos/agenda-gpui.git
-cd agenda-gpui
+git clone git@github.com:makekosmos/agenda-unified.git
+cd agenda-unified
 cargo run
 cargo run --release
 ```
