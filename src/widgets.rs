@@ -1,8 +1,7 @@
 // Shared icon/ring/bars/button widgets matching the Vue components pixel-for-pixel.
 use gpui::prelude::*;
 use gpui::{
-    canvas, div, point, px, svg, Div, ElementId, Hsla, PathBuilder, Role, SharedString, Stateful,
-    Styled, Toggled, Window,
+    div, px, svg, Div, ElementId, Hsla, Role, SharedString, Stateful, Styled, Toggled, Window,
 };
 
 use crate::model::Status;
@@ -85,95 +84,25 @@ pub fn icon(path: &'static str, size: f32, color: Hsla) -> impl IntoElement {
         .text_color(color)
 }
 
-// ---------------------------------------------------------------------------
-// TaskStatusIcon — 14px ring; done=accent+check, canceled=x, started=half fill,
-// deferred=dashed ring, else plain ring.
-// ---------------------------------------------------------------------------
-
+/// Task checkbox — 14px ring; done = accent fill + check, otherwise empty.
 pub fn status_ring(status: Status) -> impl IntoElement {
-    let ring = |border: Hsla| {
-        div()
-            .w(px(14.))
-            .h(px(14.))
-            .rounded_full()
-            .border(px(1.5))
-            .border_color(border)
-            .flex_none()
-            .grid()
-            .items_center()
-            .justify_center()
-    };
-    match status {
-        Status::Done => ring(c(ACCENT()))
-            .bg(c(ACCENT()))
-            .child(icon("icons/status-check.svg", 9., c(ACCENT_FG())))
-            .into_any_element(),
-        Status::Canceled => ring(c(MUTED_FG()))
-            .child(icon("icons/status-x.svg", 9., c(MUTED_FG())))
-            .into_any_element(),
-        Status::Started => canvas(
-            |_, _, _| (),
-            move |bounds, _, window, _| {
-                let cx = bounds.center().x;
-                let cy = bounds.center().y;
-                let r: f32 = 5.4;
-                let mut pb = PathBuilder::fill();
-                pb.move_to(point(cx, cy - px(r)));
-                let n = 20;
-                for i in 1..=n {
-                    let a = -90.0f32.to_radians() + (i as f32 / n as f32) * 180.0f32.to_radians();
-                    pb.line_to(point(cx + px(r * a.cos()), cy + px(r * a.sin())));
-                }
-                pb.close();
-                let path = pb.build().unwrap();
-                window.paint_path(path, c(WARN()));
-                // ring border
-                let n2 = 40;
-                let ro: f32 = 6.25;
-                let ri: f32 = 4.75;
-                for i in 0..n2 {
-                    let a0 = (i as f32 / n2 as f32) * 360.0f32.to_radians();
-                    let a1 = ((i + 1) as f32 / n2 as f32) * 360.0f32.to_radians();
-                    let mut seg = PathBuilder::fill();
-                    seg.move_to(point(cx + px(ro * a0.cos()), cy + px(ro * a0.sin())));
-                    seg.line_to(point(cx + px(ro * a1.cos()), cy + px(ro * a1.sin())));
-                    seg.line_to(point(cx + px(ri * a1.cos()), cy + px(ri * a1.sin())));
-                    seg.line_to(point(cx + px(ri * a0.cos()), cy + px(ri * a0.sin())));
-                    seg.close();
-                    window.paint_path(seg.build().unwrap(), c(WARN()));
-                }
-            },
-        )
+    let ring = div()
         .w(px(14.))
         .h(px(14.))
+        .rounded_full()
+        .border(px(1.5))
         .flex_none()
-        .into_any_element(),
-        Status::Deferred => canvas(
-            |_, _, _| (),
-            move |bounds, _, window, _| {
-                let cx = bounds.center().x;
-                let cy = bounds.center().y;
-                let ro: f32 = 6.25;
-                let ri: f32 = 4.75;
-                let dashes = 8;
-                for i in 0..dashes {
-                    let a0 = (i as f32 / dashes as f32) * 360.0f32.to_radians() + 0.10;
-                    let a1 = ((i + 1) as f32 / dashes as f32) * 360.0f32.to_radians() - 0.10;
-                    let mut seg = PathBuilder::fill();
-                    seg.move_to(point(cx + px(ro * a0.cos()), cy + px(ro * a0.sin())));
-                    seg.line_to(point(cx + px(ro * a1.cos()), cy + px(ro * a1.sin())));
-                    seg.line_to(point(cx + px(ri * a1.cos()), cy + px(ri * a1.sin())));
-                    seg.line_to(point(cx + px(ri * a0.cos()), cy + px(ri * a0.sin())));
-                    seg.close();
-                    window.paint_path(seg.build().unwrap(), rgba(MUTED_FG(), 0.6));
-                }
-            },
-        )
-        .w(px(14.))
-        .h(px(14.))
-        .flex_none()
-        .into_any_element(),
-        _ => ring(c(MUTED_FG())).into_any_element(),
+        .grid()
+        .items_center()
+        .justify_center();
+    if status == Status::Done {
+        ring.border_color(c(ACCENT())).bg(c(ACCENT())).child(icon(
+            "icons/status-check.svg",
+            9.,
+            c(ACCENT_FG()),
+        ))
+    } else {
+        ring.border_color(c(MUTED_FG()))
     }
 }
 

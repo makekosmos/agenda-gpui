@@ -23,8 +23,7 @@ fn mapping_preserves_unrepresented_fields() {
         target: "real-project".into(),
     }];
     let before = mapping::read(&original, &links).unwrap();
-    assert_eq!(before.status, Status::Started);
-    assert_eq!(before.price, Some(150.75));
+    assert_eq!(before.status, Status::Todo);
     assert_eq!(before.notes.as_deref(), Some("Rich notes"));
     assert_eq!(before.project_id.as_deref(), Some("real-project"));
     assert!(is_due_this_week(
@@ -37,18 +36,13 @@ fn mapping_preserves_unrepresented_fields() {
     assert_eq!(written["contentJson"], original["contentJson"]);
     assert_eq!(written["propsJson"], original["propsJson"]);
     assert_eq!(mapping::read(&written, &links).unwrap(), edited);
-    edited.status = Status::Deferred;
+    edited.is_someday = true;
     let deferred = mapping::write(written, Some(&before), &edited).unwrap();
-    assert_eq!(
-        mapping::read(&deferred, &links).unwrap().status,
-        Status::Deferred
-    );
-    edited.status = Status::Todo;
+    assert!(mapping::read(&deferred, &links).unwrap().is_someday);
+    assert_eq!(deferred["propsJson"]["extensions"]["price"], json!(150.75));
+    edited.is_someday = false;
     let resumed = mapping::write(deferred, None, &edited).unwrap();
-    assert_eq!(
-        mapping::read(&resumed, &links).unwrap().status,
-        Status::Todo
-    );
+    assert!(!mapping::read(&resumed, &links).unwrap().is_someday);
 }
 
 #[test]

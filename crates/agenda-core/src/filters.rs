@@ -4,23 +4,15 @@ use crate::types::{Status, Todo};
 use chrono::NaiveDate;
 
 pub fn task_status(t: &Todo) -> Status {
-    if t.is_cancelled || t.status == Status::Canceled {
-        return Status::Canceled;
-    }
     if t.is_completed || t.status == Status::Done {
-        return Status::Done;
-    }
-    match t.status {
-        Status::Started => Status::Started,
-        Status::Deferred => Status::Deferred,
-        Status::Todo => Status::Todo,
-        _ => Status::Inbox,
+        Status::Done
+    } else {
+        t.status
     }
 }
 
 pub fn is_active(t: &Todo) -> bool {
-    let s = task_status(t);
-    s != Status::Done && s != Status::Canceled && !t.is_trashed
+    task_status(t) != Status::Done && !t.is_trashed
 }
 
 pub fn is_inbox(t: &Todo) -> bool {
@@ -30,9 +22,9 @@ pub fn is_inbox(t: &Todo) -> bool {
 pub fn is_deferred(t: &Todo) -> bool {
     // The someday flag is only meaningful on a live task: `complete_todo`
     // leaves it set on the finished copy, and Engine data from other clients
-    // can arrive as Done/Canceled + is_someday — either way a closed task
-    // must not keep a row in «Потом».
-    is_active(t) && (task_status(t) == Status::Deferred || t.is_someday)
+    // can arrive as Done + is_someday — either way a closed task must not
+    // keep a row in «Потом».
+    is_active(t) && t.is_someday
 }
 
 pub fn is_overdue(t: &Todo, day: &LocalDay) -> bool {
@@ -84,10 +76,8 @@ pub fn completed_in_week(t: &Todo, week: &(String, String), day: &LocalDay) -> b
             .is_some_and(|d| d >= week.0.as_str() && d <= week.1.as_str())
 }
 
-/// The local day a task was completed, for statistics aggregation. Only
-/// genuinely-done tasks count: canceled tasks carry a `completed_at` stamp
-/// (it doubles as "closed at") but are not completions, and trashed tasks
-/// are excluded from every count.
+/// The local day a task was completed, for statistics aggregation. Trashed
+/// tasks are excluded from every count.
 pub fn completed_day(t: &Todo, day: &LocalDay) -> Option<NaiveDate> {
     if task_status(t) != Status::Done || t.is_trashed {
         return None;

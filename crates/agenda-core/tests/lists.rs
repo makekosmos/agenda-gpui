@@ -105,7 +105,7 @@ fn smart_lists_on_a_fixed_date() {
     next_week.scheduled_date = Some("2026-10-13".into());
 
     let mut someday = new_todo("s", "someday");
-    someday.status = Status::Deferred;
+    someday.status = Status::Todo;
     someday.is_someday = true;
 
     let mut done = new_todo("d", "archived");

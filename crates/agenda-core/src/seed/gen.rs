@@ -60,21 +60,13 @@ pub fn gen_random_todos_at(
                     (rng() % 60) as u32,
                 ));
             } else {
-                t.status = match rng() % 100 {
-                    0..=19 => Status::Inbox,
-                    20..=59 => Status::Todo,
-                    60..=74 => Status::Started,
-                    75..=89 => Status::Deferred,
-                    _ => Status::Canceled,
+                let roll = rng() % 100;
+                t.status = if roll < 20 {
+                    Status::Inbox
+                } else {
+                    Status::Todo
                 };
-                match t.status {
-                    Status::Canceled => {
-                        t.is_cancelled = true;
-                        t.completed_at = Some(day.iso_at(-((rng() % 180) as i64), 12, 0));
-                    }
-                    Status::Deferred => t.is_someday = rng() % 100 < 60,
-                    _ => {}
-                }
+                t.is_someday = roll >= 75;
                 if rng() % 100 < 6 {
                     t.is_today = true;
                 }

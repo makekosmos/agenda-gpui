@@ -8,18 +8,12 @@ use crate::filters::task_status;
 use crate::quick_entry::{parse_project_mention, parse_quick_entry_capture};
 use crate::types::{Project, Status, Todo};
 
-/// `set_todo_status` non-Done arm: status plus every derived flag.
-/// `now` is an RFC3339 instant — Canceled still stamps `completed_at`.
-pub fn set_status(t: &mut Todo, status: Status, now: &str) {
+/// `set_todo_status` non-Done arm: reopen with every derived flag cleared.
+pub fn set_status(t: &mut Todo, status: Status) {
     t.status = status;
     t.is_completed = false;
-    t.completed_at = if status == Status::Canceled {
-        Some(now.to_string())
-    } else {
-        None
-    };
-    t.is_cancelled = status == Status::Canceled;
-    t.is_someday = status == Status::Deferred;
+    t.completed_at = None;
+    t.is_someday = false;
     t.is_today = false;
 }
 
@@ -27,7 +21,6 @@ pub fn set_status(t: &mut Todo, status: Status, now: &str) {
 pub fn complete_fields(t: &mut Todo, now: &str) {
     t.status = Status::Done;
     t.is_completed = true;
-    t.is_cancelled = false;
     t.completed_at = Some(now.to_string());
 }
 
@@ -113,7 +106,8 @@ pub fn quick_entry_decision(
     };
     let mut is_someday = false;
     if someday {
-        status = Status::Deferred;
+        // Placed in «Потом», so not an Inbox task.
+        status = Status::Todo;
         is_someday = true;
         scheduled = None;
     }

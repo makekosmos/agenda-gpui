@@ -47,25 +47,45 @@ fn read_planning_kinds_map_to_status_and_schedule() {
     let deferred =
         stored(json!({"planning":{"kind":"someday"},"extensions":{"status":"deferred"}}));
     let deferred = mapping::read(&deferred, &[]).unwrap();
-    assert_eq!(deferred.status, Status::Deferred);
+    assert_eq!(deferred.status, Status::Todo);
     assert!(deferred.is_someday);
 }
 
 #[test]
+fn legacy_states_read_as_two_states_and_survive_edits() {
+    let read = |state: &str, ext: Value| {
+        let object = stored(json!({"state":{"kind":state,"at":null},
+            "planning":{"kind":"anytime"},"extensions":ext}));
+        (object.clone(), mapping::read(&object, &[]).unwrap())
+    };
+    // Canceled is closed: done, but no completion stamp for statistics.
+    let (canceled, todo) = read("canceled", json!({}));
+    assert_eq!(todo.status, Status::Done);
+    assert!(todo.is_completed && todo.completed_at.is_none());
+    let mut moved = todo.clone();
+    moved.scheduled_date = Some("2026-10-30".into());
+    let written = mapping::write_at(canceled, Some(&todo), &moved, NOW).unwrap();
+    assert_eq!(written["propsJson"]["state"]["kind"], "canceled");
+    // In progress is open; reopening keeps the stored kind until completed.
+    let (started, todo) = read("inProgress", json!({}));
+    assert_eq!(todo.status, Status::Todo);
+    assert!(!todo.is_completed);
+    let mut moved = todo.clone();
+    moved.is_today = true;
+    let written = mapping::write_at(started, Some(&todo), &moved, NOW).unwrap();
+    assert_eq!(written["propsJson"]["state"]["kind"], "inProgress");
+    // Old «deferred» status without a someday plan still lands in «Потом».
+    let (_, todo) = read("open", json!({"status":"deferred"}));
+    assert!(todo.is_someday && todo.status == Status::Todo);
+}
+
+#[test]
 fn write_then_read_round_trips_every_status() {
-    for status in [
-        Status::Inbox,
-        Status::Todo,
-        Status::Started,
-        Status::Deferred,
-        Status::Done,
-        Status::Canceled,
-    ] {
+    for status in [Status::Inbox, Status::Todo, Status::Done] {
         let mut todo = new_todo("t1", "Задача");
         todo.created_at = "2026-09-20T10:00:00Z".into();
         todo.status = status;
         todo.is_completed = status == Status::Done;
-        todo.is_cancelled = status == Status::Canceled;
         todo.completed_at = (status == Status::Done).then(|| "2026-10-12T09:30:00Z".to_owned());
         todo.notes = Some("заметка".into());
         let object = mapping::write_at(Value::Null, None, &todo, NOW).unwrap();
