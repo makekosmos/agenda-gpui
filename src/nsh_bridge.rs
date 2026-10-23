@@ -104,6 +104,25 @@ fn snapshot(agenda: &Agenda, route: &str) -> Value {
         .filter(|todo| todo.is_completed && !todo.is_trashed)
         .count();
     let trashed = agenda.todos.iter().filter(|todo| todo.is_trashed).count();
+    let theme_idx = agenda
+        .appearance
+        .as_ref()
+        .map(|appearance| appearance.theme_index(agenda.theme_sel != 0))
+        .unwrap_or(agenda.theme_idx);
+    let theme = crate::palettes::THEMES
+        .get(theme_idx)
+        .unwrap_or(&crate::palettes::THEMES[0]);
+    let palette = if agenda.theme_sel == 0 {
+        &theme.light
+    } else {
+        &theme.dark
+    };
+    let color = |value: u32| format!("#{value:06x}");
+    let accent = agenda
+        .appearance
+        .as_ref()
+        .and_then(|appearance| appearance.accent())
+        .unwrap_or(palette.accent);
     json!({
         "route": route,
         "title": agenda.page_title().0.to_string(),
@@ -115,6 +134,18 @@ fn snapshot(agenda: &Agenda, route: &str) -> Value {
         "todoCount": agenda.todos.len(),
         "version": env!("CARGO_PKG_VERSION"),
         "activity": agenda.nsh_activity(),
+        "appearance": agenda.appearance,
+        "appearanceEditable": agenda.appearance_editable(),
+        "themes": crate::palettes::THEMES.iter().map(|theme| json!({"key": theme.key, "name": theme.name})).collect::<Vec<_>>(),
+        "colors": {
+            "background": color(palette.bg),
+            "foreground": color(palette.fg),
+            "muted": color(palette.muted_fg),
+            "border": color(palette.border),
+            "accent": color(accent),
+            "card": color(palette.card),
+        },
+        "sidebarVisible": agenda.sidebar_target > 0.5,
     })
 }
 
@@ -156,6 +187,7 @@ impl NativeComponent for AgendaBridge {
 
     fn command(&mut self, name: &str, args: &Value, _window: &mut Window, cx: &mut App) {
         match name {
+            "snapshot" => self.publish(cx),
             "complete" => {
                 if let Some(id) = args.get("id").and_then(Value::as_str) {
                     let id = id.to_owned();
@@ -171,6 +203,21 @@ impl NativeComponent for AgendaBridge {
                         .update(cx, |agenda, _| agenda.create_nsh_todo(&title));
                     self.publish(cx);
                 }
+            }
+            "appearance.set" => {
+                if let Some(patch) = args.as_object() {
+                    self.agenda.update(cx, |agenda, cx| {
+                        agenda.persist_appearance_patch(Value::Object(patch.clone()), cx);
+                    });
+                    self.publish(cx);
+                }
+            }
+            "toggle-sidebar" => {
+                self.agenda
+                    .update(cx, |agenda, cx| agenda.toggle_sidebar(cx));
+            }
+            "reload" => {
+                self.agenda.update(cx, |agenda, _| agenda.reload_storage());
             }
             _ => {}
         }

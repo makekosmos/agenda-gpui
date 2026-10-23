@@ -18,6 +18,17 @@ test("opens secondary routes from the sidebar", async () => {
   expect(app.texts()).toContain("Корзина");
 });
 
+test("shows editable Engine appearance settings and custom shortcuts", async () => {
+  const app = await open("./App.tsx");
+  await app.press("Другое");
+  await app.press("Настройки");
+  expect(app.texts()).toContain("Плотность интерфейса");
+  expect(app.texts()).toContain("Светлая тема");
+  expect(app.texts()).toContain("Акцентный цвет");
+  await app.press("Изменить сочетание: Боковая панель — открыть/скрыть");
+  await app.waitUntil(() => app.storage()["mundus.agenda.shortcuts.v1"]?.includes("mod+shift+b") === true);
+});
+
 test("opens and closes a task draft", async () => {
   const app = await open("./App.tsx");
   await app.press("Новая задача");

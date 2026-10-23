@@ -19,6 +19,8 @@ use gpui::{AnyWindowHandle, App, AppContext as _, AsyncApp, Entity, Keystroke, M
 
 use crate::app::{Agenda, Route};
 
+mod nsh_host;
+mod nsh_stage3;
 mod scenarios;
 use scenarios::{create, offline, persist};
 
@@ -76,6 +78,7 @@ pub fn run(window: AnyWindowHandle, agenda: Entity<Agenda>, cx: &mut App) {
                     );
                 }
             }
+            "nsh-stage3" => run.nsh_stage3(cx).await,
             "create" => create(&run, cx).await,
             "persist" => persist(&run, cx).await,
             "offline" => offline(&run, cx).await,
@@ -156,6 +159,10 @@ impl Run {
         });
     }
 
+    async fn nsh_stage3(&self, cx: &mut AsyncApp) {
+        nsh_stage3::run(self, cx).await;
+    }
+
     /// Polls `done` until it holds or `timeout` passes; returns whether it held.
     async fn wait_until(
         &self,
@@ -171,18 +178,6 @@ impl Run {
             self.sleep(cx, 100).await;
         }
         self.read(cx, &done)
-    }
-
-    /// Dispatches one keystroke and draws a frame. An onscreen window repaints
-    /// on the next vsync; macOS stops driving an offscreen one, so we ask for
-    /// the frame that a user's display would have produced.
-    fn keystroke(&self, cx: &mut AsyncApp, keystroke: Keystroke) {
-        cx.update_window(self.window, |_, window, cx| {
-            window.dispatch_keystroke(keystroke, cx);
-            window.refresh();
-            window.draw(cx).clear(cx);
-        })
-        .expect("window alive");
     }
 
     async fn press(&self, cx: &mut AsyncApp, key: &str) {
@@ -206,11 +201,13 @@ impl Run {
 
     /// Lets the window paint the current state, then saves it as `<name>.png`.
     async fn shot(&self, cx: &mut AsyncApp, name: &str) {
-        self.sleep(cx, 300).await;
+        self.sleep(cx, 150).await;
         let image = cx
             .update_window(self.window, |_, window, cx| {
-                window.refresh();
-                window.draw(cx).clear(cx);
+                for _ in 0..3 {
+                    window.refresh();
+                    window.draw(cx).clear(cx);
+                }
                 window.render_to_image()
             })
             .expect("window alive");

@@ -698,7 +698,7 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-someday-1", "Собрать домашний кинотеатр");
             t.status = Status::Todo;
             t.is_someday = true;
-            t.project_id = Some("dev-proj-someday".into());
+            t.project_id = Some("dev-proj-home".into());
             t
         },
         {
@@ -736,7 +736,7 @@ pub fn seed_todos() -> Vec<Todo> {
 /// year so the statistics heatmap has data to show. Ids are namespaced as
 /// `dev-gen-{batch}-{i}` so batches never collide.
 pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec<Todo> {
-    const PROJECTS: [&str; 3] = ["dev-proj-release", "dev-proj-home", "dev-proj-someday"];
+    const PROJECTS: [&str; 2] = ["dev-proj-release", "dev-proj-home"];
 
     let mut s = (seed | 1).wrapping_add(0x9E37_79B9_7F4A_7C15);
     let mut rng = move || {
@@ -795,7 +795,7 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                 }
             }
             if rng() % 100 < 35 {
-                t.project_id = Some(PROJECTS[(rng() % 3) as usize].into());
+                t.project_id = Some(PROJECTS[(rng() % 2) as usize].into());
             }
             if rng() % 100 < 15 {
                 t.notes = Some(rand_chars(&mut rng, 12));
@@ -818,12 +818,6 @@ pub fn seed_projects() -> Vec<Project> {
             title: "Дом и быт".into(),
             status: 0,
             sort_order: 1,
-        },
-        Project {
-            id: "dev-proj-someday".into(),
-            title: "Путешествие в Японию".into(),
-            status: 1,
-            sort_order: 2,
         },
     ]
 }

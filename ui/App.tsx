@@ -1,93 +1,143 @@
-import { Input, mount, Scroll, signal, Text, View } from "nsh";
+import { Canvas } from "nsh/canvas";
+import { effect, Input, Image, mount, Scroll, signal, Text, View } from "nsh";
 import { nativeComponent } from "nsh/native";
+import { keymap } from "nsh/keymap";
+import { Storage } from "nsh/storage";
+import { SettingsPanel } from "./SettingsPanel";
+import { AboutIcon, CheckIcon, InboxIcon, LogbookIcon, MoreIcon, NextWeekIcon, PlusIcon, ProjectIcon, SettingsIcon, SomedayIcon, StatisticsIcon, TrashIcon, WeekIcon } from "./icons";
 
 type Route = "inbox" | "week" | "next-week" | "someday" | "logbook" | "project" | "statistics" | "settings" | "about" | "trash";
 type Todo = { id: string; title: string; is_completed: boolean; scheduled_date?: string; notes?: string };
 type Project = { id: string; title: string; status: number };
-type Snapshot = { route: Route; title: string; todos: Todo[]; projects: Project[]; project?: Project; archivedCount: number; trashCount: number; todoCount: number; version: string; activity: { label: string; done: number }[] };
+type Appearance = { settings: { mode: string; light_theme: string; dark_theme: string; accent_source: string; accent_color?: string; material: string; font_size: number; font_family: string }; policy: { following: boolean; editable: boolean }; capabilities: { materials: string[]; wallpaper_accent: boolean } };
+type Theme = { key: string; name: string };
+type Colors = { background: string; foreground: string; muted: string; border: string; accent: string; card: string };
+type Snapshot = { route: Route; title: string; todos: Todo[]; projects: Project[]; project?: Project; archivedCount: number; trashCount: number; todoCount: number; version: string; activity: { label: string; done: number }[]; appearance?: Appearance; appearanceEditable: boolean; themes: Theme[]; colors: Colors; sidebarVisible: boolean };
 
-const initial: Snapshot = { route: "inbox", title: "Входящие", todos: [], projects: [], archivedCount: 0, trashCount: 0, todoCount: 0, version: "", activity: [] };
+const initial: Snapshot = { route: "inbox", title: "Входящие", todos: [], projects: [], archivedCount: 0, trashCount: 0, todoCount: 0, version: "", activity: [], appearance: { settings: { mode: "dark", light_theme: "default", dark_theme: "default", accent_source: "theme", material: "default", font_size: 13, font_family: "Inter" }, policy: { following: false, editable: true }, capabilities: { materials: ["default", "frosted", "mica"], wallpaper_accent: false } }, appearanceEditable: true, themes: [{ key: "default", name: "Default" }, { key: "claude", name: "Claude" }, { key: "graphite", name: "Graphite" }], colors: { background: "#0d0c10", foreground: "#e7e5ea", muted: "#8d8a94", border: "#27262a", accent: "#af94f9", card: "#131216" }, sidebarVisible: true };
 const snapshot = signal(initial);
 const route = signal<Route>("inbox");
 const selectedProjectId = signal("dev-proj-release");
 const otherOpen = signal(false);
 const addOpen = signal(false);
 const newTitle = signal("");
+const quickSearchOpen = signal(false);
+const quickSearchQuery = signal("");
+const sidebarVisible = signal(true);
+const shortcutNames = ["sidebar", "create", "search", "reload"] as const;
+type ShortcutName = typeof shortcutNames[number];
+type Shortcuts = Record<ShortcutName, string>;
+const defaultShortcuts: Shortcuts = { sidebar: "mod+b", create: "mod+n", search: "mod+k", reload: "mod+r" };
+const shortcutOptions: Record<ShortcutName, string[]> = {
+  sidebar: ["mod+b", "mod+shift+b"],
+  create: ["mod+n", "mod+shift+n"],
+  search: ["mod+k", "mod+shift+k"],
+  reload: ["mod+r", "mod+shift+r"],
+};
+const shortcuts = signal<Shortcuts>(defaultShortcuts);
+void Storage.getItem("mundus.agenda.shortcuts.v1").then((value) => {
+  if (!value) return;
+  try {
+    const saved = JSON.parse(value) as Partial<Shortcuts>;
+    shortcuts.set(Object.fromEntries(shortcutNames.map((name) => [name, shortcutOptions[name].includes(saved[name] ?? "") ? saved[name] : defaultShortcuts[name]])) as Shortcuts);
+  } catch { /* A damaged preference falls back to the defaults. */ }
+});
 const Bridge = nativeComponent<{ route: Route; projectId: string }, { state: Snapshot }>("agenda.bridge", {
   props: ["route", "projectId"],
   events: ["state"],
 });
 
 const navigation: [Route, string, string][] = [
-  ["inbox", "▱", "Входящие"],
-  ["week", "▦", "Эта неделя"],
-  ["next-week", "▦", "Следующая неделя"],
-  ["someday", "◷", "Потом"],
+  ["inbox", InboxIcon, "Входящие"],
+  ["week", WeekIcon, "Эта неделя"],
+  ["next-week", NextWeekIcon, "Следующая неделя"],
+  ["someday", SomedayIcon, "Потом"],
 ];
 const otherPages: [Route, string, string][] = [
-  ["logbook", "▤", "Архив"],
-  ["statistics", "▥", "Активность"],
-  ["settings", "⚙", "Настройки"],
-  ["about", "ⓘ", "О приложении"],
-  ["trash", "⌫", "Корзина"],
+  ["logbook", LogbookIcon, "Архив"],
+  ["statistics", StatisticsIcon, "Активность"],
+  ["settings", SettingsIcon, "Настройки"],
+  ["about", AboutIcon, "О приложении"],
+  ["trash", TrashIcon, "Корзина"],
 ];
 
-function NavRow(props: { item: [Route, string, string] }) {
+function NavRow(props: { item: [Route, ImageAsset, string] }) {
   const [target, icon, label] = props.item;
   return (
     <View
       onPress={() => route.set(target)}
       role="button"
       accessibilityState={{ selected: route() === target }}
-      class={`h-8 flex-row items-center gap-2 rounded-lg px-2.5 ${route() === target ? "bg-[#28282c]" : ""}`}
+      class="h-8 flex-row items-center gap-2 rounded-lg px-2.5"
+      style={{ backgroundColor: route() === target ? snapshot().colors.card : "transparent" }}
     >
-      <Text class="w-4 text-center text-[15px] text-[#96969e]">{icon}</Text>
-      <Text class={`text-[13px] ${route() === target ? "text-[#f2f2f4]" : "text-[#a0a0aa]"}`}>{label}</Text>
+      <Image src={icon} style={{ width: 16, height: 16, tintColor: snapshot().colors.muted }} />
+      <Text class="text-[13px]" style={{ color: route() === target ? snapshot().colors.foreground : snapshot().colors.muted }}>{label}</Text>
     </View>
   );
 }
 
 function TaskRows() {
   return <Each of={snapshot().todos}>{(todo) => (
-    <View class="h-[37px] flex-row items-center border-b border-[#242428] px-3">
-      <View onPress={() => commandRef?.("complete", { id: todo().id })} role="checkbox" accessibilityLabel={todo().title} accessibilityState={{ checked: todo().is_completed }} class={`mr-3 h-[14px] w-[14px] rounded-full border ${todo().is_completed ? "border-[#b18aff] bg-[#b18aff]" : "border-[#74747d]"}`}>
-        {todo().is_completed && <Text class="text-[9px] text-[#17171a]">✓</Text>}
+    <View class="flex-row items-center border-b px-3" style={{ height: 37 * (snapshot().appearance?.settings.font_size ?? 13) / 13, borderColor: snapshot().colors.border }}>
+      <View onPress={() => commandRef?.("complete", { id: todo().id })} role="checkbox" accessibilityLabel={todo().title} accessibilityState={{ checked: todo().is_completed }} class="mr-3 h-[14px] w-[14px] items-center justify-center rounded-full border" style={{ borderColor: todo().is_completed ? snapshot().colors.accent : snapshot().colors.muted, backgroundColor: todo().is_completed ? snapshot().colors.accent : "transparent" }}>
+        {todo().is_completed && <Image src={CheckIcon} style={{ width: 10, height: 10, tintColor: snapshot().colors.background }} />}
       </View>
-      <Text class={`text-[13px] ${todo().is_completed ? "text-[#85858e] line-through" : "text-[#f0f0f2]"}`}>{todo().title}</Text>
+      <Text class={todo().is_completed && snapshot().route !== "logbook" ? "line-through" : ""} style={{ fontSize: snapshot().appearance?.settings.font_size ?? 13, color: todo().is_completed && snapshot().route !== "logbook" ? snapshot().colors.muted : snapshot().colors.foreground }}>{todo().title}</Text>
     </View>
   )}</Each>;
 }
 
 let commandRef: ((name: string, args?: unknown) => void) | undefined;
 
+function setAppearance(patch: Record<string, unknown>) {
+  const current = snapshot();
+  if (current.appearance && current.appearanceEditable) {
+    snapshot.set({
+      ...current,
+      appearance: {
+        ...current.appearance,
+        settings: { ...current.appearance.settings, ...patch } as Appearance["settings"],
+      },
+    });
+  }
+  commandRef?.("appearance.set", patch);
+}
+
+function cycleShortcut(name: ShortcutName) {
+  const current = shortcuts();
+  const choices = shortcutOptions[name];
+  const next = choices[(choices.indexOf(current[name]) + 1) % choices.length];
+  const updated = { ...current, [name]: next };
+  shortcuts.set(updated);
+  void Storage.setItem("mundus.agenda.shortcuts.v1", JSON.stringify(updated));
+}
+
+effect(() => {
+  const active = shortcuts();
+  const unbind = [
+    keymap.bind(active.sidebar, () => commandRef?.("toggle-sidebar"), { when: "notEditing" }),
+    keymap.bind(active.create, () => { newTitle.set(""); addOpen.set(true); }, { when: "notEditing" }),
+    keymap.bind(active.search, () => { quickSearchQuery.set(""); quickSearchOpen.set(true); }, { when: "notEditing" }),
+    keymap.bind(active.reload, () => commandRef?.("reload"), { when: "notEditing" }),
+  ];
+  return () => unbind.forEach((remove) => remove());
+});
+
 function SectionTitle(props: { children: string }) {
-  return <Text class="mb-3 text-[13px] text-[#96969e]">{props.children}</Text>;
+  return <Text class="mb-3 text-[13px]" style={{ color: snapshot().colors.muted }}>{props.children}</Text>;
 }
 
 function SettingsPage() {
-  return <Scroll class="min-h-0 flex-1 px-7 pt-4 pb-8">
-    <View class="mx-auto w-full max-w-[720px]">
-      <Text class="mb-6 text-[24px] font-bold text-[#f0f0f2]">Отображение</Text>
-      <Text class="mb-4 text-[13px] text-[#82828c]">Внешний вид</Text>
-      <View class="mb-6 flex-row gap-4">
-        {[["▤", "Системная"], ["☼", "Светлая"], ["☾", "Тёмная"]].map(([icon, label]) => <View class="h-[138px] flex-1 rounded-lg border border-[#242428] bg-[#151518] p-3">
-          <View class="mb-3 h-[75px] rounded-md bg-[#222226] p-2"><View class="h-2 w-1/2 rounded bg-[#45454b]" /><View class="mt-2 h-2 w-4/5 rounded bg-[#37373d]" /></View>
-          <Text class="text-center text-[12px] text-[#888891]">{icon} {label}</Text>
-        </View>)}
-      </View>
-      <View class="mb-6 rounded-xl bg-[#17171a] p-4">
-        {["Светлая тема", "Тёмная тема", "Акцентный цвет", "Цвета обоев"].map((label) => <View class="h-11 flex-row items-center border-b border-[#252529]"><Text class="flex-1 text-[13px] text-[#e1e1e5]">{label}</Text><Text class="text-[12px] text-[#85858e]">По умолчанию</Text></View>)}
-      </View>
-      <SectionTitle>Материал</SectionTitle>
-      <View class="mb-6 h-14 flex-row items-center rounded-xl bg-[#17171a] px-4"><Text class="flex-1 text-[13px] text-[#e1e1e5]">Стекло</Text><Text class="text-[12px] text-[#85858e]">Сплошные поверхности</Text></View>
-      <SectionTitle>Шрифты</SectionTitle>
-      <View class="mb-6 h-14 flex-row items-center rounded-xl bg-[#17171a] px-4"><Text class="flex-1 text-[13px] text-[#e1e1e5]">Шрифт интерфейса</Text><Text class="text-[12px] text-[#85858e]">Системный</Text></View>
-      <SectionTitle>Горячие клавиши</SectionTitle>
-      <View class="rounded-xl bg-[#17171a] px-4">
-        {["Боковая панель — открыть/скрыть", "Новая задача — панель справа", "Быстрый поиск", "Обновить данные из Engine", "Сохранить задачу / название", "Новая строка в поле", "Закрыть панель / меню / поиск"].map((label, i) => <View class="h-10 flex-row items-center"><Text class="flex-1 text-[13px] text-[#e1e1e5]">{label}</Text><Text class="text-[12px] text-[#85858e]">{["Win+B", "Win+N", "Win+K", "Win+R", "Enter", "Shift+Enter", "Esc"][i]}</Text></View>)}
-      </View>
-    </View>
-  </Scroll>;
+  return <SettingsPanel
+    appearance={snapshot().appearance}
+    editable={snapshot().appearanceEditable}
+    themes={snapshot().themes}
+    colors={snapshot().colors}
+    shortcuts={shortcuts()}
+    onPatch={setAppearance}
+    onChangeShortcut={cycleShortcut}
+  />;
 }
 
 function StatisticsPage() {
@@ -101,10 +151,25 @@ function StatisticsPage() {
           })}
         </View>}</Each>
       </View>
-      <View class="mt-3 h-[200px] border-b border-[#3a3a40]">
-        {["20%", "40%", "60%", "80%"].map((_) => <View class="h-1/4 border-b border-dashed border-[#252529]" />)}
+      <View class="mt-3 h-[200px] border-b" style={{ borderColor: snapshot().colors.border }}>
+        {["20%", "40%", "60%", "80%"].map((_) => <View class="h-1/4 border-b border-dashed" style={{ borderColor: snapshot().colors.border }} />)}
+        <Canvas class="absolute inset-0" draw={(ctx, size) => {
+          const values = snapshot().activity;
+          if (values.length < 2) return;
+          const maximum = Math.max(1, ...values.map((point) => point.done));
+          ctx.beginPath();
+          values.forEach((point, index) => {
+            const x = (index / (values.length - 1)) * size.width;
+            const y = size.height - (point.done / maximum) * size.height;
+            if (index === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+          });
+          ctx.strokeStyle = snapshot().colors.accent;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }} />
       </View>
-      <View class="mt-2 flex-row justify-between px-4"><Text class="text-[10px] text-[#85858e]">1 дек.</Text><Text class="text-[10px] text-[#85858e]">12 янв.</Text><Text class="text-[10px] text-[#85858e]">23 февр.</Text><Text class="text-[10px] text-[#85858e]">6 апр.</Text><Text class="text-[10px] text-[#85858e]">18 мая</Text><Text class="text-[10px] text-[#85858e]">29 июня</Text><Text class="text-[10px] text-[#85858e]">10 авг.</Text><Text class="text-[10px] text-[#85858e]">21 сент.</Text></View>
+      <View class="mt-2 flex-row justify-between px-4"><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>1 дек.</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>12 янв.</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>23 февр.</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>6 апр.</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>18 мая</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>29 июня</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>10 авг.</Text><Text class="text-[10px]" style={{ color: snapshot().colors.muted }}>21 сент.</Text></View>
     </View>
   </View>;
 }
@@ -113,15 +178,15 @@ function InfoPage() {
   return <Scroll class="flex-1 px-7 pt-12">
     <View class="mx-auto w-full max-w-[760px]">
       <View class="mb-6 items-center">
-        <Text class="mb-2 text-[64px] text-[#b18aff]">▦</Text>
-        <Text class="mb-2 text-[23px] font-bold text-[#f0f0f2]">Agenda</Text>
-        <Text class="mb-2 text-[13px] text-[#a0a0aa]">Версия {snapshot().version}</Text>
-        <Text class="text-[12px] text-[#85858e]">© Yoso Industries 2025–2026</Text>
+        <Image src={WeekIcon} style={{ width: 64, height: 64, tintColor: snapshot().colors.accent }} />
+        <Text class="mb-2 text-[23px] font-bold" style={{ color: snapshot().colors.foreground }}>Agenda</Text>
+        <Text class="mb-2 text-[13px]" style={{ color: snapshot().colors.muted }}>Версия {snapshot().version}</Text>
+        <Text class="text-[12px]" style={{ color: snapshot().colors.muted }}>© Yoso Industries 2025–2026</Text>
       </View>
-      <Text class="mb-3 text-[13px] text-[#e1e1e5]">Диагностика</Text>
-      <View class="h-10 flex-row items-center rounded-xl bg-[#17171a] px-4">
-        <View class="mr-3 h-4 w-4 items-center justify-center rounded-full border border-[#8ec07c]"><Text class="text-[10px] text-[#8ec07c]">✓</Text></View>
-        <Text class="text-[13px] text-[#e1e1e5]">Всё в порядке</Text>
+      <Text class="mb-3 text-[13px]" style={{ color: snapshot().colors.foreground }}>Диагностика</Text>
+      <View class="h-10 flex-row items-center rounded-xl px-4" style={{ backgroundColor: snapshot().colors.card }}>
+        <View class="mr-3 h-4 w-4 items-center justify-center rounded-full border" style={{ borderColor: snapshot().colors.accent }}><Image src={CheckIcon} style={{ width: 10, height: 10, tintColor: snapshot().colors.accent }} /></View>
+        <Text class="text-[13px]" style={{ color: snapshot().colors.foreground }}>Всё в порядке</Text>
       </View>
     </View>
   </Scroll>;
@@ -131,76 +196,88 @@ function SummaryPage() {
   const route = snapshot().route;
   const count = route === "logbook" ? snapshot().archivedCount : snapshot().trashCount;
   return <View class="flex-1 items-center justify-center">
-    <Text class="mb-2 text-[14px] text-[#a0a0aa]">{route === "logbook" ? "Архив пуст" : "Корзина пуста"}</Text>
-    <Text class="text-[12px] text-[#777780]">{count ? `${count} задач` : route === "logbook" ? "Завершённые задачи хранятся здесь" : "Удалённые задачи попадают сюда"}</Text>
+    <Text class="mb-2 text-[14px]" style={{ color: snapshot().colors.muted }}>{route === "logbook" ? "Архив пуст" : "Корзина пуста"}</Text>
+    <Text class="text-[12px]" style={{ color: snapshot().colors.muted }}>{count ? `${count} задач` : route === "logbook" ? "Завершённые задачи хранятся здесь" : "Удалённые задачи попадают сюда"}</Text>
   </View>;
 }
 
 function App() {
   return (
-    <View class="h-full w-full flex-row bg-[#0c0c0e]">
+    <View class="h-full w-full flex-row" style={{ backgroundColor: snapshot().colors.background }}>
       <Bridge
-        class="h-0 w-0"
-        ref={(node) => { commandRef = (name, args) => node.command(name, args); }}
+        class="absolute left-0 top-0 h-px w-px opacity-0"
+        ref={(node) => {
+          commandRef = (name, args) => node.command(name, args);
+          setTimeout(() => commandRef?.("snapshot"), 50);
+        }}
         route={route()}
         projectId={selectedProjectId()}
         onState={(next) => {
           route.set(next.route);
           snapshot.set(next);
+          sidebarVisible.set(next.sidebarVisible);
         }}
       />
-      <View class="w-[240px] shrink-0 border-r border-[#222226] px-2 pt-1">
+      {sidebarVisible() && <View class="w-[240px] shrink-0 border-r px-2 pt-1" style={{ borderColor: snapshot().colors.border }}>
         <View class="gap-0.5">
           {navigation.map((item) => <NavRow item={item} />)}
         </View>
-        <View class="mt-5 rounded-lg bg-[#17171a] px-2 pt-2">
+        <View class="mt-5 rounded-lg px-2 pt-2" style={{ backgroundColor: snapshot().colors.card }}>
           <View class="mb-1 h-8 flex-row items-center gap-2 px-0.5">
-            <Text class="text-[13px] text-[#a0a0aa]">▱</Text>
-            <Text class="flex-1 text-[13px] text-[#a0a0aa]">Проекты</Text>
-            <Text class="text-[17px] text-[#a0a0aa]">＋</Text>
+            <Image src={ProjectIcon} style={{ width: 16, height: 16, tintColor: snapshot().colors.muted }} />
+            <Text class="flex-1 text-[13px]" style={{ color: snapshot().colors.muted }}>Проекты</Text>
+            <Image src={PlusIcon} style={{ width: 16, height: 16, tintColor: snapshot().colors.muted }} />
           </View>
           <Each of={snapshot().projects}>
             {(project) => (
               <View onPress={() => { selectedProjectId.set(project().id); route.set("project"); }} role="button" class="h-8 flex-row items-center gap-2">
-                <View class="h-2 w-2 rounded-full bg-[#66666f]" />
-                <Text class="text-[13px] text-[#a0a0aa]">{project().title}</Text>
+                <View class="h-2 w-2 rounded-full" style={{ backgroundColor: snapshot().colors.muted }} />
+                <Text class="text-[13px]" style={{ color: snapshot().colors.muted }}>{project().title}</Text>
               </View>
             )}
           </Each>
         </View>
         <View class="mt-auto mb-2">
           {otherOpen() && (
-            <View class="mb-2 rounded-lg bg-[#17171a] p-1">
+            <View class="mb-2 rounded-lg p-1" style={{ backgroundColor: snapshot().colors.card }}>
               {otherPages.map((item) => <NavRow item={item} />)}
             </View>
           )}
           <View onPress={() => otherOpen.update((open) => !open)} role="button" class="h-8 flex-row items-center gap-2 px-2.5">
-            <Text class="w-4 text-center text-[15px] text-[#96969e]">···</Text>
-            <Text class="text-[13px] text-[#a0a0aa]">Другое</Text>
+            <Image src={MoreIcon} style={{ width: 16, height: 16, tintColor: snapshot().colors.muted }} />
+            <Text class="text-[13px]" style={{ color: snapshot().colors.muted }}>Другое</Text>
           </View>
         </View>
-      </View>
+      </View>}
       <View class="relative min-w-0 flex-1">
         {(route() === "inbox" || route() === "week" || route() === "next-week" || route() === "someday" || route() === "project") && <View class="flex-1">
-          {route() === "project" && <View class="px-4 pt-[36px] pb-2"><Text class="text-[24px] font-bold text-[#f0f0f2]">{snapshot().project?.title ?? "Проект"}</Text></View>}
+          {route() === "project" && <View class="px-6 pt-6 pb-4"><Text class="text-[24px] font-bold" style={{ color: snapshot().colors.foreground }}>{snapshot().project?.title ?? "Проект"}</Text></View>}
           <TaskRows />
         </View>}
-        {route() === "logbook" && <View class="flex-1"><View class="h-8 flex-row items-center px-7"><Text class="text-[13px] text-[#96969e]">Задачи · {snapshot().todos.length}</Text></View><TaskRows /></View>}
+        {route() === "logbook" && <View class="flex-1"><View class="h-8 flex-row items-center px-7 pt-1"><Text class="text-[13px]" style={{ color: snapshot().colors.muted }}>Задачи · {snapshot().todos.length}</Text></View><TaskRows /></View>}
         {route() === "trash" && <TaskRows />}
         {route() === "statistics" && <StatisticsPage />}
         {route() === "settings" && <SettingsPage />}
         {route() === "about" && <InfoPage />}
-        {(route() === "inbox" || route() === "week" || route() === "next-week" || route() === "someday" || route() === "project") && <View onPress={() => { addOpen.set(true); newTitle.set(""); }} role="button" accessibilityLabel="Новая задача" class="absolute right-6 bottom-6 h-11 w-11 items-center justify-center rounded-full bg-[#f0f0f2]">
-          <Text class="text-[22px] text-[#0c0c0e]">＋</Text>
+        {(route() === "inbox" || route() === "week" || route() === "next-week" || route() === "someday" || route() === "project") && <View onPress={() => { addOpen.set(true); newTitle.set(""); }} role="button" accessibilityLabel="Новая задача" class="absolute right-6 bottom-6 h-11 w-11 items-center justify-center rounded-full" style={{ backgroundColor: snapshot().colors.foreground }}>
+          <Image src={PlusIcon} style={{ width: 20, height: 20, tintColor: snapshot().colors.background }} />
         </View>}
         {addOpen() && <View class="absolute inset-0 items-center justify-center bg-[#00000080] px-4">
-          <View class="w-full max-w-[440px] rounded-xl border border-[#303036] bg-[#17171a] p-4">
-            <Text class="mb-3 text-[14px] text-[#f0f0f2]">Новая задача</Text>
-            <Input value={newTitle()} onChange={(text) => newTitle.set(text)} onSubmit={(event) => { commandRef?.("create", { title: event.text }); addOpen.set(false); }} placeholder="Название задачи" class="h-10 rounded-lg bg-[#222226] px-3 text-[13px] text-[#f0f0f2]" />
+          <View class="w-full max-w-[440px] rounded-xl border p-4" style={{ borderColor: snapshot().colors.border, backgroundColor: snapshot().colors.card }}>
+            <Text class="mb-3 text-[14px]" style={{ color: snapshot().colors.foreground }}>Новая задача</Text>
+            <Input value={newTitle()} onChange={(text) => newTitle.set(text)} onSubmit={(event) => { commandRef?.("create", { title: event.text }); addOpen.set(false); }} placeholder="Название задачи" class="h-10 rounded-lg px-3 text-[13px]" style={{ backgroundColor: snapshot().colors.background, color: snapshot().colors.foreground }} />
             <View class="mt-3 flex-row justify-end gap-2">
-              <View onPress={() => addOpen.set(false)} role="button" class="rounded-md px-3 py-2"><Text class="text-[13px] text-[#a0a0aa]">Отмена</Text></View>
-              <View onPress={() => { commandRef?.("create", { title: newTitle() }); addOpen.set(false); }} role="button" accessibilityLabel="Добавить" class="h-9 w-[90px] items-center justify-center rounded-md bg-[#b18aff]"><Text class="text-[13px] text-[#17171a]">Добавить</Text></View>
+              <View onPress={() => addOpen.set(false)} role="button" class="rounded-md px-3 py-2"><Text class="text-[13px]" style={{ color: snapshot().colors.muted }}>Отмена</Text></View>
+              <View onPress={() => { commandRef?.("create", { title: newTitle() }); addOpen.set(false); }} role="button" accessibilityLabel="Добавить" class="h-9 w-[90px] items-center justify-center rounded-md" style={{ backgroundColor: snapshot().colors.accent }}><Text class="text-[13px]" style={{ color: snapshot().colors.background }}>Добавить</Text></View>
             </View>
+          </View>
+        </View>}
+        {quickSearchOpen() && <View class="absolute inset-0 items-center justify-center bg-[#00000080] px-4">
+          <View class="w-full max-w-[440px] rounded-xl border p-4" style={{ borderColor: snapshot().colors.border, backgroundColor: snapshot().colors.card }}>
+            <Text class="mb-3 text-[14px]" style={{ color: snapshot().colors.foreground }}>Быстрый поиск</Text>
+            <Input value={quickSearchQuery()} onChange={(text) => quickSearchQuery.set(text)} placeholder="Найти задачу на этом экране" class="h-10 rounded-lg px-3 text-[13px]" style={{ backgroundColor: snapshot().colors.background, color: snapshot().colors.foreground }} />
+            <Each of={snapshot().todos.filter((todo) => todo.title.toLowerCase().includes(quickSearchQuery().toLowerCase()))}>{(todo) => <View onPress={() => quickSearchOpen.set(false)} role="button" class="h-9 justify-center border-b" style={{ borderColor: snapshot().colors.border }}><Text class="text-[13px]" style={{ color: snapshot().colors.foreground }}>{todo().title}</Text></View>}</Each>
+            <View onPress={() => quickSearchOpen.set(false)} role="button" class="mt-3 self-end rounded-md px-3 py-2"><Text class="text-[13px]" style={{ color: snapshot().colors.muted }}>Закрыть</Text></View>
           </View>
         </View>}
       </View>

@@ -363,7 +363,26 @@ impl Agenda {
             theme_sel: 1,
             theme_idx: 0,
             sb_material: 0,
-            appearance: None,
+            appearance: demo.then(|| {
+                AppearanceResponse::parse(&serde_json::json!({
+                    "settings": {
+                        "schema_version": 1,
+                        "mode": "dark",
+                        "light_theme": "default",
+                        "dark_theme": "default",
+                        "accent_source": "theme",
+                        "accent_color": null,
+                        "material": "default",
+                        "font_family": "Inter",
+                        "font_size": 13,
+                        "revision": 0
+                    },
+                    "policy": { "following": false, "editable": true },
+                    "capabilities": { "materials": ["default", "frosted", "mica"], "wallpaper_accent": false },
+                    "wallpaper_accent": null
+                }))
+                .expect("demo appearance matches the Engine schema")
+            }),
             appearance_poller: None,
             appearance_writer: None,
             appearance_editor: {
@@ -559,10 +578,12 @@ impl Agenda {
                 self.receive_appearance(next);
             }
         }
-        if self.appearance_writer.is_none() {
-            self.appearance_writer = Some(AppearanceWriter::start());
+        if !self.demo {
+            if self.appearance_writer.is_none() {
+                self.appearance_writer = Some(AppearanceWriter::start());
+            }
+            self.appearance_writer.as_ref().unwrap().set(patch);
         }
-        self.appearance_writer.as_ref().unwrap().set(patch);
         cx.notify();
     }
 
