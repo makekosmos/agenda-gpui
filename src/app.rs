@@ -1357,7 +1357,6 @@ impl Agenda {
         }
     }
 
-    /// Quick entry save: title/notes from inputs, date/project/billable/sig from state.
     /// Sidebar "+" — create a project and open it. Optimistic local insert;
     /// the Engine reply replaces it by id (demo mode stores it directly).
     pub(crate) fn create_project(&mut self) {
@@ -1385,7 +1384,7 @@ impl Agenda {
         self.edit_project_title(project.id);
     }
 
-    /// Quick-entry save: title/notes from inputs, date/project/billable/sig from state.
+    /// Quick-entry save: title/notes from inputs, date/project from state.
     pub(crate) fn quick_entry_save(&mut self, cx: &mut Context<Self>) {
         if !self.can_save() {
             cx.notify();
@@ -1433,12 +1432,12 @@ impl Agenda {
         t.scheduled_date = scheduled;
         t.project_id = project;
         t.status = status;
-        t.billable = false;
         t.sort_order = self.todos.len() as i32;
         t.created_at = chrono::Utc::now().to_rfc3339();
         t.is_today = self.qe_week;
         if self.qe_someday {
-            t.status = Status::Deferred;
+            // Placed in «Потом», so not an Inbox task.
+            t.status = Status::Todo;
             t.is_someday = true;
             t.scheduled_date = None;
         }
@@ -1590,16 +1589,8 @@ impl Agenda {
         self.update_todo(id, |t| {
             t.status = status;
             t.is_completed = false;
-            t.completed_at = if status == Status::Canceled {
-                // The stamp is a `date-time` instant (core.task `state.at`) —
-                // a naive "{day}T12:00:00" stamp has no offset and the Engine
-                // rejects the upsert.
-                Some(chrono::Utc::now().to_rfc3339())
-            } else {
-                None
-            };
-            t.is_cancelled = status == Status::Canceled;
-            t.is_someday = status == Status::Deferred;
+            t.completed_at = None;
+            t.is_someday = false;
             t.is_today = false;
         });
     }
@@ -1614,7 +1605,6 @@ impl Agenda {
         let mut todo = before.clone();
         todo.status = Status::Done;
         todo.is_completed = true;
-        todo.is_cancelled = false;
         todo.completed_at = Some(chrono::Utc::now().to_rfc3339());
         self.save_completion(before, todo, None);
     }

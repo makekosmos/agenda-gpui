@@ -49,12 +49,6 @@ fn cases() -> Vec<(&'static str, Todo)> {
             t.completed_at = Some("2026-05-15T09:30:00.000Z".into());
             t
         }),
-        ("task-canceled", {
-            let mut t = base();
-            t.status = Status::Canceled;
-            t.is_cancelled = true;
-            t
-        }),
     ]
 }
 

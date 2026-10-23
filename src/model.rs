@@ -5,12 +5,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Status {
+    /// Not done, not yet placed (the Inbox list).
     Inbox,
+    /// Not done, placed in a list, a date or a project.
     Todo,
-    Started,
-    Deferred,
     Done,
-    Canceled,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -25,12 +24,9 @@ pub struct Todo {
     pub status: Status,
     pub is_completed: bool,
     pub completed_at: Option<String>,
-    pub is_cancelled: bool,
     pub is_trashed: bool,
     pub created_at: String,
     pub project_id: Option<String>,
-    pub billable: bool,
-    pub price: Option<f64>,
     pub sort_order: i32,
 }
 
@@ -120,23 +116,15 @@ pub fn task_date(t: &Todo) -> (Option<String>, bool) {
 // ---------------------------------------------------------------------------
 
 pub fn task_status(t: &Todo) -> Status {
-    if t.is_cancelled || t.status == Status::Canceled {
-        return Status::Canceled;
-    }
     if t.is_completed || t.status == Status::Done {
-        return Status::Done;
-    }
-    match t.status {
-        Status::Started => Status::Started,
-        Status::Deferred => Status::Deferred,
-        Status::Todo => Status::Todo,
-        _ => Status::Inbox,
+        Status::Done
+    } else {
+        t.status
     }
 }
 
 pub fn is_active(t: &Todo) -> bool {
-    let s = task_status(t);
-    s != Status::Done && s != Status::Canceled && !t.is_trashed
+    task_status(t) != Status::Done && !t.is_trashed
 }
 
 pub fn is_inbox(t: &Todo) -> bool {
@@ -146,9 +134,9 @@ pub fn is_inbox(t: &Todo) -> bool {
 pub fn is_deferred(t: &Todo) -> bool {
     // The someday flag is only meaningful on a live task: `complete_todo`
     // leaves it set on the finished copy, and Engine data from other clients
-    // can arrive as Done/Canceled + is_someday — either way a closed task
-    // must not keep a row in «Потом».
-    is_active(t) && (task_status(t) == Status::Deferred || t.is_someday)
+    // can arrive as Done + is_someday — either way a closed task must not
+    // keep a row in «Потом».
+    is_active(t) && t.is_someday
 }
 
 pub fn is_overdue(t: &Todo, today: &str) -> bool {
@@ -219,10 +207,8 @@ pub fn completed_in_week(t: &Todo, week: &(String, String)) -> bool {
             .is_some_and(|d| d >= week.0.as_str() && d <= week.1.as_str())
 }
 
-/// The local day a task was completed, for statistics aggregation. Only
-/// genuinely-done tasks count: canceled tasks carry a `completed_at` stamp
-/// (it doubles as "closed at") but are not completions, and trashed tasks
-/// are excluded from every count.
+/// The local day a task was completed, for statistics aggregation. Trashed
+/// tasks are excluded from every count.
 pub fn completed_day(t: &Todo) -> Option<NaiveDate> {
     if task_status(t) != Status::Done || t.is_trashed {
         return None;
@@ -632,12 +618,9 @@ fn todo(id: impl Into<String>, title: &str) -> Todo {
         status: Status::Inbox,
         is_completed: false,
         completed_at: None,
-        is_cancelled: false,
         is_trashed: false,
         created_at: String::new(),
         project_id: None,
-        billable: false,
-        price: None,
         sort_order: 0,
     }
 }
@@ -657,8 +640,6 @@ pub fn seed_todos() -> Vec<Todo> {
             let mut t = todo("dev-today-2", "Отправить инвойс клиенту");
             t.status = Status::Todo;
             t.scheduled_date = Some(day_key(0));
-            t.billable = true;
-            t.price = Some(15000.0);
             t.project_id = Some("dev-proj-release".into());
             t
         },
@@ -683,7 +664,7 @@ pub fn seed_todos() -> Vec<Todo> {
         },
         {
             let mut t = todo("dev-week-2", "Ревью PR по навигации");
-            t.status = Status::Started;
+            t.status = Status::Todo;
             t.scheduled_date = Some(day_key(2));
             t.project_id = Some("dev-proj-release".into());
             t
@@ -715,7 +696,7 @@ pub fn seed_todos() -> Vec<Todo> {
         },
         {
             let mut t = todo("dev-someday-1", "Собрать домашний кинотеатр");
-            t.status = Status::Deferred;
+            t.status = Status::Todo;
             t.is_someday = true;
             t.project_id = Some("dev-proj-someday".into());
             t
@@ -733,14 +714,6 @@ pub fn seed_todos() -> Vec<Todo> {
             t.status = Status::Done;
             t.is_completed = true;
             t.completed_at = Some(iso_at(-1, 14, 0));
-            t
-        },
-        {
-            let mut t = todo("dev-canceled-1", "Встреча с брокером");
-            t.status = Status::Canceled;
-            t.is_cancelled = true;
-            t.completed_at = Some(iso_at(0, 11, 0));
-            t.scheduled_date = Some(day_key(1));
             t
         },
         {
@@ -804,21 +777,13 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                     (rng() % 60) as u32,
                 ));
             } else {
-                t.status = match rng() % 100 {
-                    0..=19 => Status::Inbox,
-                    20..=59 => Status::Todo,
-                    60..=74 => Status::Started,
-                    75..=89 => Status::Deferred,
-                    _ => Status::Canceled,
+                let roll = rng() % 100;
+                t.status = if roll < 20 {
+                    Status::Inbox
+                } else {
+                    Status::Todo
                 };
-                match t.status {
-                    Status::Canceled => {
-                        t.is_cancelled = true;
-                        t.completed_at = Some(iso_at(-((rng() % 180) as i64), 12, 0));
-                    }
-                    Status::Deferred => t.is_someday = rng() % 100 < 60,
-                    _ => {}
-                }
+                t.is_someday = roll >= 75;
                 if rng() % 100 < 6 {
                     t.is_today = true;
                 }
@@ -828,10 +793,6 @@ pub fn gen_random_todos(n: usize, seed: u64, batch: u64, first_sort: i32) -> Vec
                 if rng() % 100 < 3 {
                     t.is_trashed = true;
                 }
-            }
-            if rng() % 100 < 8 {
-                t.billable = true;
-                t.price = Some(1000.0 + (rng() % 20000) as f64);
             }
             if rng() % 100 < 35 {
                 t.project_id = Some(PROJECTS[(rng() % 3) as usize].into());

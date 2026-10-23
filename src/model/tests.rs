@@ -104,9 +104,8 @@ fn quick_entry_ignores_unrepresentable_offsets() {
 
 #[test]
 fn completed_day_counts_only_genuine_completions() {
-    // The statistics heatmap/totals read `completed_day`: canceled tasks
-    // carry a completed_at stamp ("closed at") but are not completions, and
-    // trashed tasks must not count anywhere.
+    // The statistics heatmap/totals read `completed_day`: open and trashed
+    // tasks must not count anywhere.
     let stamp = iso_at(0, 12, 0);
     let key = today_key();
 
@@ -116,12 +115,11 @@ fn completed_day_counts_only_genuine_completions() {
     done.completed_at = Some(stamp.clone());
     assert_eq!(completed_day(&done), parse_key(&key));
 
-    let mut canceled = done.clone();
-    canceled.id = "b".into();
-    canceled.status = Status::Canceled;
-    canceled.is_completed = false;
-    canceled.is_cancelled = true;
-    assert_eq!(completed_day(&canceled), None);
+    let mut open = done.clone();
+    open.id = "b".into();
+    open.status = Status::Todo;
+    open.is_completed = false;
+    assert_eq!(completed_day(&open), None);
 
     let mut trashed = done.clone();
     trashed.id = "c".into();

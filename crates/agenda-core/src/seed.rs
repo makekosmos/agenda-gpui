@@ -28,8 +28,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             let mut t = todo("dev-today-2", "Отправить инвойс клиенту");
             t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(0));
-            t.billable = true;
-            t.price = Some(15000.0);
             t.project_id = Some("dev-proj-release".into());
             t
         },
@@ -67,7 +65,7 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
         },
         {
             let mut t = todo("dev-week-2", "Ревью PR по навигации");
-            t.status = Status::Started;
+            t.status = Status::Todo;
             t.scheduled_date = Some(day.day_key(2));
             t.project_id = Some("dev-proj-release".into());
             t.heading_id = Some("dev-head-polish".into());
@@ -103,7 +101,7 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
         },
         {
             let mut t = todo("dev-someday-1", "Собрать домашний кинотеатр");
-            t.status = Status::Deferred;
+            t.status = Status::Todo;
             t.is_someday = true;
             t.project_id = Some("dev-proj-someday".into());
             t
@@ -121,14 +119,6 @@ pub fn seed_todos_at(day: &LocalDay) -> Vec<Todo> {
             t.status = Status::Done;
             t.is_completed = true;
             t.completed_at = Some(day.iso_at(-1, 14, 0));
-            t
-        },
-        {
-            let mut t = todo("dev-canceled-1", "Встреча с брокером");
-            t.status = Status::Canceled;
-            t.is_cancelled = true;
-            t.completed_at = Some(day.iso_at(0, 11, 0));
-            t.scheduled_date = Some(day.day_key(1));
             t
         },
         {
