@@ -12,6 +12,8 @@ members = ["crates/agenda-core"]
 # gpui-kit 0.8 routes windows and rendering through gpui-fast.
 gpui = { package = "gpui-kit", version = "=0.8.0", features = ["gpui-fast"] }
 gpui-component = { version = "=0.8.0", features = ["gpui-fast"] }
+# NSH screens run in the same GPUI Fast renderer as the host app.
+nsh-platform-gpui = { version = "=0.2.0", default-features = false, features = ["js"] }
 # Shared Mundus GPUI visual core (theme/palettes seeded from this crate's
 # src/theme.rs + src/palettes.rs — hex values byte-identical). Its
 # gpui-base pin keeps the transitive GPUI types aligned with gpui-kit 0.8.

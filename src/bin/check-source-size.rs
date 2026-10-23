@@ -21,6 +21,7 @@ const IGNORED: &[&str] = &[
     ".claude",
     ".dev",
     ".git",
+    ".nsh",
     ".tmp",
     "build",
     "coverage",

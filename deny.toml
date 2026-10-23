@@ -15,6 +15,10 @@ ignore = [
     "RUSTSEC-2026-0370", # zvariant
     "RUSTSEC-2026-0371", # zbus_names
     "RUSTSEC-2026-0372", # zvariant_derive
+    # nsh-js enables crypto in quickjs-jit-stdlib; Agenda embeds only its trusted TSX bundle and never performs RSA operations.
+    "RUSTSEC-2023-0071", # rsa / Marvin timing attack
+    # nsh-base enables syntax highlighting; Agenda does not render code blocks or parse untrusted source with syntect.
+    "RUSTSEC-2025-0141", # bincode used by syntect
 ]
 
 [bans]

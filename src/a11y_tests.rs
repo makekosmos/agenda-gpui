@@ -52,7 +52,11 @@ pub(crate) fn launch(cx: &mut TestAppContext) -> (Entity<Agenda>, &mut VisualTes
     let (_root, cx) = cx.add_window_view(move |window, cx| {
         let agenda = cx.new(Agenda::new);
         *slot2.borrow_mut() = Some(agenda.clone());
-        let view = cx.new(|_| AgendaShell { agenda });
+        let view = cx.new(|_| AgendaShell {
+            agenda,
+            nsh: None,
+            close_handler_installed: false,
+        });
         let mut root = gpui_component::Root::new(view, window, cx);
         root.style().background = Some(gpui::transparent_black().into());
         root

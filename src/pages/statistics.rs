@@ -167,6 +167,13 @@ fn activity_chart(points: &[WeekPoint]) -> AnyElement {
 }
 
 impl Agenda {
+    pub(crate) fn nsh_activity(&self) -> Vec<serde_json::Value> {
+        range_points(&self.todos, Local::now().date_naive(), self.activity_range)
+            .into_iter()
+            .map(|point| serde_json::json!({"label": point.label.to_string(), "done": point.done}))
+            .collect()
+    }
+
     pub(crate) fn statistics_page(
         &mut self,
         _window: &mut Window,

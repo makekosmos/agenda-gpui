@@ -51,6 +51,31 @@ pub fn run(window: AnyWindowHandle, agenda: Entity<Agenda>, cx: &mut App) {
     cx.spawn(async move |cx| {
         match scenario.as_str() {
             "baseline" => run.baseline(cx).await,
+            "nsh-inbox" => {
+                run.shot(cx, "inbox").await;
+                run.check("captured nsh Inbox", run.out.join("inbox.png").exists());
+            }
+            "nsh-all" => {
+                for (name, route) in [
+                    ("inbox", Route::Inbox),
+                    ("week", Route::Week),
+                    ("next-week", Route::NextWeek),
+                    ("someday", Route::Someday),
+                    ("logbook", Route::Logbook),
+                    ("project", Route::Project("dev-proj-release".into())),
+                    ("statistics", Route::Statistics),
+                    ("settings", Route::Settings),
+                    ("about", Route::About),
+                    ("trash", Route::Trash),
+                ] {
+                    run.navigate(cx, route).await;
+                    run.shot(cx, name).await;
+                    run.check(
+                        &format!("captured nsh {name}"),
+                        run.out.join(format!("{name}.png")).exists(),
+                    );
+                }
+            }
             "create" => create(&run, cx).await,
             "persist" => persist(&run, cx).await,
             "offline" => offline(&run, cx).await,

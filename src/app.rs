@@ -890,12 +890,6 @@ impl Render for Agenda {
         if !self.focused_once {
             self.focused_once = true;
             self.root_focus.focus(window, cx);
-            let agenda = cx.weak_entity();
-            window.on_window_should_close(cx, move |_, cx| {
-                agenda
-                    .update(cx, |this, cx| this.prepare_close(cx))
-                    .unwrap_or(true)
-            });
         }
         // Overlay closes driven by Enter (quick-entry save, quick-search
         // select) have no Window to restore focus with, so the closed input's
@@ -1577,6 +1571,36 @@ impl Agenda {
         self.save_completion(before, todo, None);
     }
 
+    pub(crate) fn create_nsh_todo(&mut self, title: &str) {
+        let title = title.trim();
+        if title.is_empty() {
+            return;
+        }
+        let mut todo = new_todo(uuid::Uuid::new_v4().to_string(), title);
+        todo.sort_order = self.todos.len() as i32;
+        todo.created_at = chrono::Utc::now().to_rfc3339();
+        match &self.route {
+            Route::Week => {
+                todo.status = Status::Todo;
+                todo.is_today = true;
+            }
+            Route::NextWeek => {
+                todo.status = Status::Todo;
+                todo.scheduled_date = next_monday_key(&today_key());
+            }
+            Route::Someday => {
+                todo.status = Status::Todo;
+                todo.is_someday = true;
+            }
+            Route::Project(id) => {
+                todo.status = Status::Todo;
+                todo.project_id = Some(id.clone());
+            }
+            _ => {}
+        }
+        self.save_todo(None, todo);
+    }
+
     pub(crate) fn update_todo(&mut self, id: &str, f: impl FnOnce(&mut Todo)) {
         let Some(before) = self.todos.iter().find(|t| t.id == id).cloned() else {
             return;
@@ -1709,26 +1733,71 @@ impl Agenda {
 /// caches; caching Agenda as well would force-refresh both when either is dirty.
 pub(crate) struct AgendaShell {
     pub agenda: Entity<Agenda>,
+    pub nsh: Option<Entity<nsh_platform_gpui::AppView>>,
+    pub(crate) close_handler_installed: bool,
 }
 
 impl gpui::Render for AgendaShell {
-    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        if !self.close_handler_installed {
+            self.close_handler_installed = true;
+            let agenda = self.agenda.downgrade();
+            window.on_window_should_close(cx, move |_, cx| {
+                agenda
+                    .update(cx, |this, cx| this.prepare_close(cx))
+                    .unwrap_or(true)
+            });
+        }
+        let titlebar = self.nsh.is_some().then(|| {
+            self.agenda.update(cx, |agenda, cx| {
+                agenda.render_titlebar(window, cx).into_any_element()
+            })
+        });
+        let sidebar_toggle = self.nsh.is_some().then(|| {
+            self.agenda.update(cx, |agenda, cx| {
+                agenda.render_sidebar_toggle(window, cx).into_any_element()
+            })
+        });
         let agenda = self.agenda.read(cx);
-        div()
+        let content = self.nsh.clone().map_or_else(
+            || self.agenda.clone().into_any_element(),
+            |view| view.into_any_element(),
+        );
+        let mut shell = div()
             .size_full()
             .relative()
-            .child(self.agenda.clone())
-            // A notified descendant invalidates every ancestor in GPUI.
-            // Keep the meter outside Agenda's subtree.
-            .when(agenda.dev_fps, |root| {
-                root.child(
-                    div()
-                        .absolute()
-                        .bottom_3()
-                        .right_3()
-                        .child(agenda.fps_view.clone()),
-                )
-            })
+            .flex()
+            .flex_col()
+            .overflow_hidden()
+            .bg(c(BG()));
+        if let (Some(titlebar), Some(sidebar_toggle)) = (titlebar, sidebar_toggle) {
+            shell = shell.child(
+                div()
+                    .h(gpui::px(crate::chrome::TITLEBAR_H))
+                    .w_full()
+                    .flex()
+                    .flex_none()
+                    .child(
+                        div()
+                            .w(gpui::px(crate::chrome::SIDEBAR_W))
+                            .h_full()
+                            .flex_none()
+                            .child(sidebar_toggle),
+                    )
+                    .child(div().flex_1().h_full().child(titlebar)),
+            );
+        }
+        shell = shell.child(div().flex_1().min_h_0().child(content));
+        if agenda.dev_fps {
+            shell = shell.child(
+                div()
+                    .absolute()
+                    .bottom_3()
+                    .right_3()
+                    .child(agenda.fps_view.clone()),
+            );
+        }
+        shell
     }
 }
 
