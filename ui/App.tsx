@@ -177,8 +177,8 @@ function StatisticsPage() {
 function InfoPage() {
   return <Scroll class="flex-1 px-7 pt-12">
     <View class="mx-auto w-full max-w-[760px]">
-      <View class="mb-6 items-center">
-        <Image src={WeekIcon} style={{ width: 64, height: 64, tintColor: snapshot().colors.accent }} />
+      <View class="mb-16 items-center">
+        <Image src={AboutIcon} class="mb-4" style={{ width: 88, height: 88, tintColor: snapshot().colors.accent }} />
         <Text class="mb-2 text-[23px] font-bold" style={{ color: snapshot().colors.foreground }}>Agenda</Text>
         <Text class="mb-2 text-[13px]" style={{ color: snapshot().colors.muted }}>Версия {snapshot().version}</Text>
         <Text class="text-[12px]" style={{ color: snapshot().colors.muted }}>© Yoso Industries 2025–2026</Text>
