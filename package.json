@@ -1,0 +1,7 @@
+{
+  "name": "agenda-nsh-ui",
+  "private": true,
+  "dependencies": {
+    "@makekosmos/imago-nsh": "github:makekosmos/imago#09eee86be752ce4e9f544e3a38636f0bb3aae205"
+  }
+}
