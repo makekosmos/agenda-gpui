@@ -188,13 +188,14 @@ pub struct Agenda {
     pub(crate) appearance: Option<AppearanceResponse>,
     pub(crate) appearance_poller: Option<AppearancePoller>,
     pub(crate) appearance_writer: Option<AppearanceWriter>,
-    pub(crate) appearance_editor: Entity<imago_gpui::appearance_editor::AppearanceEditor>,
+    pub(crate) appearance_editor:
+        Entity<imago_nsh::imago_gpui::appearance_editor::AppearanceEditor>,
     pub(crate) resolved_font: Option<(String, String)>,
     pub(crate) vsync_enabled: bool,
     pub(crate) applied_material: Option<u8>,
     pub(crate) applied_theme_sel: Option<u8>,
     /// (theme_idx, resolved dark) last pushed into gpui-component via
-    /// `imago_gpui::theme::apply` — re-applies only on real changes.
+    /// `imago_nsh::imago_gpui::theme::apply` — re-applies only on real changes.
     pub(crate) applied_palette: Option<(usize, bool, Option<u32>, f32, String)>,
 
     pub(crate) scrolls: HashMap<String, ScrollHandle>,
@@ -388,7 +389,7 @@ impl Agenda {
             appearance_editor: {
                 let agenda = cx.weak_entity();
                 cx.new(|cx| {
-                    imago_gpui::appearance_editor::AppearanceEditor::new(cx, move |patch, cx| {
+                    imago_nsh::imago_gpui::appearance_editor::AppearanceEditor::new(cx, move |patch, cx| {
                         let _ = agenda.update(cx, |app, cx| {
                             app.persist_appearance_patch(patch, cx);
                         });
@@ -975,7 +976,7 @@ impl Render for Agenda {
         let palette_key = (self.theme_idx, dark, accent, font_size, font_family.clone());
         if self.applied_palette.as_ref() != Some(&palette_key) {
             self.applied_palette = Some(palette_key);
-            imago_gpui::theme::apply(cx);
+            imago_nsh::imago_gpui::theme::apply(cx);
             apply_component_accent(cx);
             let component_theme = gpui_component::theme::Theme::global_mut(cx);
             component_theme.font_family = font_family.clone().into();
@@ -1754,7 +1755,7 @@ impl Agenda {
 /// caches; caching Agenda as well would force-refresh both when either is dirty.
 pub(crate) struct AgendaShell {
     pub agenda: Entity<Agenda>,
-    pub nsh: Option<Entity<nsh_platform_gpui::AppView>>,
+    pub nsh: Option<Entity<imago_nsh::AppView>>,
     pub(crate) close_handler_installed: bool,
 }
 

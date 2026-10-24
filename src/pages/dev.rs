@@ -63,17 +63,18 @@ impl Agenda {
             .row(row.title, row.desc)
             .id(SharedString::from(format!("el-dev-{}", row.id)))
             .child(
-                imago_gpui::toggle::toggle(row.id, row.on, cx, move |this, _, _| on_click(this))
-                    .accessibility_label(row.title)
-                    .glass(
-                        self.sb_material != 0
-                            && cfg!(any(target_os = "macos", target_os = "windows")),
-                    )
-                    .colors(imago_gpui::toggle::ToggleColors {
-                        accent: style.accent,
-                        foreground: style.foreground,
-                        surface: style.surface,
-                    }),
+                imago_nsh::imago_gpui::toggle::toggle(row.id, row.on, cx, move |this, _, _| {
+                    on_click(this)
+                })
+                .accessibility_label(row.title)
+                .glass(
+                    self.sb_material != 0 && cfg!(any(target_os = "macos", target_os = "windows")),
+                )
+                .colors(imago_nsh::imago_gpui::toggle::ToggleColors {
+                    accent: style.accent,
+                    foreground: style.foreground,
+                    surface: style.surface,
+                }),
             )
     }
 

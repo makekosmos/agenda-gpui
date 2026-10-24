@@ -1,10 +1,10 @@
 // Re-exported from imago-gpui (KOS-132): the shared Mundus GPUI visual core
 // was seeded from this file, so the API is a strict superset — `pal()`,
 // `BG()`/`FG()`/…, `c`/`rgba`/`mix`/`lerp`, tag colors and easings are
-// byte-identical. `imago_gpui::theme::apply` additionally installs the
+// byte-identical. `imago_nsh::imago_gpui::theme::apply` additionally installs the
 // palette as the gpui-component theme.
 #![allow(non_snake_case)] // Keep Imago's uppercase palette accessor API.
-pub use imago_gpui::theme::*;
+pub use imago_nsh::imago_gpui::theme::*;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
@@ -28,7 +28,7 @@ pub fn accent_override_active() -> bool {
 pub fn ACCENT() -> u32 {
     let color = ACCENT_OVERRIDE.load(Ordering::Relaxed);
     if color == NO_ACCENT {
-        imago_gpui::theme::ACCENT()
+        imago_nsh::imago_gpui::theme::ACCENT()
     } else {
         color
     }
@@ -37,7 +37,7 @@ pub fn ACCENT() -> u32 {
 pub fn ACCENT_FG() -> u32 {
     let color = ACCENT_OVERRIDE.load(Ordering::Relaxed);
     if color == NO_ACCENT {
-        return imago_gpui::theme::ACCENT_FG();
+        return imago_nsh::imago_gpui::theme::ACCENT_FG();
     }
     let r = ((color >> 16) & 255) as f32 / 255.0;
     let g = ((color >> 8) & 255) as f32 / 255.0;
@@ -61,8 +61,8 @@ pub fn text_px(size: f32) -> gpui::Pixels {
 }
 
 /// Shared controls receive Agenda's resolved accent and typography explicitly.
-pub fn ui_style() -> imago_gpui::settings::UiStyle {
-    imago_gpui::settings::UiStyle {
+pub fn ui_style() -> imago_nsh::imago_gpui::settings::UiStyle {
+    imago_nsh::imago_gpui::settings::UiStyle {
         accent: ACCENT(),
         font_scale: f32::from_bits(FONT_SIZE.load(Ordering::Relaxed)) / 13.0,
         ..Default::default()

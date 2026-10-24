@@ -14,7 +14,7 @@ mod transport;
 mod transport_tests;
 
 use crate::model::{Project, Todo};
-pub use mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
+pub use imago_nsh::mundus_gpui_kit::engine_error::{EngineError, ErrorKind};
 use serde_json::{json, Value};
 use std::collections::HashMap;
 pub use transport::Engine;

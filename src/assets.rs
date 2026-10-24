@@ -8,11 +8,11 @@ macro_rules! embed {
         fn load(&self, path: &str) -> Result<Option<Cow<'static, [u8]>>> {
             match path {
                 $( $path => Ok(Some(Cow::Borrowed(include_bytes!(concat!("../assets/", $path)) as &[u8]))), )*
-                _ => imago_gpui::assets::Assets.load(path),
+                _ => imago_nsh::imago_gpui::assets::Assets.load(path),
             }
         }
         fn list(&self, path: &str) -> Result<Vec<SharedString>> {
-            let mut paths = imago_gpui::assets::Assets.list(path)?;
+            let mut paths = imago_nsh::imago_gpui::assets::Assets.list(path)?;
             paths.extend([$(SharedString::new_static($path)),*].into_iter()
                 .filter(|name| name.starts_with(path)));
             paths.sort();

@@ -119,7 +119,9 @@ impl Agenda {
     }
 
     pub(crate) fn about_page(&mut self, cx: &mut Context<Self>) -> AnyElement {
-        use imago_gpui::about::{AboutHero, DiagnosticCheck, DiagnosticState, Diagnostics};
+        use imago_nsh::imago_gpui::about::{
+            AboutHero, DiagnosticCheck, DiagnosticState, Diagnostics,
+        };
         let style = crate::theme::ui_style();
         let weak = cx.weak_entity();
         let state = if self.storage_error.is_some() {
@@ -144,8 +146,8 @@ impl Agenda {
             .pt_4()
             .pb_8()
             .child(
-                imago_gpui::settings::page_stack()
-                    .max_w(px(imago_gpui::settings::PAGE_WIDTH))
+                imago_nsh::imago_gpui::settings::page_stack()
+                    .max_w(px(imago_nsh::imago_gpui::settings::PAGE_WIDTH))
                     .mx_auto()
                     .child(
                         AboutHero::new(
