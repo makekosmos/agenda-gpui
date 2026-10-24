@@ -47,7 +47,7 @@ pub(super) async fn run(run: &Run, cx: &mut AsyncApp) {
     run.check("Settings changed appearance mode", light);
     run.shot(cx, "settings-theme").await;
     run.click_at(cx, 755.0, 160.0).await;
-    run.click_at(cx, 578.0, 470.0).await;
+    run.click_at(cx, 578.0, 452.0).await;
     let accent = run.read(cx, |agenda| {
         agenda.appearance.as_ref().is_some_and(|appearance| {
             appearance.settings.accent_source == AccentSource::Custom
@@ -56,7 +56,7 @@ pub(super) async fn run(run: &Run, cx: &mut AsyncApp) {
     });
     run.check("Settings changed custom accent", accent);
     run.shot(cx, "settings-accent").await;
-    run.click_at(cx, 578.0, 647.0).await;
+    run.click_at(cx, 578.0, 622.0).await;
     let density = run.read(cx, |agenda| {
         agenda
             .appearance

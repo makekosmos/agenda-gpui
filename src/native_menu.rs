@@ -117,21 +117,3 @@ extern "C" {
     );
     static _dispatch_main_q: u8;
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use gpui::Keystroke;
-
-    #[gpui::test]
-    fn command_q_quits(cx: &mut gpui::TestAppContext) {
-        cx.update(install);
-        let (_, cx) = crate::a11y_tests::launch(cx);
-        cx.update(|window, _| {
-            let key = Keystroke::parse("cmd-q").unwrap();
-            assert!(window.bindings_for_action(&Quit).iter().any(|binding| {
-                binding.match_keystrokes(std::slice::from_ref(&key)) == Some(false)
-            }));
-        });
-    }
-}

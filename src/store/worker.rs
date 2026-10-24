@@ -19,20 +19,11 @@ pub struct Mutation {
 pub enum Command {
     Load,
     Save(Box<Mutation>),
-    Project(Project),
-    /// Deletes the project after moving its tasks (`todos`, already edited)
-    /// back to Inbox — no task is left pointing at a deleted project.
-    DeleteProject {
-        project: Project,
-        todos: Vec<(Todo, Todo)>,
-    },
 }
 
 pub enum Reply {
     Loaded(Result<Snapshot, EngineError>),
     Saved(Box<Mutation>, Result<(), EngineError>),
-    Project(Result<Project, EngineError>),
-    ProjectDeleted(Result<(String, Vec<Todo>), EngineError>),
 }
 
 pub struct Worker {
@@ -56,12 +47,6 @@ impl Worker {
                             mutation.next.as_ref(),
                         );
                         Reply::Saved(mutation, result)
-                    }
-                    Command::Project(project) => {
-                        Reply::Project(engine.save_project(&project).map(|()| project))
-                    }
-                    Command::DeleteProject { project, todos } => {
-                        Reply::ProjectDeleted(engine.delete_project(&project, todos))
                     }
                 };
                 if results.send(reply).is_err() {

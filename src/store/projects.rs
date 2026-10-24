@@ -1,12 +1,13 @@
 //! Projects as canonical `com.kosmos.project` objects.
 use super::{Engine, EngineError};
-use crate::model::{Project, Todo};
+use crate::model::Project;
 use serde_json::{json, Value};
 use std::collections::HashSet;
 
 impl Engine {
     /// Projects are canonical `com.kosmos.project` objects; Agenda-only
     /// fields live in `extensions`. Creating and saving are the same upsert.
+    #[cfg(test)]
     pub(super) fn save_project(&self, project: &Project) -> Result<(), EngineError> {
         let current = self.rpc("get_object", json!({"id":project.id}))?;
         let now = chrono::Utc::now().to_rfc3339();
@@ -14,24 +15,6 @@ impl Engine {
     }
 
     /// Soft delete: the object stays in ARK with `deletedAt`, like trash.
-    pub(super) fn delete_project(
-        &self,
-        project: &Project,
-        todos: Vec<(Todo, Todo)>,
-    ) -> Result<(String, Vec<Todo>), EngineError> {
-        let mut moved = Vec::with_capacity(todos.len());
-        for (before, todo) in todos {
-            self.save(Some(&before), &todo)?;
-            moved.push(todo);
-        }
-        let current = self.rpc("get_object", json!({"id":project.id}))?;
-        let now = chrono::Utc::now().to_rfc3339();
-        let mut object = project_object(current, project, &now);
-        object["deletedAt"] = json!(now);
-        self.upsert(object)?;
-        Ok((project.id.clone(), moved))
-    }
-
     /// Live projects plus the ids of every canonical project, deleted or not.
     pub(super) fn projects(&self) -> Result<(Vec<Project>, HashSet<String>), EngineError> {
         let list = self.rpc("list_objects_by_type", json!({"type_id":PROJECT_TYPE}))?;
@@ -58,6 +41,7 @@ impl Engine {
 pub(super) const PROJECT_TYPE: &str = "com.kosmos.project";
 const PROJECT_STATUS: [&str; 3] = ["active", "someday", "completed"];
 
+#[cfg(test)]
 pub(super) fn project_object(current: Value, project: &Project, now: &str) -> Value {
     let mut object = if current.is_null() {
         json!({"id":project.id,"typeId":PROJECT_TYPE,"typeVersion":"1.1.0","createdAt":now,

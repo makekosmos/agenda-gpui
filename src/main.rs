@@ -7,46 +7,17 @@ mod app;
 mod appearance;
 mod assets;
 mod brand;
-mod chrome;
 #[cfg(feature = "e2e")]
 mod e2e;
 #[cfg(target_os = "macos")]
 mod macos_close;
 mod model;
-#[cfg(any(target_os = "macos", test))]
+#[cfg(target_os = "macos")]
 mod native_menu;
 mod nsh_bridge;
-mod pages;
+mod nsh_host;
 mod palettes;
 mod store;
-mod text_field;
-mod theme;
-#[cfg(test)]
-mod ui_tests;
-mod widgets;
-
-#[cfg(test)]
-mod a11y_tests;
-#[cfg(test)]
-mod capture_tests;
-#[cfg(test)]
-mod input_tests;
-#[cfg(test)]
-mod kos216_tests;
-#[cfg(test)]
-mod kos232_tests;
-#[cfg(test)]
-mod kos244_tests;
-#[cfg(test)]
-mod kos254_tests;
-#[cfg(test)]
-mod kos295_tests;
-#[cfg(test)]
-mod regression_tests;
-#[cfg(test)]
-mod settings_a11y_tests;
-#[cfg(test)]
-mod window_tests;
 
 use gpui::{px, size, App, AppContext, Bounds, Styled, WindowBounds, WindowOptions};
 #[cfg(target_os = "windows")]
@@ -76,7 +47,7 @@ fn offscreen() -> bool {
 }
 
 use app::Agenda;
-use assets::{font_bytes, Assets};
+use assets::font_bytes;
 
 const WINDOW_TITLE: &str = "Agenda";
 
@@ -138,9 +109,9 @@ fn open_agenda_window(cx: &mut App) -> (gpui::AnyWindowHandle, gpui::Entity<Agen
                     view.on_error(|message| eprintln!("Agenda nsh: {message}"));
                 })
             });
-            let view = cx.new(|_| app::AgendaShell {
+            let view = cx.new(|_| nsh_host::AgendaShell {
                 agenda,
-                nsh: Some(nsh),
+                nsh,
                 close_handler_installed: false,
             });
             // gpui-component widgets (Input, menus) require a ui::Root window layer.
@@ -161,14 +132,13 @@ fn open_agenda_window(cx: &mut App) -> (gpui::AnyWindowHandle, gpui::Entity<Agen
 fn main() {
     #[cfg(target_os = "macos")]
     macos_close::install();
-    gpui::application().with_assets(Assets).run(|cx: &mut App| {
+    gpui::application().run(|cx: &mut App| {
         gpui_component::init(cx);
         cx.text_system()
             .add_fonts(font_bytes())
             .expect("failed to load embedded fonts");
 
         let (window, agenda) = open_agenda_window(cx);
-        text_field::init_native_focus();
         #[cfg(target_os = "macos")]
         native_menu::install(cx);
         #[cfg(feature = "e2e")]

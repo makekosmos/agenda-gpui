@@ -56,11 +56,10 @@ fn route_key(route: &Route) -> String {
         Route::Someday => "someday".into(),
         Route::Logbook => "logbook".into(),
         Route::Trash => "trash".into(),
-        Route::Settings | Route::SettingsEnergy => "settings".into(),
+        Route::Settings => "settings".into(),
         Route::Statistics => "statistics".into(),
         Route::About => "about".into(),
         Route::Project(_) => "project".into(),
-        Route::Dev => "about".into(),
     }
 }
 
@@ -149,7 +148,7 @@ fn snapshot(agenda: &Agenda, route: &str) -> Value {
             "accent": color(accent),
             "card": color(palette.card),
         },
-        "sidebarVisible": agenda.sidebar_target > 0.5,
+        "sidebarVisible": agenda.sidebar_visible,
     })
 }
 
@@ -216,8 +215,10 @@ impl NativeComponent for AgendaBridge {
                 }
             }
             "toggle-sidebar" => {
-                self.agenda
-                    .update(cx, |agenda, cx| agenda.toggle_sidebar(cx));
+                self.agenda.update(cx, |agenda, cx| {
+                    agenda.toggle_sidebar();
+                    cx.notify();
+                });
             }
             "reload" => {
                 self.agenda.update(cx, |agenda, _| agenda.reload_storage());

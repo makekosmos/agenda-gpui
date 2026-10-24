@@ -1,6 +1,5 @@
 use gpui::{
-    AppContext as _, AsyncApp, Keystroke, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent,
-    PlatformInput,
+    AppContext as _, AsyncApp, Modifiers, MouseButton, MouseDownEvent, MouseUpEvent, PlatformInput,
 };
 
 use crate::app::Route;
@@ -8,16 +7,6 @@ use crate::app::Route;
 use super::Run;
 
 impl Run {
-    /// Dispatches a key and draws the offscreen window immediately.
-    pub(super) fn keystroke(&self, cx: &mut AsyncApp, keystroke: Keystroke) {
-        cx.update_window(self.window, |_, window, cx| {
-            window.dispatch_keystroke(keystroke, cx);
-            window.refresh();
-            window.draw(cx).clear(cx);
-        })
-        .expect("window alive");
-    }
-
     pub(super) async fn click_at(&self, cx: &mut AsyncApp, x: f32, y: f32) {
         cx.update_window(self.window, |_, window, cx| {
             let position = gpui::point(gpui::px(x), gpui::px(y));

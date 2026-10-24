@@ -8,24 +8,6 @@ fn parses_and_resolves_modes_accents_material() {
     assert_eq!(r.theme_index(false), 0);
     assert_eq!(crate::palettes::THEMES[r.theme_index(true)].key, "claude");
     assert_eq!(r.accent(), Some(0x123abc));
-    assert_eq!(r.material(), 1);
-}
-#[test]
-fn missing_font_uses_resolved_system_family() {
-    let installed = vec!["Inter".into(), "Arial".into()];
-    assert_eq!(
-        choose_font_family("arial", &installed, Some("Arial")),
-        "Arial"
-    );
-    assert_eq!(
-        choose_font_family("Unknown", &installed, Some("Arial")),
-        "Arial"
-    );
-    assert_eq!(
-        choose_font_family("system", &installed, Some("Arial")),
-        "Arial"
-    );
-    assert_eq!(choose_font_family("Unknown", &installed, None), "Inter");
 }
 #[test]
 fn omitted_optional_values_use_contract_defaults() {
@@ -65,7 +47,6 @@ fn default_material_is_opaque_and_wallpaper_accent_arrives_later() {
     value["settings"]["accent_source"] = json!("wallpaper");
     value["wallpaper_accent"] = serde_json::Value::Null;
     let pending = Response::parse(&value).unwrap();
-    assert_eq!(pending.material(), 0);
     assert_eq!(pending.accent(), None);
     value["wallpaper_accent"] = json!("#DEAD00");
     let sampled = Response::parse(&value).unwrap();
