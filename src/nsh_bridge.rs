@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use gpui::{App, Entity, Subscription, Window};
-use nsh_platform_gpui::{ComponentContext, NativeComponent};
+use imago_nsh::{ComponentContext, NativeComponent};
 use serde_json::{json, Value};
 
 use crate::app::{Agenda, Route};
@@ -62,6 +62,10 @@ fn route_key(route: &Route) -> String {
         Route::Project(_) => "project".into(),
         Route::Dev => "about".into(),
     }
+}
+
+pub(crate) fn initial_snapshot(agenda: &Agenda) -> Value {
+    snapshot(agenda, "inbox")
 }
 
 fn snapshot(agenda: &Agenda, route: &str) -> Value {
@@ -187,7 +191,6 @@ impl NativeComponent for AgendaBridge {
 
     fn command(&mut self, name: &str, args: &Value, _window: &mut Window, cx: &mut App) {
         match name {
-            "snapshot" => self.publish(cx),
             "complete" => {
                 if let Some(id) = args.get("id").and_then(Value::as_str) {
                     let id = id.to_owned();

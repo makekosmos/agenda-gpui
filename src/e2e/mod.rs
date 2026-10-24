@@ -84,8 +84,11 @@ pub fn run(window: AnyWindowHandle, agenda: Entity<Agenda>, cx: &mut App) {
             "offline" => offline(&run, cx).await,
             other => run.check(&format!("known scenario '{other}'"), false),
         }
-        run.finish();
+        let failed = run.finish();
         cx.update(|cx| cx.quit());
+        if failed {
+            std::process::exit(1);
+        }
     })
     .detach();
 }
@@ -131,13 +134,15 @@ impl Run {
         }
     }
 
-    fn finish(&self) {
+    fn finish(&self) -> bool {
         let report = self.report.borrow();
         std::fs::write(self.out.join("report.txt"), report.as_bytes()).expect("write report");
         print!("{report}");
-        if *self.failed.borrow() {
+        let failed = *self.failed.borrow();
+        if failed {
             std::fs::write(self.out.join("FAILED"), b"").ok();
         }
+        failed
     }
 
     async fn sleep(&self, cx: &mut AsyncApp, ms: u64) {
@@ -201,16 +206,64 @@ impl Run {
 
     /// Lets the window paint the current state, then saves it as `<name>.png`.
     async fn shot(&self, cx: &mut AsyncApp, name: &str) {
-        self.sleep(cx, 150).await;
-        let image = cx
-            .update_window(self.window, |_, window, cx| {
-                for _ in 0..3 {
+        let image = if name == "inbox" {
+            self.sleep(cx, 150).await;
+            let first = cx
+                .update_window(self.window, |_, window, cx| {
+                    window.refresh();
+                    window.draw(cx).clear(cx);
+                    window.render_to_image()
+                })
+                .expect("window alive");
+            match first {
+                Ok(first) => {
+                    let row_text_pixels = [(46, 70), (83, 107), (120, 144)].map(|(top, bottom)| {
+                        let mut count = 0;
+                        for y in top..bottom {
+                            for x in 270..700 {
+                                let pixel = first.get_pixel(x, y).0;
+                                count +=
+                                    usize::from(pixel[0] > 170 && pixel[1] > 170 && pixel[2] > 170);
+                            }
+                        }
+                        count
+                    });
+                    self.check(
+                        "cold-start Inbox renders three task rows",
+                        row_text_pixels.iter().all(|pixels| *pixels > 40),
+                    );
+                    first
+                        .save(self.out.join("cold-start-inbox.png"))
+                        .expect("save first Inbox frame");
+                }
+                Err(e) => self.check(&format!("first Inbox frame: {e}"), false),
+            }
+            self.sleep(cx, 150).await;
+            cx.update_window(self.window, |_, window, cx| {
+                for _ in 0..2 {
                     window.refresh();
                     window.draw(cx).clear(cx);
                 }
                 window.render_to_image()
             })
+            .expect("window alive")
+        } else {
+            self.sleep(cx, 150).await;
+            cx.update_window(self.window, |_, window, cx| {
+                window.refresh();
+                window.draw(cx).clear(cx);
+            })
             .expect("window alive");
+            self.sleep(cx, 100).await;
+            cx.update_window(self.window, |_, window, cx| {
+                for _ in 0..2 {
+                    window.refresh();
+                    window.draw(cx).clear(cx);
+                }
+                window.render_to_image()
+            })
+            .expect("window alive")
+        };
         match image {
             Ok(image) => {
                 image

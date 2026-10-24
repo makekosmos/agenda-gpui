@@ -14,7 +14,8 @@ type Theme = { key: string; name: string };
 type Colors = { background: string; foreground: string; muted: string; border: string; accent: string; card: string };
 type Snapshot = { route: Route; title: string; todos: Todo[]; projects: Project[]; project?: Project; archivedCount: number; trashCount: number; todoCount: number; version: string; activity: { label: string; done: number }[]; appearance?: Appearance; appearanceEditable: boolean; themes: Theme[]; colors: Colors; sidebarVisible: boolean };
 
-const initial: Snapshot = { route: "inbox", title: "Входящие", todos: [], projects: [], archivedCount: 0, trashCount: 0, todoCount: 0, version: "", activity: [], appearance: { settings: { mode: "dark", light_theme: "default", dark_theme: "default", accent_source: "theme", material: "default", font_size: 13, font_family: "Inter" }, policy: { following: false, editable: true }, capabilities: { materials: ["default", "frosted", "mica"], wallpaper_accent: false } }, appearanceEditable: true, themes: [{ key: "default", name: "Default" }, { key: "claude", name: "Claude" }, { key: "graphite", name: "Graphite" }], colors: { background: "#0d0c10", foreground: "#e7e5ea", muted: "#8d8a94", border: "#27262a", accent: "#af94f9", card: "#131216" }, sidebarVisible: true };
+const fallback: Snapshot = { route: "inbox", title: "Входящие", todos: [], projects: [], archivedCount: 0, trashCount: 0, todoCount: 0, version: "", activity: [], appearance: { settings: { mode: "dark", light_theme: "default", dark_theme: "default", accent_source: "theme", material: "default", font_size: 13, font_family: "Inter" }, policy: { following: false, editable: true }, capabilities: { materials: ["default", "frosted", "mica"], wallpaper_accent: false } }, appearanceEditable: true, themes: [{ key: "default", name: "Default" }, { key: "claude", name: "Claude" }, { key: "graphite", name: "Graphite" }], colors: { background: "#0d0c10", foreground: "#e7e5ea", muted: "#8d8a94", border: "#27262a", accent: "#af94f9", card: "#131216" }, sidebarVisible: true };
+const initial = (globalThis as any).__MUNDUS_AGENDA_INITIAL__ as Snapshot | undefined ?? fallback;
 const snapshot = signal(initial);
 const route = signal<Route>("inbox");
 const selectedProjectId = signal("dev-proj-release");
@@ -205,10 +206,9 @@ function App() {
   return (
     <View class="h-full w-full flex-row" style={{ backgroundColor: snapshot().colors.background }}>
       <Bridge
-        class="absolute left-0 top-0 h-px w-px opacity-0"
+        class="absolute left-0 top-0 h-px w-px"
         ref={(node) => {
           commandRef = (name, args) => node.command(name, args);
-          setTimeout(() => commandRef?.("snapshot"), 50);
         }}
         route={route()}
         projectId={selectedProjectId()}

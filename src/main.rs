@@ -51,7 +51,7 @@ mod window_tests;
 use gpui::{px, size, App, AppContext, Bounds, Styled, WindowBounds, WindowOptions};
 #[cfg(target_os = "windows")]
 use gpui_fast_backend as _;
-use nsh_platform_gpui::{App as NshApp, Bundle};
+use imago_nsh::{Bundle, NshApp};
 
 /// `AGENDA_OFFSCREEN=1` parks the window far outside the desktop so automated
 /// soak runs (FPS/scroll benchmarks) don't pop a window on the user's screen.
@@ -119,23 +119,24 @@ fn open_agenda_window(cx: &mut App) -> (gpui::AnyWindowHandle, gpui::Entity<Agen
             // Shell keeps the FPS meter outside Agenda's subtree; the
             // sidebar and content own their independent caches.
             let nsh = cx.new(|cx| {
-                mundus_gpui_kit::nsh::mount_app_view(
-                    window,
-                    cx,
-                    NshApp::Js(Bundle::source(include_str!("../ui/bundle.js").into())),
-                    |view| {
-                        view.register_component(
-                            "agenda.bridge",
-                            std::rc::Rc::new({
-                                let agenda = agenda.clone();
-                                move |context| {
-                                    Box::new(nsh_bridge::AgendaBridge::new(context, agenda.clone()))
-                                }
-                            }),
-                        );
-                        view.on_error(|message| eprintln!("Agenda nsh: {message}"));
-                    },
-                )
+                let initial = serde_json::to_string(&nsh_bridge::initial_snapshot(agenda.read(cx)))
+                    .expect("serialize initial Agenda state");
+                let source = format!(
+                    "globalThis.__MUNDUS_AGENDA_INITIAL__={initial};\n{}",
+                    include_str!("../ui/bundle.js")
+                );
+                imago_nsh::mount_app_view(window, cx, NshApp::Js(Bundle::source(source)), |view| {
+                    view.register_component(
+                        "agenda.bridge",
+                        std::rc::Rc::new({
+                            let agenda = agenda.clone();
+                            move |context| {
+                                Box::new(nsh_bridge::AgendaBridge::new(context, agenda.clone()))
+                            }
+                        }),
+                    );
+                    view.on_error(|message| eprintln!("Agenda nsh: {message}"));
+                })
             });
             let view = cx.new(|_| app::AgendaShell {
                 agenda,

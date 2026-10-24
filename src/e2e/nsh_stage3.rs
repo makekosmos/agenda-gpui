@@ -13,8 +13,8 @@ pub(super) async fn run(run: &Run, cx: &mut AsyncApp) {
         ),
         demo_counts.0 > 0 && demo_counts.1 == 2,
     );
+    run.shot(cx, "inbox").await;
     for name in [
-        "inbox",
         "week",
         "next-week",
         "someday",
@@ -24,19 +24,7 @@ pub(super) async fn run(run: &Run, cx: &mut AsyncApp) {
         "about",
         "trash",
     ] {
-        if name == "inbox" {
-            run.sleep(cx, 500).await;
-            run.click_at(cx, 80.0, 95.0).await;
-            run.click_at(cx, 80.0, 60.0).await;
-            let ready = run
-                .wait_until(cx, std::time::Duration::from_secs(3), |agenda| {
-                    agenda.route == crate::app::Route::Inbox
-                })
-                .await;
-            run.check("nsh inbox route restored after initial state sync", ready);
-        } else {
-            run.navigate_nsh(cx, name).await;
-        }
+        run.navigate_nsh(cx, name).await;
         run.shot(cx, name).await;
         run.check(
             &format!("captured nsh {name}"),
