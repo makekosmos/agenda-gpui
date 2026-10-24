@@ -40,7 +40,7 @@ export function SettingsPanel(props: {
     </View>
   );
   const shortcutRow = (name: ShortcutName, label: string) => (
-    <View class="h-10 flex-row items-center border-b" style={{ borderColor: colors.border }}>
+    <View class="h-10 flex-row items-center border-b" style={{ borderColor: colors().border }}>
       <Text class="flex-1 text-[13px]" style={{ color: colors().foreground }}>{label}</Text>
       <View onPress={() => props.onChangeShortcut(name)} role="button"
         accessibilityLabel={`Изменить сочетание: ${label}`} class="rounded-md px-3 py-1" style={{ backgroundColor: colors().background }}>
@@ -53,7 +53,7 @@ export function SettingsPanel(props: {
   }
   const accents = ["#8ec07c", "#d79921", "#b18aff", "#83a598", "#fb4934", "#d3869b", "#458588", "#fabd2f"];
   const modes = [["system", "Системная"], ["light", "Светлая"], ["dark", "Тёмная"]];
-  return <Scroll class="min-h-0 flex-1 px-7 pt-4 pb-8" style={{ backgroundColor: colors.background }}>
+  return <Scroll class="min-h-0 flex-1 px-7 pt-4 pb-8" style={{ backgroundColor: colors().background }}>
     <View class="mx-auto w-full max-w-[720px]">
       <Text class="mb-6 text-[24px] font-bold" style={{ color: colors().foreground }}>Отображение</Text>
       {appearance()?.policy.following && <Text class="mb-4 text-[12px]" style={{ color: colors().accent }}>Общий стиль задаётся в Mundus Manager. Настройки доступны только для просмотра.</Text>}
@@ -71,7 +71,7 @@ export function SettingsPanel(props: {
         {appearance()!.capabilities.wallpaper_accent && choice("Обои", settings()!.accent_source === "wallpaper", () => patch({ accent_source: "wallpaper" }))}
       </View>
       <View class="mb-6 flex-row gap-2">{accents.map((accent) => <View onPress={() => patch({ accent_source: "custom", accent_color: accent })} role="button" accessibilityLabel={`Акцент ${accent}`} accessibilityState={{ selected: settings()!.accent_source === "custom" && settings()!.accent_color?.toLowerCase() === accent }} class="h-7 w-7 rounded-full border-2" style={{ backgroundColor: accent, borderColor: settings()!.accent_color?.toLowerCase() === accent ? colors().foreground : colors().border }} />)}</View>
-      <Text class="mb-3 text-[13px]" style={{ color: colors.muted }}>Материал окна</Text>
+      <Text class="mb-3 text-[13px]" style={{ color: colors().muted }}>Материал окна</Text>
       <View class="mb-6 flex-row gap-2">{["default", "frosted", "mica"].filter((material) => appearance()!.capabilities.materials.includes(material)).map((material) => choice(material === "default" ? "Сплошной" : material === "frosted" ? "Стекло" : "Системный", settings()!.material === material, () => patch({ material })))}</View>
       <Text class="mb-3 text-[13px]" style={{ color: colors().muted }}>Плотность интерфейса</Text>
       <View class="mb-6 flex-row gap-2">{[[12, "Компактная"], [13, "Обычная"], [15, "Свободная"]].map(([size, label]) => choice(label, settings()!.font_size === size, () => patch({ font_size: size })))}</View>
