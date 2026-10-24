@@ -24,7 +24,19 @@ pub(super) async fn run(run: &Run, cx: &mut AsyncApp) {
         "about",
         "trash",
     ] {
-        run.navigate_nsh(cx, name).await;
+        if name == "inbox" {
+            run.sleep(cx, 500).await;
+            run.click_at(cx, 80.0, 95.0).await;
+            run.click_at(cx, 80.0, 60.0).await;
+            let ready = run
+                .wait_until(cx, std::time::Duration::from_secs(3), |agenda| {
+                    agenda.route == crate::app::Route::Inbox
+                })
+                .await;
+            run.check("nsh inbox route restored after initial state sync", ready);
+        } else {
+            run.navigate_nsh(cx, name).await;
+        }
         run.shot(cx, name).await;
         run.check(
             &format!("captured nsh {name}"),

@@ -3,6 +3,7 @@ name = "agenda-gpui"
 version = "0.3.7"
 edition = "2021"
 description = "GPUI clone of the Agenda task UI (experimental, KOS-124)"
+publish = false
 default-run = "agenda-gpui"
 [workspace]
 members = ["crates/agenda-core"]
