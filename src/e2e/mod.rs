@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gpui::{AnyWindowHandle, App, AppContext as _, AsyncApp, Entity, Keystroke, Modifiers};
+use gpui::{AnyWindowHandle, App, AsyncApp, Entity, Keystroke, Modifiers};
 
 use crate::app::{Agenda, Route};
 

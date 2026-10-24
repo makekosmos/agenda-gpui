@@ -1,4 +1,4 @@
-use gpui::AsyncApp;
+use gpui::{AppContext as _, AsyncApp};
 
 use super::Run;
 
