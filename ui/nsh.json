@@ -1,0 +1,7 @@
+{
+  "name": "Agenda",
+  "id": "com.example.agenda",
+  "version": "1.0.0",
+  "build": 1,
+  "theme": "../node_modules/@makekosmos/imago-nsh/crates/imago-nsh/ui/theme.json"
+}

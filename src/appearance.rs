@@ -12,11 +12,6 @@ use crate::store::Engine;
 
 pub const APP_ID: &str = "agenda-gpui";
 
-mod fonts;
-#[cfg(test)]
-use fonts::choose_font_family;
-pub use fonts::resolve_font_family;
-
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Mode {
@@ -159,21 +154,6 @@ impl Response {
                 self.wallpaper_accent.as_deref().and_then(hex_color)
             }
             AccentSource::Wallpaper => None,
-        }
-    }
-
-    pub fn material(&self) -> u8 {
-        if !self
-            .capabilities
-            .materials
-            .contains(&self.settings.material)
-        {
-            return 0;
-        }
-        match self.settings.material {
-            Material::Acrylic | Material::Frosted => 1,
-            Material::Mica => 2,
-            Material::Default | Material::Opaque => 0,
         }
     }
 }
